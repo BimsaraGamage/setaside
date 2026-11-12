@@ -1,14 +1,27 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
+import { getAuth, googleConfigured } from "./auth";
+import { type SignedIn, userCheck } from "./user-check";
 
 export type Bindings = Env;
 
-const app = new Hono<{ Bindings: Bindings }>().basePath("/api").get("/health", async (c) => {
-  const db = drizzle(c.env.DB);
-  const row = await db.get<{ ok: number }>(sql`select 1 as ok`);
-  return c.json({ app: "setaside", database: row?.ok === 1 });
-});
+/** Routes anyone can call. Everything else is behind the user check (see the shared server test). */
+export const PUBLIC_ROUTES = ["/api/health", "/api/sign-in-options", "/api/auth/*"] as const;
+
+/** Private API: every route here runs behind the one shared user check. */
+const signedIn = new Hono<SignedIn>().use(userCheck).get("/me", (c) => c.json({ user: c.var.user }));
+
+const app = new Hono<{ Bindings: Bindings }>()
+  .basePath("/api")
+  .get("/health", async (c) => {
+    const db = drizzle(c.env.DB);
+    const row = await db.get<{ ok: number }>(sql`select 1 as ok`);
+    return c.json({ app: "setaside", database: row?.ok === 1 });
+  })
+  .get("/sign-in-options", (c) => c.json({ google: googleConfigured(c.env), demo: import.meta.env.DEV }))
+  .on(["GET", "POST"], "/auth/*", (c) => getAuth(c.env, c.req.raw).handler(c.req.raw))
+  .route("/", signedIn);
 
 export type AppType = typeof app;
 export default app;

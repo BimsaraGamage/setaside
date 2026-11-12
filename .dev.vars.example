@@ -1,0 +1,13 @@
+# Local development settings. Copy to .dev.vars (never committed) only if you need them.
+# Without this file the app still runs locally: use "Sign in as demo user".
+
+# Any long random string; locally a fixed fallback is used if empty.
+BETTER_AUTH_SECRET=
+
+# Google accounts allowed to make an account, comma separated.
+ALLOWED_EMAILS=
+
+# Only to try Google sign-in locally: an OAuth client with
+# http://localhost:5173/api/auth/callback/google as a redirect URI.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=

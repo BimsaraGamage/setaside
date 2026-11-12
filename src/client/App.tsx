@@ -1,23 +1,19 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import { authClient } from "./auth";
+import { SignIn } from "./SignIn";
+import { SignInSettings } from "./SignInSettings";
 
 export function App() {
-  const [database, setDatabase] = useState<"checking" | "ok" | "down">("checking");
+  const session = authClient.useSession();
 
-  useEffect(() => {
-    api.api.health
-      .$get()
-      .then((r) => r.json())
-      .then((b) => setDatabase(b.database ? "ok" : "down"))
-      .catch(() => setDatabase("down"));
-  }, []);
+  if (session.isPending) return <main className="loading mute">Loading…</main>;
+  if (!session.data) return <SignIn onSignedIn={() => session.refetch()} />;
 
   return (
     <main>
-      <h1>Hello, Setaside</h1>
-      <p className="status" data-state={database}>
-        {database === "checking" ? "Checking…" : database === "ok" ? "All set" : "Can't reach the server"}
-      </p>
+      <h1>Hello, {session.data.user.name}</h1>
+      <p className="mute">Today, Plan, Money and Past come in the next build steps.</p>
+      <h2>Settings</h2>
+      <SignInSettings onSignedOut={() => session.refetch()} />
     </main>
   );
 }

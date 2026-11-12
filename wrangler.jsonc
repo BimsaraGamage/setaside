@@ -20,5 +20,14 @@
       "migrations_dir": "migrations"
     }
   ],
+  "vars": {
+    // The live address, filled in at first-time setup (see docs/self-hosting.md). Passkeys and
+    // Google sign-in are bound to it. Local development uses the dev server's own address.
+    "APP_URL": "https://setaside.<account-name>.workers.dev"
+  },
+  // Set once by hand with `wrangler secret put` (spec 18). Locally: optional, see .dev.vars.example.
+  "secrets": {
+    "required": ["BETTER_AUTH_SECRET", "ALLOWED_EMAILS", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
+  },
   "observability": { "enabled": true }
 }

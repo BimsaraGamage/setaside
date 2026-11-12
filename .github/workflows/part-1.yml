@@ -27,3 +27,5 @@ jobs:
       - run: npm run test:money
       - run: npm run test:server
       - run: npx vite build
+      - name: No demo sign-in in the live build
+        run: node scripts/check-no-demo-sign-in.mjs

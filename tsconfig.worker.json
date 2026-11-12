@@ -6,7 +6,7 @@
     "noEmit": false,
     "outDir": "node_modules/.tmp/worker",
     "lib": ["ES2023"],
-    "types": ["@cloudflare/vitest-plugin/types"]
+    "types": ["@cloudflare/vitest-plugin/types", "vite/client"]
   },
   "include": ["worker-configuration.d.ts", "src/worker", "test/server"],
   "references": [
