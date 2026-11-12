@@ -1,0 +1,42 @@
+# Glossary · Payday budget
+
+Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10 (2026-11-12). Ticket 05 sharpened the allowance and verdict; 13 the pay cycle and conversion; 19 added reminders.
+
+- **Pay cycle**: the period from one salary day to the next salary day. Not a calendar month. It starts when the salary is entered and ends when the next salary is entered. An ended cycle is locked: its entries can't be changed. Salary day can be undone until anything new is entered.
+- **Salary**: the income that starts a pay cycle, entered in the salary currency.
+- **Salary currency**: the currency the salary is paid in (Bimsara: USD). Set once per user.
+- **Spending currency**: the currency of daily spends, free money and the daily allowance (Bimsara: LKR). Set once per user; may equal the salary currency.
+- **Expected salary day**: the date the next salary is expected; suggested from the usual pay day, confirmed on salary day, changeable later. The daily allowance counts days up to it.
+- **Commitment**: an essential expense with an amount and a due date inside the pay cycle (rent on the 20th). It can be paid in parts, and the paid amount can differ from the planned one. One due after the expected salary day belongs to the next pay cycle.
+- **Recurring commitment**: a commitment that comes every pay cycle; filled in on salary day for the user to check.
+- **Pot** (also: gradual essential): an essential expense with no single due date, spent bit by bit from an amount set aside (groceries, fuel). The user makes their own pots. Once a pot is used up, further spends in it come from free money.
+- **Savings set-aside**: an amount reserved each pay cycle for saving, treated like a commitment.
+- **Savings total**: the running total of everything saved: savings set-asides, saved leftover, saved extra income and rate gains. Kept per currency, with a combined view at the counting rate. Money can be taken back out into free money.
+- **Extra income**: money received mid-cycle that is not the salary (bonus, refund). The user splits it between savings and free money.
+- **Set aside**: to reserve money for a commitment on salary day, before it is due.
+- **Free money**: what is left of the salary after everything essential is set aside; the money for non-essential spending. Shown in the spending currency; free dollars not yet converted count at the counting rate.
+- **Spend**: one purchase, entered by hand. It reduces free money unless the user assigns it to a pot.
+- **Leftover**: what is unspent when a pay cycle ends: free money, unused pot money, and the money of dropped commitments. On salary day the user splits it between savings and the new pay cycle.
+- **Overspend**: the amount spent beyond free money when a pay cycle ends. On salary day the user chooses to take it from the new pay cycle or ignore it.
+- **Prepayment**: a cost paid for a long period up front (a year of gym). Funded from savings, a commitment in each later pay cycle pays the savings back; funded by an instalment plan, its payments are the commitments.
+- **Daily allowance**: free money at the start of the day divided over the days left in the pay cycle (today included, up to the day before the expected salary day). Fixed for the day: spends show against it and change the following days; new money or changed commitments update it at once.
+- **Underspend**: the part of a day's allowance not spent. Next day the user chooses: spread it over the days left, or add it all to that day.
+- **Spending speed** (also: pace): average spent per finished day since salary day, from free money, leaving out one-off spends. In the first 3 days of a cycle, last cycle's speed is used.
+- **One-off spend**: a spend the user marks as unusual (a big purchase). It uses free money but is left out of the spending speed.
+- **Run-out verdict**: whether, at the spending speed, free money lasts until the next salary day. Three steps: On track, Tight (speed above 90% of the daily allowance), Runs out on <date>. Pots get one too, without a daily allowance.
+- **Conversion** (also: withdrawal): changing part of the USD salary into LKR, done bit by bit on chosen days. Recorded with the USD given and the LKR received; the rate is the one on that day. Its rupees first cover the rupee set-asides not yet covered (bills first); the rest is free money.
+- **Counting rate**: the USD-to-LKR rate used to count dollars not yet converted toward free money. It starts as the rate of the last conversion; the user can type a different one (e.g. their bank's rate today) at any time.
+- **Rate gain / rate loss**: the difference when dollars reserved for a spending-currency commitment at the counting rate are converted at a different rate. A gain goes to savings; a loss comes out of free money.
+- **Home time zone**: the user's saved time zone, which decides when a day starts and ends (for the daily allowance and due dates). Asked at setup, suggested from the phone. When the phone is in a different time zone, the user is asked once whether to switch; the answer becomes the new home time zone.
+- **Account**: one person's place in the app; every salary, commitment, pot, spend and saving belongs to exactly one account and is seen only by it. Avoid: profile, user record.
+- **Allowed-email list**: the Google addresses that may create an account while sign-up is closed (v1: Bimsara only).
+- **Card spend**: a spend paid by credit card. It lowers free money the day it is made, like cash; the money is then held for the card bill. Paying the card bill does not lower free money again.
+- **Instalment plan**: a debt paid back in fixed payments: a bank loan or a card instalment plan. Each pay cycle gets a commitment for the next payment. It shows payments made and left, amount paid and still owed, interest, and the last payment date; it can be paid off early. Avoid: loan (when card instalments are meant too).
+- **Prepayment saving**: what paying a long period up front saved, against the normal monthly price the user typed, after any instalment interest.
+- **Card balance**: what is owed on one credit card: card spends add to it, card payments take it down. Its money is held, not part of free money or the leftover.
+- **Person debt**: money lent to or borrowed from a person (not a bank). Lent money lowers free money and is split like extra income when paid back; borrowed money is added like extra income and paid back by a commitment.
+- **Reminder**: a message from the app about something that needs attention: a commitment due soon, due today or overdue, a verdict turning Tight or Runs out, a late salary, a question waiting, or spends not yet logged today. Shown as a phone notification when the user has turned alerts on, and always in the app.
+- **Morning summary**: the one daily notification that gathers all of the morning's reminders. Nothing to say means none is sent.
+- **Spend nudge**: the evening reminder to log the day's spends; skipped on days with a spend already entered.
+- **Unsent**: an entry made on the phone without a connection, not yet saved by the server. Only unsent entries can be changed or removed while offline.
+- **Needs a look**: the list of unsent commitment payments that no longer fit once sent (their commitment was removed, finished or its cycle ended); the user fixes or removes each.

@@ -1,0 +1,29 @@
+name: Part 1
+
+# Quick checks, shared by PR checks and the release run.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Generated Worker types are up to date
+        run: npx wrangler types --check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:money
+      - run: npm run test:server
+      - run: npx vite build

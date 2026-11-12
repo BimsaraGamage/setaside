@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "node_modules/.tmp/worker",
+    "lib": ["ES2023"],
+    "types": ["@cloudflare/vitest-plugin/types"]
+  },
+  "include": ["worker-configuration.d.ts", "src/worker", "test/server"],
+  "references": [
+    {
+      "path": "./tsconfig.money.json"
+    }
+  ]
+}
