@@ -16,14 +16,14 @@
       "binding": "DB",
       "database_name": "setaside",
       // Filled in at first-time setup (see docs/self-hosting.md). Not a secret.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "7b85adf9-5a21-493d-8026-f2d979fcf292",
       "migrations_dir": "migrations"
     }
   ],
   "vars": {
     // The live address, filled in at first-time setup (see docs/self-hosting.md). Passkeys and
     // Google sign-in are bound to it. Local development uses the dev server's own address.
-    "APP_URL": "https://setaside.<account-name>.workers.dev"
+    "APP_URL": "https://setaside.dragantravica269.workers.dev"
   },
   // Set once by hand with `wrangler secret put` (spec 18). Locally: optional, see .dev.vars.example.
   "secrets": {
