@@ -25,12 +25,52 @@ interface Owner {
 
 type Probe = (owner: Owner) => { path: string; init?: RequestInit };
 
+const firstRow = (o: Owner, table: string) => o.rows[table]?.[0]?.id ?? "missing";
+
 const probes: Record<string, Probe> = {
   "GET /api/me": () => ({ path: "/api/me" }),
+  "GET /api/current": () => ({ path: "/api/current" }),
+  // Aimed at the first user's ids: must not take over or touch their rows.
+  "POST /api/first-use": (o) => ({
+    path: "/api/first-use",
+    init: {
+      body: JSON.stringify({
+        settingsId: firstRow(o, "settings"),
+        cycleId: firstRow(o, "cycle"),
+        incomeId: firstRow(o, "income"),
+        salaryCurrency: "LKR",
+        spendingCurrency: "LKR",
+        homeTimeZone: "Asia/Colombo",
+        usualPayDay: 25,
+        heldMinor: 1,
+        expectedSalaryOn: "2999-01-01",
+      }),
+    },
+  }),
+  "PATCH /api/settings": () => ({
+    path: "/api/settings",
+    init: { body: JSON.stringify({ usualPayDay: 2 }) },
+  }),
 };
 
 /** Seeds the first user's records. Later backlog items add their tables here. */
-async function seedOwnerData(_ownerId: string) {}
+async function seedOwnerData(ownerId: string) {
+  const s = crypto.randomUUID();
+  const c = crypto.randomUUID();
+  const i = crypto.randomUUID();
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      "insert into settings (id, user_id, salary_currency, spending_currency, home_time_zone, usual_pay_day, created_at, updated_at) values (?, ?, 'LKR', 'LKR', 'Asia/Colombo', 25, ?, ?)",
+    ).bind(s, ownerId, now, now),
+    env.DB.prepare(
+      "insert into cycle (id, user_id, started_on, expected_salary_on, created_at, updated_at) values (?, ?, '2026-11-12', '2026-11-25', ?, ?)",
+    ).bind(c, ownerId, now, now),
+    env.DB.prepare(
+      "insert into income (id, user_id, cycle_id, kind, currency, amount_minor, received_on, created_at, updated_at) values (?, ?, ?, 'opening', 'LKR', 9000000, '2026-11-12', ?, ?)",
+    ).bind(i, ownerId, c, now, now),
+  ]);
+}
 
 async function ownedTables(): Promise<string[]> {
   const tables = await env.DB.prepare(
