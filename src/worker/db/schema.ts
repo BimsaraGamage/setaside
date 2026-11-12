@@ -97,3 +97,65 @@ export const passkey = sqliteTable(
   },
   (t) => [index("passkey_user_id_idx").on(t.userId), index("passkey_credential_id_idx").on(t.credentialID)],
 );
+
+// ---------------------------------------------------------------------------
+// App tables (docs/data-model.md). Ids are UUIDv7 made on the phone; every row
+// has `user_id`; money is `*_minor` + `currency`; `*_on` days are YYYY-MM-DD in
+// the home time zone.
+
+const appTimestamps = {
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date())
+    .$onUpdateFn(() => new Date()),
+};
+
+/** One per user (item 3). Reminder columns arrive with item 25. */
+export const settings = sqliteTable("settings", {
+  id: text("id").primaryKey(),
+  userId: ownerColumn().unique(),
+  salaryCurrency: text("salary_currency").notNull(),
+  spendingCurrency: text("spending_currency").notNull(),
+  homeTimeZone: text("home_time_zone").notNull(),
+  usualPayDay: integer("usual_pay_day").notNull(),
+  ...appTimestamps,
+});
+
+/** One pay cycle; the newest is the current one. */
+export const cycle = sqliteTable(
+  "cycle",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    startedOn: text("started_on").notNull(),
+    expectedSalaryOn: text("expected_salary_on").notNull(),
+    /** Counting rate when salary day was confirmed (two currencies, item 15). */
+    reserveRate: text("reserve_rate"),
+    ...appTimestamps,
+  },
+  (t) => [index("cycle_user_id_idx").on(t.userId, t.startedOn)],
+);
+
+/** Salary, extra income, opening money, loan cash, borrowed money, money paid back. */
+export const income = sqliteTable(
+  "income",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["salary", "extra", "opening", "loan", "borrowed", "paid_back"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    receivedOn: text("received_on").notNull(),
+    toSavingsMinor: integer("to_savings_minor").notNull().default(0),
+    /** Links borrowed money and money paid back to a person debt (item 20). */
+    personDebtId: text("person_debt_id"),
+    ...appTimestamps,
+  },
+  (t) => [index("income_user_id_idx").on(t.userId), index("income_cycle_id_idx").on(t.cycleId)],
+);
