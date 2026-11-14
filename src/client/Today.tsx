@@ -1,6 +1,35 @@
-import { formatMoney, todayView } from "../money";
-import { dayLabel, type Ready, type Spend, useToday } from "./data";
+import { formatMoney, nextUp, todayView } from "../money";
+import { dayLabel, entriesOf, inDaysLabel, type Ready, type Spend, useToday } from "./data";
 import { SpendRow } from "./Spends";
+
+/** One Next up row: date, weekday and "in N days", the name, an optional note, the amount. */
+function NextUpRow({
+  name,
+  day,
+  inDays,
+  amount,
+  note,
+}: {
+  name: string;
+  day: string;
+  inDays: number;
+  amount?: string;
+  note?: string;
+}) {
+  return (
+    <div className={`li${note ? " coming" : ""}`}>
+      <span className="date">
+        <b>{dayLabel(day)}</b>
+        <span className={`tiny${inDays < 0 ? " bad" : " mute"}`}>{inDaysLabel(inDays)}</span>
+      </span>
+      <span className="grow">
+        {name}
+        {note && <span className="tiny mute block">{note}</span>}
+      </span>
+      {amount && <b className="small">{amount}</b>}
+    </div>
+  );
+}
 
 /** Today (spec 10): header, main card with the daily allowance and today's spends, Next up, the + button. */
 export function Today({
@@ -14,17 +43,9 @@ export function Today({
 }) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
-  const view = todayView(
-    {
-      spendingCurrency: settings.spendingCurrency,
-      expectedSalaryOn: cycle.expectedSalaryOn,
-      incomes: data.incomes,
-      spends: data.spends,
-    },
-    today,
-  );
+  const view = todayView(entriesOf(data), today);
+  const up = nextUp(data.commitments, today, cycle.expectedSalaryOn, settings.spendingCurrency);
   const money = (m: number) => formatMoney(m, view.currency);
-  const salaryIn = view.daysLeft;
   const over = view.leftTodayMinor < 0;
   const used = view.allowanceMinor > 0 ? Math.min(1, view.spentTodayMinor / view.allowanceMinor) : 1;
 
@@ -80,17 +101,33 @@ export function Today({
       </section>
 
       <section className="card" aria-labelledby="next-h">
-        <h3 id="next-h">Next up · already set aside</h3>
-        <p className="tiny mute">Nothing set aside yet.</p>
-        <div className="li">
-          <span className="date">
-            <b>{dayLabel(cycle.expectedSalaryOn)}</b>
-            <span className="tiny mute">
-              {salaryIn === 0 ? "today" : `in ${salaryIn} day${salaryIn === 1 ? "" : "s"}`}
-            </span>
-          </span>
-          <span className="grow">Salary expected</span>
+        <div className="row">
+          <h3 id="next-h" className="grow">
+            Next up · already set aside
+          </h3>
+          <b className="small" data-testid="next-up-total">
+            {money(up.totalMinor)}
+          </b>
         </div>
+        {up.items.length === 0 && (
+          <p className="tiny mute">
+            Nothing set aside yet. Add bills on <a href="#Plan">Plan</a>.
+          </p>
+        )}
+        {up.items.map(({ commitment: c, inDays }) => (
+          <NextUpRow key={c.id} name={c.name} day={c.dueOn} inDays={inDays} amount={money(c.plannedMinor)} />
+        ))}
+        <NextUpRow name="Salary expected" day={cycle.expectedSalaryOn} inDays={up.salaryInDays} />
+        {up.comingUp.map(({ commitment: c, inDays }) => (
+          <NextUpRow
+            key={c.id}
+            name={c.name}
+            day={c.dueOn}
+            inDays={inDays}
+            amount={money(c.plannedMinor)}
+            note="Coming up · next cycle"
+          />
+        ))}
       </section>
 
       <button type="button" className="fab" aria-label="Add a spend" onClick={() => onAdd(today)}>

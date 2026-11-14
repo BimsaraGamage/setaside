@@ -1,4 +1,5 @@
 import { isCurrency, type Minor, unitMinor } from "./amount";
+import { type CommitmentEntry, setAsideMinor } from "./commitment";
 import { type Day, daysBetween, isDay, isTimeZone } from "./days";
 import type { SpendEntry } from "./spend";
 
@@ -19,6 +20,8 @@ export interface CycleEntries {
   expectedSalaryOn: Day;
   incomes: IncomeEntry[];
   spends: SpendEntry[];
+  /** This cycle's commitments; open ones due by the expected salary day are set aside. */
+  commitments?: CommitmentEntry[];
 }
 
 /**
@@ -30,16 +33,21 @@ export function daysLeft(today: Day, expectedSalaryOn: Day): number {
 }
 
 /**
- * Free money (glossary): income to free money less spends, in the spending currency.
- * With `startOf`, only spends dated before that day count: the free money at the
- * start of that day. Income always counts at once (spec 7: changes that are not
- * spends recalculate today). Commitments, pots and the counting rate join in later items.
+ * Free money (glossary): income to free money less the commitments set aside and
+ * the spends, in the spending currency. With `startOf`, only spends dated before
+ * that day count: the free money at the start of that day. Income and commitments
+ * always count at once (spec 7: changes that are not spends recalculate today).
+ * Pots and the counting rate join in later items.
  */
 export function freeMoney(
-  entries: Pick<CycleEntries, "spendingCurrency" | "incomes"> & { spends?: SpendEntry[] },
+  entries: Pick<CycleEntries, "spendingCurrency" | "incomes"> &
+    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn">>,
   startOf?: Day,
 ): Minor {
   let total = 0;
+  if (entries.commitments && entries.expectedSalaryOn) {
+    total -= setAsideMinor(entries.commitments, entries.expectedSalaryOn, entries.spendingCurrency);
+  }
   for (const i of entries.incomes) {
     if (i.currency !== entries.spendingCurrency) continue;
     total += i.amountMinor - i.toSavingsMinor;

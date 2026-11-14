@@ -85,7 +85,8 @@ A **commitment** is an essential expense with an amount, a currency and a due da
 - **Paying.** The user marks it paid with the real amount and date. Paid more than planned lowers free money by the gap; paid less raises it.
 - **Part payments** are allowed. Each payment is recorded, the rest shows as "still to pay", and the commitment is done when marked finished.
 - **Paid in the other currency:** see section 8.
-- **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only.
+- **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle.
+- **Late:** an open commitment whose due day has passed stays set aside and shows at the top of Next up as "N days late".
 - **Unpaid at cycle end:** salary day asks, for each one: Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover). A carried commitment is a new commitment in the new cycle that points back to the old one.
 - Card bills, instalment-plan payments and paybacks are made by their card, plan, person or prepayment (section 9), not from the Every cycle list.
 

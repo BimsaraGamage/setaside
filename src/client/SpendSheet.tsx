@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { addDays, checkSpend, formatMoney, minorDigits, NOTE_MAX, parseAmount, todayView } from "../money";
-import { dayLabel, type Ready, type Spend } from "./data";
+import { dayLabel, entriesOf, type Ready, type Spend } from "./data";
 import { newId } from "./id";
 import type { SpendActions } from "./spend-actions";
 
@@ -20,7 +20,7 @@ function dayName(day: string, today: string): string {
 const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"] as const;
 
 /** Minor units back to the text the number pad shows ("1850.5"). */
-function toText(minor: number, currency: string): string {
+export function toText(minor: number, currency: string): string {
   const digits = minorDigits(currency);
   const whole = Math.floor(minor / 10 ** digits);
   const frac = String(minor % 10 ** digits)
@@ -61,12 +61,7 @@ export function SpendSheet({
   // The live line: today's numbers as they will be after this spend is saved.
   const others = data.spends.filter((s) => s.id !== editing?.id);
   const after = todayView(
-    {
-      spendingCurrency: cur,
-      expectedSalaryOn: data.cycle.expectedSalaryOn,
-      incomes: data.incomes,
-      spends: amountMinor > 0 ? [...others, draft] : others,
-    },
+    { ...entriesOf(data), spends: amountMinor > 0 ? [...others, draft] : others },
     today,
   );
   const money = (m: number) => formatMoney(m, cur);

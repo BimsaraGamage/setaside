@@ -1,8 +1,9 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkSpend, todayIn } from "../money";
-import { cycle, settings, spend } from "./db/schema";
+import { checkSpend } from "../money";
+import { current } from "./current";
+import { spend } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -19,18 +20,6 @@ const newSpend = z.object({
 });
 
 const changeSpend = z.object({ spentOn: z.string(), amountMinor: z.number().int(), note }).partial();
-
-/** Settings, the current cycle and today in the home time zone; null before first use. */
-async function current(c: { var: SignedIn["Variables"] }) {
-  const { db, mine } = c.var;
-  const s = await db.query.settings.findFirst({ where: mine(settings) });
-  const cur = await db.query.cycle.findFirst({
-    where: mine(cycle),
-    orderBy: [desc(cycle.startedOn), desc(cycle.createdAt)],
-  });
-  if (!s || !cur) return null;
-  return { settings: s, cycle: cur, today: todayIn(s.homeTimeZone, Date.now()) };
-}
 
 /**
  * Spends (backlog item 4, spec 7 and 10): add, change and delete, in the current
