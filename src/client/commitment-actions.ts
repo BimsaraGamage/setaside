@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { Commitment } from "./data";
+import type { Commitment, Payment } from "./data";
 import type { Toaster } from "./toast";
 
 export interface CommitmentDraft {
@@ -8,20 +8,48 @@ export interface CommitmentDraft {
   dueOn: string;
 }
 
-const add = async (id: string, d: CommitmentDraft) =>
-  (await api.api.commitments.$post({ json: { id, ...d } }).catch(() => null))?.ok ?? false;
-const change = async (id: string, d: Partial<CommitmentDraft>) =>
-  (await api.api.commitments[":id"].$patch({ param: { id }, json: d }).catch(() => null))?.ok ?? false;
-const remove = async (id: string) =>
-  (await api.api.commitments[":id"].$delete({ param: { id } }).catch(() => null))?.ok ?? false;
+export interface PaymentDraft {
+  amountMinor: number;
+  paidOn: string;
+}
+
+type State = "open" | "finished";
+
+const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
+
+const add = (id: string, d: CommitmentDraft) => ok(api.api.commitments.$post({ json: { id, ...d } }));
+const change = (id: string, d: Partial<CommitmentDraft> & { state?: State }) =>
+  ok(api.api.commitments[":id"].$patch({ param: { id }, json: d }));
+const remove = (id: string) => ok(api.api.commitments[":id"].$delete({ param: { id } }));
+
+const addPayment = (commitmentId: string, id: string, d: PaymentDraft, finish = false) =>
+  ok(api.api.commitments[":id"].payments.$post({ param: { id: commitmentId }, json: { id, ...d, finish } }));
+const changePayment = (id: string, d: Partial<PaymentDraft>) =>
+  ok(api.api.payments[":id"].$patch({ param: { id }, json: d }));
+const removePayment = (id: string) => ok(api.api.payments[":id"].$delete({ param: { id } }));
 
 const draftOf = (c: Commitment): CommitmentDraft => ({
   name: c.name,
   plannedMinor: c.plannedMinor,
   dueOn: c.dueOn,
 });
+const paymentDraftOf = (p: Payment): PaymentDraft => ({ amountMinor: p.amountMinor, paidOn: p.paidOn });
 
-/** Add, change and delete commitments; each success shows a toast with Undo. */
+/** Steps in order; stops at the first that fails. */
+async function all(steps: (() => Promise<boolean>)[]): Promise<boolean> {
+  for (const step of steps) if (!(await step())) return false;
+  return true;
+}
+
+/** Puts a deleted commitment back as it was: the row, its payments, then its state. */
+const restore = (old: Commitment) =>
+  all([
+    () => add(old.id, draftOf(old)),
+    ...old.payments.map((p) => () => addPayment(old.id, p.id, paymentDraftOf(p))),
+    ...(old.state === "finished" ? [() => change(old.id, { state: "finished" })] : []),
+  ]);
+
+/** Add, change, pay, finish and delete commitments; each success shows a toast with Undo. */
 export function commitmentActions({ done }: Toaster) {
   return {
     add: (id: string, d: CommitmentDraft) =>
@@ -31,8 +59,41 @@ export function commitmentActions({ done }: Toaster) {
         done(ok, { text: "Commitment changed", undo: () => change(old.id, draftOf(old)) }),
       ),
     remove: (old: Commitment) =>
-      remove(old.id).then((ok) =>
-        done(ok, { text: "Commitment deleted", undo: () => add(old.id, draftOf(old)) }),
+      remove(old.id).then((ok) => done(ok, { text: "Commitment deleted", undo: () => restore(old) })),
+    /** A payment, in full or in part; `finish` also marks the commitment finished. */
+    pay: (c: Commitment, id: string, d: PaymentDraft, finish: boolean) =>
+      addPayment(c.id, id, d, finish).then((ok) =>
+        done(ok, {
+          text: finish ? `${c.name} paid · finished` : "Payment saved",
+          undo: () =>
+            all([...(finish ? [() => change(c.id, { state: "open" })] : []), () => removePayment(id)]),
+        }),
+      ),
+    changePayment: (old: Payment, d: PaymentDraft) =>
+      changePayment(old.id, d).then((ok) =>
+        done(ok, { text: "Payment changed", undo: () => changePayment(old.id, paymentDraftOf(old)) }),
+      ),
+    removePayment: (c: Commitment, old: Payment) =>
+      removePayment(old.id).then((ok) =>
+        done(ok, {
+          text: "Payment deleted",
+          // A finished one takes no payments: reopen, add it back, finish again.
+          undo: () =>
+            c.state === "finished"
+              ? all([
+                  () => change(c.id, { state: "open" }),
+                  () => addPayment(c.id, old.id, paymentDraftOf(old), true),
+                ])
+              : addPayment(c.id, old.id, paymentDraftOf(old)),
+        }),
+      ),
+    finish: (c: Commitment) =>
+      change(c.id, { state: "finished" }).then((ok) =>
+        done(ok, { text: `${c.name} finished`, undo: () => change(c.id, { state: "open" }) }),
+      ),
+    reopen: (c: Commitment) =>
+      change(c.id, { state: "open" }).then((ok) =>
+        done(ok, { text: `${c.name} reopened`, undo: () => change(c.id, { state: "finished" }) }),
       ),
   };
 }

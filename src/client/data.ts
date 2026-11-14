@@ -30,6 +30,15 @@ export interface Commitment {
   plannedMinor: number;
   dueOn: string;
   state: CommitmentState;
+  /** Payments so far, oldest first (item 6). */
+  payments: Payment[];
+}
+
+export interface Payment {
+  id: string;
+  amountMinor: number;
+  currency: string;
+  paidOn: string;
 }
 
 export interface Spend {

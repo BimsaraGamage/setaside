@@ -3,6 +3,7 @@ import { authClient } from "./auth";
 import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { FirstUse } from "./FirstUse";
+import { PayPage } from "./Pay";
 import { CommitmentPage, Plan } from "./Plan";
 import { Settings } from "./Settings";
 import { SignIn } from "./SignIn";
@@ -14,7 +15,7 @@ import { useToast } from "./toast";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
-const pages = { Spends: "Money", Commitment: "Plan" } as const;
+const pages = { Spends: "Money", Commitment: "Plan", Pay: "Plan", Payment: "Plan" } as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
 /** "#Commitment/<id>" → the Commitment page for that id; unknown → Today. */
@@ -70,6 +71,14 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const { tab, id } = route;
   const isPage = tab in pages;
   const editing = tab === "Commitment" && id ? ready.commitments.find((c) => c.id === id) : undefined;
+  // "#Pay/<commitment id>" pays it; "#Payment/<payment id>" changes that payment.
+  const payFor =
+    tab === "Pay"
+      ? ready.commitments.find((c) => c.id === id)
+      : tab === "Payment"
+        ? ready.commitments.find((c) => c.payments.some((p) => p.id === id))
+        : undefined;
+  const payment = tab === "Payment" ? payFor?.payments.find((p) => p.id === id) : undefined;
   const toast = toaster.toast;
   return (
     <>
@@ -86,6 +95,17 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
             </>
           ) : (
             <CommitmentPage key={id ?? "new"} data={ready} editing={editing} actions={commitments} />
+          ))}
+        {(tab === "Pay" || tab === "Payment") &&
+          (payFor ? (
+            <PayPage key={id} data={ready} commitment={payFor} editing={payment} actions={commitments} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Plan">
+                ← Back
+              </a>
+              <p className="mute">This payment is no longer here.</p>
+            </>
           ))}
         {tab === "Money" && <Money data={ready} />}
         {tab === "Spends" && <SpendsPage data={ready} onOpen={edit} />}

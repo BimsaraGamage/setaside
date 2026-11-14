@@ -375,3 +375,18 @@ a.btn.add {
 .field input {
   font-weight: 400;
 }
+
+/* Paying a commitment (item 6). */
+.check {
+  align-items: center;
+  min-height: 3rem;
+}
+.check input {
+  min-height: 0;
+  width: 1.4rem;
+  height: 1.4rem;
+  accent-color: var(--ink);
+}
+.li.done {
+  opacity: 0.7;
+}

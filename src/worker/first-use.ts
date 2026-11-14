@@ -1,8 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkFirstUse, isTimeZone, todayIn } from "../money";
-import { commitment, cycle, income, settings, spend } from "./db/schema";
+import { commitment, commitmentPayment, cycle, income, settings, spend } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -50,6 +50,22 @@ export const firstUse = new Hono<SignedIn>()
           orderBy: [commitment.dueOn, commitment.name],
         })
       : [];
+    // Payments of this cycle's commitments (a subquery: D1 caps bound values at 100).
+    const payments = current
+      ? await db.query.commitmentPayment.findMany({
+          where: and(
+            mine(commitmentPayment),
+            inArray(
+              commitmentPayment.commitmentId,
+              db
+                .select({ id: commitment.id })
+                .from(commitment)
+                .where(and(mine(commitment), eq(commitment.cycleId, current.id))),
+            ),
+          ),
+          orderBy: [commitmentPayment.paidOn, commitmentPayment.id],
+        })
+      : [];
     return c.json({
       settings: s
         ? {
@@ -85,6 +101,9 @@ export const firstUse = new Hono<SignedIn>()
         plannedMinor: k.plannedMinor,
         dueOn: k.dueOn,
         state: k.state,
+        payments: payments
+          .filter((p) => p.commitmentId === k.id)
+          .map((p) => ({ id: p.id, amountMinor: p.amountMinor, currency: p.currency, paidOn: p.paidOn })),
       })),
     });
   })

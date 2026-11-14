@@ -16,12 +16,21 @@ const newCommitment = z.object({
   dueOn: z.string(),
 });
 
-const changeCommitment = z.object({ name, plannedMinor: z.number().int(), dueOn: z.string() }).partial();
+const changeCommitment = z
+  .object({
+    name,
+    plannedMinor: z.number().int(),
+    dueOn: z.string(),
+    /** Mark finished, or reopen (item 6). Carried and dropped come with salary day (item 12). */
+    state: z.enum(["open", "finished"]),
+  })
+  .partial();
 
 /**
- * Commitments (backlog item 5, spec 3 and 10): add, change and delete bills in the
- * current cycle only (ended cycles are locked). The phone works out every number.
- * Paying comes with item 6; other kinds and "Every cycle" with later items.
+ * Commitments (backlog items 5 and 6, spec 3 and 10): add, change, mark finished,
+ * reopen and delete bills in the current cycle only (ended cycles are locked).
+ * Payments are in payments.ts. The phone works out every number.
+ * Other kinds and "Every cycle" come with later items.
  */
 export const commitments = new Hono<SignedIn>()
   .post("/commitments", json(newCommitment), async (c) => {
@@ -59,7 +68,7 @@ export const commitments = new Hono<SignedIn>()
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
       .update(commitment)
-      .set({ name: next.name, plannedMinor: next.plannedMinor, dueOn: next.dueOn })
+      .set({ name: next.name, plannedMinor: next.plannedMinor, dueOn: next.dueOn, state: next.state })
       .where(and(mine(commitment), eq(commitment.id, id)));
     return c.json({ ok: true as const });
   })

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { getAuth, googleConfigured } from "./auth";
 import { commitments } from "./commitments";
 import { firstUse } from "./first-use";
+import { payments } from "./payments";
 import { spends } from "./spends";
 import { type SignedIn, userCheck } from "./user-check";
 
@@ -18,7 +19,8 @@ const signedIn = new Hono<SignedIn>()
   .get("/me", (c) => c.json({ user: c.var.user }))
   .route("/", firstUse)
   .route("/", spends)
-  .route("/", commitments);
+  .route("/", commitments)
+  .route("/", payments);
 
 const app = new Hono<{ Bindings: Bindings }>()
   .basePath("/api")

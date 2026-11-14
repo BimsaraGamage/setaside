@@ -185,8 +185,8 @@ export const spend = sqliteTable(
 );
 
 /**
- * One commitment in one cycle (item 5). Payments (`commitment_payment`) come with
- * item 6; recurring, carried, card, plan, person and prepayment links with later items.
+ * One commitment in one cycle (item 5); its payments are `commitment_payment` (item 6).
+ * Recurring, carried, card, plan, person and prepayment links come with later items.
  */
 export const commitment = sqliteTable(
   "commitment",
@@ -221,5 +221,28 @@ export const commitment = sqliteTable(
   (t) => [
     index("commitment_user_id_idx").on(t.userId),
     index("commitment_cycle_id_idx").on(t.cycleId, t.dueOn),
+  ],
+);
+
+/**
+ * One payment on a commitment (item 6); parts allowed, paid more or less than planned.
+ * Removed with its commitment. `currency` may differ from the commitment's (item 17).
+ */
+export const commitmentPayment = sqliteTable(
+  "commitment_payment",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    commitmentId: text("commitment_id")
+      .notNull()
+      .references(() => commitment.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    paidOn: text("paid_on").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("commitment_payment_user_id_idx").on(t.userId),
+    index("commitment_payment_commitment_id_idx").on(t.commitmentId, t.paidOn),
   ],
 );

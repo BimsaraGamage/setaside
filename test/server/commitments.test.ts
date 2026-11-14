@@ -64,6 +64,7 @@ describe("commitments (item 5, spec 3)", () => {
         plannedMinor: 3_600_000,
         dueOn: today(),
         state: "open",
+        payments: [],
       },
     ]);
   });
