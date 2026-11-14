@@ -1,22 +1,27 @@
 import { useEffect, useState } from "react";
 import { authClient } from "./auth";
+import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { FirstUse } from "./FirstUse";
+import { CommitmentPage, Plan } from "./Plan";
 import { Settings } from "./Settings";
 import { SignIn } from "./SignIn";
 import { SpendSheet } from "./SpendSheet";
 import { Money, SpendsPage } from "./Spends";
-import { useSpendActions } from "./spend-actions";
+import { spendActions } from "./spend-actions";
 import { Today } from "./Today";
+import { useToast } from "./toast";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
-const pages = { Spends: "Money" } as const;
+const pages = { Spends: "Money", Commitment: "Plan" } as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
-function tabFromHash(): Tab {
-  const h = decodeURIComponent(window.location.hash.slice(1));
-  return (tabs as readonly string[]).includes(h) || h in pages ? (h as Tab) : "Today";
+/** "#Commitment/<id>" → the Commitment page for that id; unknown → Today. */
+function routeFromHash(): { tab: Tab; id?: string } {
+  const [h = "", id] = decodeURIComponent(window.location.hash.slice(1)).split("/");
+  if ((tabs as readonly string[]).includes(h) || h in pages) return { tab: h as Tab, id };
+  return { tab: "Today" };
 }
 
 export function App() {
@@ -29,13 +34,15 @@ export function App() {
 
 function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const { data, error, reload } = useCurrent();
-  const [tab, setTab] = useState<Tab>(tabFromHash);
-  const actions = useSpendActions(reload);
+  const [route, setRoute] = useState(routeFromHash);
+  const toaster = useToast(reload);
+  const spends = spendActions(toaster);
+  const commitments = commitmentActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
   useEffect(() => {
-    const on = () => setTab(tabFromHash());
+    const on = () => setRoute(routeFromHash());
     window.addEventListener("hashchange", on);
     return () => window.removeEventListener("hashchange", on);
   }, []);
@@ -60,17 +67,32 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
 
   const ready = { ...data, settings: data.settings, cycle: data.cycle };
   const edit = (editing: Spend, today: string) => setSheet({ today, editing });
+  const { tab, id } = route;
   const isPage = tab in pages;
+  const editing = tab === "Commitment" && id ? ready.commitments.find((c) => c.id === id) : undefined;
+  const toast = toaster.toast;
   return (
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
         {tab === "Today" && <Today data={ready} onAdd={(today) => setSheet({ today })} onEdit={edit} />}
+        {tab === "Plan" && <Plan data={ready} />}
+        {tab === "Commitment" &&
+          (id && !editing ? (
+            <>
+              <a className="btn ghost link" href="#Plan">
+                ← Back
+              </a>
+              <p className="mute">This commitment is no longer here.</p>
+            </>
+          ) : (
+            <CommitmentPage key={id ?? "new"} data={ready} editing={editing} actions={commitments} />
+          ))}
         {tab === "Money" && <Money data={ready} />}
         {tab === "Spends" && <SpendsPage data={ready} onOpen={edit} />}
         {tab === "Settings" && (
           <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
         )}
-        {(tab === "Plan" || tab === "Past") && (
+        {tab === "Past" && (
           <>
             <h1>{tab}</h1>
             <p className="mute">Comes in a later build step.</p>
@@ -89,15 +111,15 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
           data={ready}
           today={sheet.today}
           editing={sheet.editing}
-          actions={actions}
+          actions={spends}
           onClose={() => setSheet(null)}
         />
       )}
-      {actions.toast && (
+      {toast && (
         <div className="toast" role="status">
-          <span className="grow">{actions.toast.text}</span>
-          {actions.toast.undo && (
-            <button type="button" className="btn" onClick={actions.undo}>
+          <span className="grow">{toast.text}</span>
+          {toast.undo && (
+            <button type="button" className="btn" onClick={toaster.undo}>
               Undo
             </button>
           )}

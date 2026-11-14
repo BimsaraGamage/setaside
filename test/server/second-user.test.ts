@@ -57,6 +57,23 @@ const probes: Record<string, Probe> = {
     init: { body: JSON.stringify({ amountMinor: 1 }) },
   }),
   "DELETE /api/spends/:id": (o) => ({ path: `/api/spends/${firstRow(o, "spend")}` }),
+  // Aimed at the first user's commitment: must not take over, change or delete it.
+  "POST /api/commitments": (o) => ({
+    path: "/api/commitments",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "commitment"),
+        name: "x",
+        plannedMinor: 1,
+        dueOn: "2026-11-20",
+      }),
+    },
+  }),
+  "PATCH /api/commitments/:id": (o) => ({
+    path: `/api/commitments/${firstRow(o, "commitment")}`,
+    init: { body: JSON.stringify({ plannedMinor: 1 }) },
+  }),
+  "DELETE /api/commitments/:id": (o) => ({ path: `/api/commitments/${firstRow(o, "commitment")}` }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -69,6 +86,7 @@ async function seedOwnerData(ownerId: string) {
   const c = crypto.randomUUID();
   const i = crypto.randomUUID();
   const sp = crypto.randomUUID();
+  const k = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -83,6 +101,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into spend (id, user_id, cycle_id, spent_on, amount_minor, currency, note, created_at, updated_at) values (?, ?, ?, '2026-11-12', 185000, 'LKR', 'lunch', ?, ?)",
     ).bind(sp, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into commitment (id, user_id, cycle_id, name, kind, currency, planned_minor, due_on, state, created_at, updated_at) values (?, ?, ?, 'Rent', 'bill', 'LKR', 3600000, '2026-11-20', 'open', ?, ?)",
+    ).bind(k, ownerId, c, now, now),
   ]);
 }
 

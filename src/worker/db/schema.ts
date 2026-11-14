@@ -183,3 +183,43 @@ export const spend = sqliteTable(
   },
   (t) => [index("spend_user_id_idx").on(t.userId), index("spend_cycle_id_idx").on(t.cycleId, t.spentOn)],
 );
+
+/**
+ * One commitment in one cycle (item 5). Payments (`commitment_payment`) come with
+ * item 6; recurring, carried, card, plan, person and prepayment links with later items.
+ */
+export const commitment = sqliteTable(
+  "commitment",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    /** The "every cycle" template it was filled from (item 11). */
+    recurringId: text("recurring_id"),
+    name: text("name").notNull(),
+    kind: text("kind", {
+      enum: ["bill", "savings", "card_bill", "plan_payment", "person_payback", "savings_payback"],
+    })
+      .notNull()
+      .default("bill"),
+    currency: text("currency").notNull(),
+    plannedMinor: integer("planned_minor").notNull(),
+    dueOn: text("due_on").notNull(),
+    state: text("state", { enum: ["open", "finished", "carried", "dropped"] })
+      .notNull()
+      .default("open"),
+    /** The old cycle's commitment this one was carried from (item 12). */
+    carriedFromId: text("carried_from_id"),
+    cardId: text("card_id"),
+    planId: text("plan_id"),
+    personDebtId: text("person_debt_id"),
+    prepaymentId: text("prepayment_id"),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("commitment_user_id_idx").on(t.userId),
+    index("commitment_cycle_id_idx").on(t.cycleId, t.dueOn),
+  ],
+);

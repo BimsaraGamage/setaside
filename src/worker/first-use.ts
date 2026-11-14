@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkFirstUse, isTimeZone, todayIn } from "../money";
-import { cycle, income, settings, spend } from "./db/schema";
+import { commitment, cycle, income, settings, spend } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -44,6 +44,12 @@ export const firstUse = new Hono<SignedIn>()
           orderBy: [desc(spend.spentOn), desc(spend.id)],
         })
       : [];
+    const commitments = current
+      ? await db.query.commitment.findMany({
+          where: and(mine(commitment), eq(commitment.cycleId, current.id)),
+          orderBy: [commitment.dueOn, commitment.name],
+        })
+      : [];
     return c.json({
       settings: s
         ? {
@@ -70,6 +76,15 @@ export const firstUse = new Hono<SignedIn>()
         currency: s.currency,
         amountMinor: s.amountMinor,
         note: s.note,
+      })),
+      commitments: commitments.map((k) => ({
+        id: k.id,
+        name: k.name,
+        kind: k.kind,
+        currency: k.currency,
+        plannedMinor: k.plannedMinor,
+        dueOn: k.dueOn,
+        state: k.state,
       })),
     });
   })

@@ -38,7 +38,13 @@ describe("first use (item 3, spec 2)", () => {
     const { cookie } = await freshUser();
     const res = await call("/api/current", {}, cookie);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ settings: null, cycle: null, incomes: [], spends: [] });
+    expect(await res.json()).toEqual({
+      settings: null,
+      cycle: null,
+      incomes: [],
+      spends: [],
+      commitments: [],
+    });
   });
 
   it("makes the settings row, the first cycle from today and the opening income", async () => {
@@ -62,6 +68,7 @@ describe("first use (item 3, spec 2)", () => {
         },
       ],
       spends: [],
+      commitments: [],
     });
   });
 

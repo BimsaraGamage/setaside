@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { type IncomeKind, todayIn } from "../money";
+import { type CommitmentState, type IncomeKind, todayIn } from "../money";
 import { api } from "./api";
 
 export interface Current {
@@ -19,6 +19,17 @@ export interface Current {
     receivedOn: string;
   }[];
   spends: Spend[];
+  commitments: Commitment[];
+}
+
+export interface Commitment {
+  id: string;
+  name: string;
+  kind: string;
+  currency: string;
+  plannedMinor: number;
+  dueOn: string;
+  state: CommitmentState;
 }
 
 export interface Spend {
@@ -34,6 +45,24 @@ export type Ready = Current & {
   settings: NonNullable<Current["settings"]>;
   cycle: NonNullable<Current["cycle"]>;
 };
+
+/** The money rules' entries for the current cycle. */
+export function entriesOf(data: Ready) {
+  return {
+    spendingCurrency: data.settings.spendingCurrency,
+    expectedSalaryOn: data.cycle.expectedSalaryOn,
+    incomes: data.incomes,
+    spends: data.spends,
+    commitments: data.commitments,
+  };
+}
+
+/** "today", "in 3 days", "2 days late". */
+export function inDaysLabel(n: number): string {
+  if (n === 0) return "today";
+  if (n < 0) return `${-n} day${n === -1 ? "" : "s"} late`;
+  return `in ${n} day${n === 1 ? "" : "s"}`;
+}
 
 /** Settings, current cycle and its entries (GET /api/current). */
 export function useCurrent() {
