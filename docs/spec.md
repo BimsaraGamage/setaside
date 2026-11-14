@@ -219,7 +219,7 @@ Phone first. Visual style is build work; the layouts below are fixed. Throwaway 
 
 ### Getting around
 
-**Bottom tabs**, always visible on tab screens: **Today · Plan · Money · Past · Settings**. A page opened from a tab covers the tab bar and has a ← back button. The **+** spend button is on Today only. Rows on Today are not links.
+**Bottom tabs**, always visible on tab screens: **Today · Plan · Money · Past · Settings**. A page opened from a tab covers the tab bar and has a ← back button. The **+** spend button is on Today only. Rows on Today are not links, except today's spends, which open the spend sheet to change or delete them.
 
 ### Today
 
@@ -229,14 +229,14 @@ Top to bottom:
 - **Offline line** when offline or with unsent items (section 11).
 - **Reminders list and turn-on banner** when phone alerts are off (section 12).
 - **Underspend card** when there is a question to answer (section 7).
-- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; free money and days to salary; a small line with spending speed per day and tomorrow's amount.
+- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount.
 - **Next up · already set aside**: open commitments from today to the expected salary day, each with date, weekday, "in N days", a note (card balance, "7 of 12"), and amount; total at the top; ends with "Salary expected" on its day. This is the timeline; there is no chart.
 - **Pots**: amount left, a bar, each pot's verdict.
 - Floating **+** button.
 
 ### Spend sheet (the + button)
 
-A bottom sheet: date chip (Today, changeable within the current cycle); amount on a number pad; live line "Rs X left today after this" (or "Over today by X", or "from <pot> pot"); optional note; one choice of Free money or a pot; Card toggle (with card choice when there are several); One-off toggle; Save. After saving, a toast with **Undo**.
+A bottom sheet: date chip (Today, changeable within the current cycle); amount on a number pad; live line "Rs X left today after this" (or "Over today by X", or "from <pot> pot"); optional note; one choice of Free money or a pot; Card toggle (with card choice when there are several); One-off toggle; Save. After saving, a toast with **Undo**. Opened from a spend, the same sheet changes it and has **Delete**; changes and deletes also get the toast with **Undo**.
 
 ### Plan
 
@@ -248,7 +248,9 @@ This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit pag
 
 ### Money
 
-Rows for Savings, Change dollars, Add income, each card, each instalment plan, People.
+Rows for Spends, Savings, Change dollars, Add income, each card, each instalment plan, People.
+
+- **Spends**: this cycle's spends by day, newest first, with each day's total; each opens the spend sheet to change or delete it.
 
 - **Savings**: dollar and rupee totals, combined in the header; Take out, Put in; prepayments with payback progress; movements list.
 - **Take out of savings**: currency, amount, new allowance shown; "For a prepayment? Yes, pay back".

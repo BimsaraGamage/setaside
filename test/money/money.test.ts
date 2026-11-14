@@ -158,10 +158,19 @@ describe("Today's numbers (spec 7, 10)", () => {
         spendingCurrency: "LKR",
         expectedSalaryOn: "2026-11-30",
         incomes: [{ kind: "opening", currency: "LKR", amountMinor: 9_000_000, toSavingsMinor: 0 }],
+        spends: [],
       },
       "2026-11-12",
     );
-    expect(view).toEqual({ freeMinor: 9_000_000, daysLeft: 18, allowanceMinor: 500_000, currency: "LKR" });
+    expect(view).toEqual({
+      freeMinor: 9_000_000,
+      daysLeft: 18,
+      allowanceMinor: 500_000,
+      spentTodayMinor: 0,
+      leftTodayMinor: 500_000,
+      tomorrowMinor: 529_400,
+      currency: "LKR",
+    });
   });
 });
 

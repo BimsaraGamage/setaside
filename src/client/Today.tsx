@@ -1,10 +1,17 @@
 import { formatMoney, todayView } from "../money";
-import { type Current, dayLabel, useToday } from "./data";
+import { dayLabel, type Ready, type Spend, useToday } from "./data";
+import { SpendRow } from "./Spends";
 
-type Ready = Current & { settings: NonNullable<Current["settings"]>; cycle: NonNullable<Current["cycle"]> };
-
-/** Today (spec 10): header, main card with the daily allowance, Next up. */
-export function Today({ data }: { data: Ready }) {
+/** Today (spec 10): header, main card with the daily allowance and today's spends, Next up, the + button. */
+export function Today({
+  data,
+  onAdd,
+  onEdit,
+}: {
+  data: Ready;
+  onAdd: (today: string) => void;
+  onEdit: (spend: Spend, today: string) => void;
+}) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
   const view = todayView(
@@ -12,11 +19,14 @@ export function Today({ data }: { data: Ready }) {
       spendingCurrency: settings.spendingCurrency,
       expectedSalaryOn: cycle.expectedSalaryOn,
       incomes: data.incomes,
+      spends: data.spends,
     },
     today,
   );
   const money = (m: number) => formatMoney(m, view.currency);
   const salaryIn = view.daysLeft;
+  const over = view.leftTodayMinor < 0;
+  const used = view.allowanceMinor > 0 ? Math.min(1, view.spentTodayMinor / view.allowanceMinor) : 1;
 
   return (
     <>
@@ -34,6 +44,26 @@ export function Today({ data }: { data: Ready }) {
         <p className="big" data-testid="allowance">
           {money(view.allowanceMinor)}
         </p>
+        <div
+          className={`bar${over ? " over" : ""}`}
+          role="meter"
+          aria-label="Spent today"
+          aria-valuemin={0}
+          aria-valuemax={view.allowanceMinor}
+          aria-valuenow={view.spentTodayMinor}
+        >
+          <span style={{ width: `${(view.spentTodayMinor > 0 ? used : 0) * 100}%` }} />
+        </div>
+        <p className={`small${over ? " bad" : ""}`} data-testid="spent-today">
+          {over
+            ? `Spent ${money(view.spentTodayMinor)} · Over by ${money(-view.leftTodayMinor)}`
+            : `Spent ${money(view.spentTodayMinor)} · ${money(view.leftTodayMinor)} left today`}
+        </p>
+        {data.spends
+          .filter((s) => s.spentOn === today)
+          .map((s) => (
+            <SpendRow key={s.id} spend={s} onOpen={() => onEdit(s, today)} />
+          ))}
         <div className="li">
           <span className="grow mute">Free money</span>
           <b data-testid="free-money">{money(view.freeMinor)}</b>
@@ -42,6 +72,11 @@ export function Today({ data }: { data: Ready }) {
           <span className="grow mute">Days to salary</span>
           <b data-testid="days-left">{view.daysLeft}</b>
         </div>
+        {view.tomorrowMinor !== null && (
+          <p className="tiny mute" data-testid="tomorrow">
+            Tomorrow {money(view.tomorrowMinor)}
+          </p>
+        )}
       </section>
 
       <section className="card" aria-labelledby="next-h">
@@ -57,6 +92,10 @@ export function Today({ data }: { data: Ready }) {
           <span className="grow">Salary expected</span>
         </div>
       </section>
+
+      <button type="button" className="fab" aria-label="Add a spend" onClick={() => onAdd(today)}>
+        +
+      </button>
     </>
   );
 }

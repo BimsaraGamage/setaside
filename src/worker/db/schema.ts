@@ -159,3 +159,27 @@ export const income = sqliteTable(
   },
   (t) => [index("income_user_id_idx").on(t.userId), index("income_cycle_id_idx").on(t.cycleId)],
 );
+
+/** One purchase (item 4). Pots, cards and one-off join with items 7, 18 and 8. */
+export const spend = sqliteTable(
+  "spend",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    spentOn: text("spent_on").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    note: text("note"),
+    /** Pot the spend came from (item 7); none means free money. */
+    potId: text("pot_id"),
+    /** Card it was paid with (item 18). */
+    cardId: text("card_id"),
+    /** Left out of the spending speed (item 8). */
+    oneOff: integer("one_off", { mode: "boolean" }).notNull().default(false),
+    ...appTimestamps,
+  },
+  (t) => [index("spend_user_id_idx").on(t.userId), index("spend_cycle_id_idx").on(t.cycleId, t.spentOn)],
+);

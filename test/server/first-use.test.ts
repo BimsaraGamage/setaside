@@ -24,7 +24,7 @@ function body(over: Record<string, unknown> = {}) {
 /** A fresh signed-in user with nothing set up (the demo users are shared across tests). */
 async function freshUser() {
   const u = await signIn("second");
-  for (const t of ["income", "cycle", "settings"]) {
+  for (const t of ["spend", "income", "cycle", "settings"]) {
     await env.DB.prepare(`delete from "${t}" where user_id = ?`).bind(u.id).run();
   }
   return u;
@@ -38,7 +38,7 @@ describe("first use (item 3, spec 2)", () => {
     const { cookie } = await freshUser();
     const res = await call("/api/current", {}, cookie);
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ settings: null, cycle: null, incomes: [] });
+    expect(await res.json()).toEqual({ settings: null, cycle: null, incomes: [], spends: [] });
   });
 
   it("makes the settings row, the first cycle from today and the opening income", async () => {
@@ -61,6 +61,7 @@ describe("first use (item 3, spec 2)", () => {
           receivedOn: today,
         },
       ],
+      spends: [],
     });
   });
 

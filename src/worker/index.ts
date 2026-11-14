@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { getAuth, googleConfigured } from "./auth";
 import { firstUse } from "./first-use";
+import { spends } from "./spends";
 import { type SignedIn, userCheck } from "./user-check";
 
 export type Bindings = Env;
@@ -14,7 +15,8 @@ export const PUBLIC_ROUTES = ["/api/health", "/api/sign-in-options", "/api/auth/
 const signedIn = new Hono<SignedIn>()
   .use(userCheck)
   .get("/me", (c) => c.json({ user: c.var.user }))
-  .route("/", firstUse);
+  .route("/", firstUse)
+  .route("/", spends);
 
 const app = new Hono<{ Bindings: Bindings }>()
   .basePath("/api")
