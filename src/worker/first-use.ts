@@ -1,9 +1,9 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { validator } from "hono/validator";
 import * as z from "zod";
 import { checkFirstUse, isTimeZone, todayIn } from "../money";
-import { cycle, income, settings } from "./db/schema";
+import { cycle, income, settings, spend } from "./db/schema";
+import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
 const firstUseBody = z.object({
@@ -22,14 +22,6 @@ const settingsBody = z
   .object({ usualPayDay: z.number().int().min(1).max(31), homeTimeZone: z.string().refine(isTimeZone) })
   .partial();
 
-function json<T extends z.ZodType>(schema: T) {
-  return validator("json", (value, c) => {
-    const parsed = schema.safeParse(value);
-    if (!parsed.success) return c.json({ error: "bad_request" as const }, 400);
-    return parsed.data as z.infer<T>;
-  });
-}
-
 /**
  * First use and the Today numbers' entries (backlog item 3, spec 2 and 10).
  * The phone works out every number with the money rules; this only reads and saves.
@@ -45,6 +37,12 @@ export const firstUse = new Hono<SignedIn>()
     });
     const incomes = current
       ? await db.query.income.findMany({ where: and(mine(income), eq(income.cycleId, current.id)) })
+      : [];
+    const spends = current
+      ? await db.query.spend.findMany({
+          where: and(mine(spend), eq(spend.cycleId, current.id)),
+          orderBy: [desc(spend.spentOn), desc(spend.id)],
+        })
       : [];
     return c.json({
       settings: s
@@ -65,6 +63,13 @@ export const firstUse = new Hono<SignedIn>()
         amountMinor: i.amountMinor,
         toSavingsMinor: i.toSavingsMinor,
         receivedOn: i.receivedOn,
+      })),
+      spends: spends.map((s) => ({
+        id: s.id,
+        spentOn: s.spentOn,
+        currency: s.currency,
+        amountMinor: s.amountMinor,
+        note: s.note,
       })),
     });
   })

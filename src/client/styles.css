@@ -228,3 +228,131 @@ main.with-tabs p {
 main.with-tabs > * {
   min-width: 0;
 }
+
+/* Today: spent-today bar and the + button (spec 10). */
+.bar {
+  height: 0.5rem;
+  border-radius: 1rem;
+  background: var(--chip);
+  overflow: hidden;
+  margin-bottom: 0.4rem;
+}
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+.bar.over > span {
+  background: var(--bad);
+}
+.fab {
+  position: fixed;
+  right: max(1rem, calc(50vw - 15rem));
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  border: 0;
+  background: var(--acc);
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 0.25rem 0.75rem rgb(0 0 0 / 0.25);
+}
+
+/* Spend sheet: a bottom sheet over everything. */
+.sheet-back {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgb(0 0 0 / 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  width: 100%;
+  max-width: 32rem;
+  max-height: 100dvh;
+  overflow-y: auto;
+  background: var(--card);
+  border-radius: 1rem 1rem 0 0;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 0.75rem;
+}
+.sheet h2 {
+  margin: 0;
+  align-self: center;
+}
+.chip select {
+  min-height: 2.25rem;
+  border-radius: 2rem;
+  background: var(--chip);
+  border: 0;
+  font-weight: 600;
+}
+.amount {
+  font-size: 2.25rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.sheet p {
+  margin: 0;
+  text-align: center;
+}
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.pad .btn {
+  font-size: 1.25rem;
+}
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Toast with Undo, above the tab bar. */
+.toast {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(9rem + env(safe-area-inset-bottom));
+  width: min(30rem, calc(100vw - 2rem));
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: var(--ink);
+  color: var(--bg);
+}
+.toast .btn {
+  min-height: 2.5rem;
+  background: transparent;
+  color: var(--bg);
+  border-color: transparent;
+}
+a.link {
+  color: inherit;
+  text-decoration: none;
+}
+a.btn.link {
+  display: inline-flex;
+  align-items: center;
+}
+main.page {
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+}
+[hidden] {
+  display: none !important;
+}

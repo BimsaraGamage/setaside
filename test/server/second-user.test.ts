@@ -47,6 +47,16 @@ const probes: Record<string, Probe> = {
       }),
     },
   }),
+  // Aimed at the first user's spend: must not take over, change or delete it.
+  "POST /api/spends": (o) => ({
+    path: "/api/spends",
+    init: { body: JSON.stringify({ id: firstRow(o, "spend"), spentOn: "2026-11-12", amountMinor: 1 }) },
+  }),
+  "PATCH /api/spends/:id": (o) => ({
+    path: `/api/spends/${firstRow(o, "spend")}`,
+    init: { body: JSON.stringify({ amountMinor: 1 }) },
+  }),
+  "DELETE /api/spends/:id": (o) => ({ path: `/api/spends/${firstRow(o, "spend")}` }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -58,6 +68,7 @@ async function seedOwnerData(ownerId: string) {
   const s = crypto.randomUUID();
   const c = crypto.randomUUID();
   const i = crypto.randomUUID();
+  const sp = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -69,6 +80,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into income (id, user_id, cycle_id, kind, currency, amount_minor, received_on, created_at, updated_at) values (?, ?, ?, 'opening', 'LKR', 9000000, '2026-11-12', ?, ?)",
     ).bind(i, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into spend (id, user_id, cycle_id, spent_on, amount_minor, currency, note, created_at, updated_at) values (?, ?, ?, '2026-11-12', 185000, 'LKR', 'lunch', ?, ?)",
+    ).bind(sp, ownerId, c, now, now),
   ]);
 }
 

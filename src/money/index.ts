@@ -6,3 +6,4 @@
 export * from "./amount";
 export * from "./cycle";
 export * from "./days";
+export * from "./spend";

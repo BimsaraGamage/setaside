@@ -18,7 +18,22 @@ export interface Current {
     toSavingsMinor: number;
     receivedOn: string;
   }[];
+  spends: Spend[];
 }
+
+export interface Spend {
+  id: string;
+  spentOn: string;
+  currency: string;
+  amountMinor: number;
+  note: string | null;
+}
+
+/** The current cycle's settings and cycle, once first use is done. */
+export type Ready = Current & {
+  settings: NonNullable<Current["settings"]>;
+  cycle: NonNullable<Current["cycle"]>;
+};
 
 /** Settings, current cycle and its entries (GET /api/current). */
 export function useCurrent() {
