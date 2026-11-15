@@ -66,6 +66,7 @@ describe("commitments (item 5, spec 3)", () => {
         state: "open",
         recurringId: null,
         carriedFromId: null,
+        prepaymentId: null,
         payments: [],
       },
     ]);

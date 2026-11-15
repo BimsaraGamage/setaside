@@ -61,7 +61,8 @@ export interface ComingUpEntry extends CommitmentEntry {
   id: string;
   recurringId: string | null;
   name: string;
-  kind: RecurringKind;
+  kind: RecurringKind | "savings_payback";
+  prepaymentId?: string | null;
   payments?: PaymentEntry[];
 }
 
@@ -72,10 +73,13 @@ export interface SalaryDayDraft {
   /** Last cycle's coming-up commitment it carries on (that one is marked carried). */
   carriedFromId: string | null;
   name: string;
-  kind: RecurringKind;
+  /** A payback to savings is filled by its prepayment (item 14), never Every cycle. */
+  kind: RecurringKind | "savings_payback";
   plannedMinor: Minor;
   dueOn: Day;
   everyCycle: boolean;
+  /** The prepayment a payback to savings pays back (item 14). */
+  prepaymentId?: string;
 }
 
 /**
@@ -105,6 +109,7 @@ export function salaryDayDrafts(a: {
       plannedMinor: rest,
       dueOn: c.dueOn,
       everyCycle: template !== undefined,
+      ...(c.prepaymentId ? { prepaymentId: c.prepaymentId } : {}),
     });
   }
   for (const r of a.recurring) {

@@ -153,6 +153,21 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/incomes/:id": (o) => ({ path: `/api/incomes/${firstRow(o, "income")}` }),
+  // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
+  "POST /api/prepayments": (o) => ({
+    path: "/api/prepayments",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "prepayment"),
+        movementId: firstRow(o, "savings_movement"),
+        commitmentId: firstRow(o, "commitment"),
+        name: "x",
+        totalMinor: 1,
+        paybackMinor: 1,
+      }),
+    },
+  }),
+  "DELETE /api/prepayments/:id": (o) => ({ path: `/api/prepayments/${firstRow(o, "prepayment")}` }),
   // Aimed at the first user's cycle, income, commitment, template and pot: must not take any over.
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
@@ -238,6 +253,7 @@ async function seedOwnerData(ownerId: string) {
   const ex = crypto.randomUUID();
   const rc = crypto.randomUUID();
   const cc = crypto.randomUUID();
+  const pp = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -279,6 +295,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into cycle_close (id, user_id, cycle_id, next_cycle_id, currency, leftover_correction_minor, leftover_to_savings_minor, created_at, updated_at) values (?, ?, ?, ?, 'LKR', 0, 0, ?, ?)",
     ).bind(cc, ownerId, c, c, now, now),
+    env.DB.prepare(
+      "insert into prepayment (id, user_id, name, currency, total_minor, payback_minor, created_at, updated_at) values (?, ?, 'Gym', 'LKR', 6000000, 500000, ?, ?)",
+    ).bind(pp, ownerId, now, now),
   ]);
 }
 

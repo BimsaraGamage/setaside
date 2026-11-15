@@ -15,7 +15,10 @@ export interface Row {
   /** Last cycle's coming-up commitment it carries on (salary day only). */
   carriedFromId: string | null;
   name: string;
-  kind: "bill" | "savings";
+  /** A payback to savings is filled by its prepayment (salary day, item 14). */
+  kind: "bill" | "savings" | "savings_payback";
+  /** The prepayment a payback pays back. */
+  prepaymentId?: string;
   text: string;
   dueOn: string;
   everyCycle: boolean;
@@ -74,6 +77,9 @@ export function CommitmentsStep({
       {rows.map((r, i) => (
         <fieldset key={r.id} className="card stack" aria-label={`${label} ${i + 1}`}>
           {r.carriedFromId && <p className="tiny mute">From last cycle: due after its salary day.</p>}
+          {r.kind === "savings_payback" && (
+            <p className="tiny mute">Pays your savings back for a prepayment. It goes back into savings.</p>
+          )}
           <label className="field">
             Name
             <input
@@ -103,19 +109,21 @@ export function CommitmentsStep({
               <span className="tiny mute">After the next salary day: coming up only, not set aside.</span>
             )}
           </label>
-          <label className="row check">
-            <input
-              type="checkbox"
-              checked={r.everyCycle}
-              onChange={(e) => change(i, { everyCycle: e.target.checked })}
-            />
-            <span className="grow">
-              Every cycle
-              {r.recurringId && !r.everyCycle && (
-                <span className="tiny mute block">Off: it stops repeating after this cycle.</span>
-              )}
-            </span>
-          </label>
+          {r.kind !== "savings_payback" && (
+            <label className="row check">
+              <input
+                type="checkbox"
+                checked={r.everyCycle}
+                onChange={(e) => change(i, { everyCycle: e.target.checked })}
+              />
+              <span className="grow">
+                Every cycle
+                {r.recurringId && !r.everyCycle && (
+                  <span className="tiny mute block">Off: it stops repeating after this cycle.</span>
+                )}
+              </span>
+            </label>
+          )}
           {has(`commitment.${i}.`) && <p className="tiny bad">Check the name, amount and due date.</p>}
           <button type="button" className="btn" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
             Remove from this cycle

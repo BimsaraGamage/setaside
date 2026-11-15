@@ -159,10 +159,12 @@ export const commitments = new Hono<SignedIn>()
     const now = await current(c);
     const old = await db.query.commitment.findFirst({
       where: and(mine(commitment), eq(commitment.id, id)),
-      columns: { cycleId: true, recurringId: true },
+      columns: { cycleId: true, recurringId: true, kind: true },
     });
     if (!now || !old) return c.json({ error: "not_found" as const }, 404);
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
+    // A payback to savings belongs to its prepayment (item 14): mark it finished to skip a cycle.
+    if (old.kind === "savings_payback") return c.json({ error: "linked" as const }, 409);
     const remove = db.delete(commitment).where(and(mine(commitment), eq(commitment.id, id)));
     if (old.recurringId) {
       // Deleting an "Every cycle" commitment stops it repeating.

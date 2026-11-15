@@ -1,33 +1,45 @@
-import { and, desc, eq, gt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkIncome, checkSavingsMove, savingsTotal } from "../money";
 import { current } from "./current";
-import { commitment, commitmentPayment, income, savingsMovement } from "./db/schema";
+import { commitment, commitmentPayment, income, prepayment, savingsMovement } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
   id: string;
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside";
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback";
   cycleId: string;
   currency: string;
   amountMinor: number;
   on: string;
-  /** The savings commitment's name, for a set-aside moved. */
+  /** The commitment's name for a set-aside or payback moved; the prepayment's name. */
   name: string | null;
 }
 
 /**
  * Every movement into and out of savings, all cycles, newest first (spec 5):
  * Put in and Take out, extra income sent to savings, leftover saved on salary
- * day, savings set-asides moved.
+ * day, savings set-asides moved, prepayments (out) and their paybacks moved (in).
  * Totals are worked out from it with the money rules.
  */
 export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<SavingsLine[]> {
   const { db, mine } = c.var;
-  const moves = await db.query.savingsMovement.findMany({ where: mine(savingsMovement) });
+  const moves = await db
+    .select({
+      id: savingsMovement.id,
+      kind: savingsMovement.kind,
+      cycleId: savingsMovement.cycleId,
+      currency: savingsMovement.currency,
+      amountMinor: savingsMovement.amountMinor,
+      movedOn: savingsMovement.movedOn,
+      name: prepayment.name,
+    })
+    .from(savingsMovement)
+    .leftJoin(prepayment, and(eq(prepayment.id, savingsMovement.prepaymentId), mine(prepayment)))
+    .where(mine(savingsMovement));
   const incomes = await db.query.income.findMany({
     where: and(mine(income), gt(income.toSavingsMinor, 0)),
     columns: { id: true, kind: true, cycleId: true, currency: true, toSavingsMinor: true, receivedOn: true },
@@ -40,24 +52,36 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       amountMinor: commitmentPayment.amountMinor,
       on: commitmentPayment.paidOn,
       name: commitment.name,
+      kind: commitment.kind,
     })
     .from(commitmentPayment)
     .innerJoin(commitment, eq(commitment.id, commitmentPayment.commitmentId))
-    .where(and(mine(commitmentPayment), mine(commitment), eq(commitment.kind, "savings")))
+    .where(
+      and(
+        mine(commitmentPayment),
+        mine(commitment),
+        inArray(commitment.kind, ["savings", "savings_payback"]),
+      ),
+    )
     .orderBy(desc(commitmentPayment.paidOn));
   const lines: SavingsLine[] = [
     ...moves
-      // Prepayments and plan payoffs from savings come with items 14 and 19.
-      .filter((m) => m.kind === "put_in" || m.kind === "take_out")
-      .map((m) => ({
-        id: m.id,
-        kind: m.kind as "put_in" | "take_out",
-        cycleId: m.cycleId,
-        currency: m.currency,
-        amountMinor: m.amountMinor,
-        on: m.movedOn,
-        name: null,
-      })),
+      // Plan payoffs from savings come with item 19.
+      .flatMap((m) =>
+        m.kind === "put_in" || m.kind === "take_out" || m.kind === "prepayment"
+          ? [
+              {
+                id: m.id,
+                kind: m.kind,
+                cycleId: m.cycleId,
+                currency: m.currency,
+                amountMinor: m.amountMinor,
+                on: m.movedOn,
+                name: m.kind === "prepayment" ? m.name : null,
+              },
+            ]
+          : [],
+      ),
     ...incomes.map((i) => ({
       id: i.id,
       // Last cycle's leftover saved on salary day (item 12), or extra income.
@@ -68,7 +92,10 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       on: i.receivedOn,
       name: null,
     })),
-    ...setAsides.map((p) => ({ ...p, kind: "set_aside" as const })),
+    ...setAsides.map(({ kind, ...p }) => ({
+      ...p,
+      kind: kind === "savings_payback" ? ("payback" as const) : ("set_aside" as const),
+    })),
   ];
   return lines.sort((a, b) => (a.on === b.on ? (a.id < b.id ? 1 : -1) : a.on < b.on ? 1 : -1));
 }

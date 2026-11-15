@@ -85,6 +85,13 @@
       "when": 1794760660779,
       "tag": "0011_undo_salary_day",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794762006670,
+      "tag": "0012_prepayment",
+      "breakpoints": true
     }
   ]
 }

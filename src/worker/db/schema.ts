@@ -312,7 +312,8 @@ export const dayChoice = sqliteTable(
  * Money moved straight into or out of savings (item 10, spec 5): Put in (+) and
  * Take out (−). In the cycle it was made in: a take-out raises that cycle's free
  * money. Set-asides moved and extra income to savings are their own rows
- * (commitment payments, `income.to_savings_minor`). Prepayments come with item 14.
+ * (commitment payments, `income.to_savings_minor`). A prepayment's money out
+ * is kind `prepayment`, linked to its `prepayment` row (item 14).
  */
 export const savingsMovement = sqliteTable(
   "savings_movement",
@@ -327,12 +328,36 @@ export const savingsMovement = sqliteTable(
     amountMinor: integer("amount_minor").notNull(),
     kind: text("kind", { enum: ["put_in", "take_out", "opening", "prepayment", "plan_extra"] }).notNull(),
     movedOn: text("moved_on").notNull(),
+    /** A prepayment's money out of savings (item 14). */
+    prepaymentId: text("prepayment_id"),
     ...appTimestamps,
   },
   (t) => [
     index("savings_movement_user_id_idx").on(t.userId, t.movedOn),
     index("savings_movement_cycle_id_idx").on(t.cycleId),
   ],
+);
+
+/**
+ * A long period paid up front from savings (item 14, spec 5): its money out of
+ * savings is a `savings_movement` of kind `prepayment`; each cycle a commitment
+ * of kind `savings_payback` (linked by `prepayment_id`) moves it back.
+ */
+export const prepayment = sqliteTable(
+  "prepayment",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    totalMinor: integer("total_minor").notNull(),
+    /** The usual payback each cycle; the last one is only what is left. */
+    paybackMinor: integer("payback_minor").notNull(),
+    /** For the prepayment saving of instalment plans (item 19); unused here. */
+    normalMonthlyMinor: integer("normal_monthly_minor"),
+    ...appTimestamps,
+  },
+  (t) => [index("prepayment_user_id_idx").on(t.userId)],
 );
 
 /**

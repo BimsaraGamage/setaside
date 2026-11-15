@@ -10,6 +10,7 @@ export * from "./cycle-close";
 export * from "./days";
 export * from "./first-use";
 export * from "./pot";
+export * from "./prepayment";
 export * from "./salary-day";
 export * from "./savings";
 export * from "./speed";

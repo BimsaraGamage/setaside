@@ -12,6 +12,7 @@ import {
   leftoverOf,
   type OverspendChoice,
   parseAmount,
+  paybackDrafts,
   type SalaryDayInput,
   salaryDayDrafts,
   salaryDayView,
@@ -148,10 +149,28 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   function fill(): Row[] {
     const comingUp: ComingUpEntry[] = data.commitments
       .filter(
-        (c) => isComingUp(c, data.cycle.expectedSalaryOn) && (c.kind === "bill" || c.kind === "savings"),
+        (c) =>
+          isComingUp(c, data.cycle.expectedSalaryOn) &&
+          (c.kind === "bill" || c.kind === "savings" || c.kind === "savings_payback"),
       )
-      .map((c) => ({ ...c, kind: c.kind as "bill" | "savings" }));
-    return salaryDayDrafts({ recurring: data.recurring, comingUp, startedOn: receivedOn }).map((d) => ({
+      .map((c) => ({ ...c, kind: c.kind as "bill" | "savings" | "savings_payback" }));
+    const drafts = salaryDayDrafts({ recurring: data.recurring, comingUp, startedOn: receivedOn });
+    // Paybacks (item 14): what step 2 paid or carried, and coming-up ones carried, count first.
+    const paid: Record<string, number> = {};
+    const planned: Record<string, number> = {};
+    const add = (to: Record<string, number>, id: string | null | undefined, m: number) => {
+      if (id) to[id] = (to[id] ?? 0) + m;
+    };
+    for (const k of unpaid) {
+      const choice = choices[k.id]?.choice;
+      if (choice === "paid") add(paid, k.prepaymentId, stillToPayMinor(k));
+      if (choice === "carry") add(planned, k.prepaymentId, stillToPayMinor(k));
+    }
+    for (const d of drafts) add(planned, d.prepaymentId, d.plannedMinor);
+    const prepayments = data.prepayments
+      .filter((p) => p.currency === cur)
+      .map((p) => ({ ...p, paidBackMinor: p.paidBackMinor + (paid[p.id] ?? 0) }));
+    return [...drafts, ...paybackDrafts(prepayments, receivedOn, planned)].map((d) => ({
       ...d,
       id: newId(),
       text: toText(d.plannedMinor, cur),
@@ -195,6 +214,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       commitments: (rows ?? []).map((r) => ({
         id: r.id,
         kind: r.kind,
+        prepaymentId: r.prepaymentId ?? null,
         name: r.name,
         plannedMinor: amount(r.text),
         dueOn: r.dueOn,

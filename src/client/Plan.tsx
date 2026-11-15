@@ -17,8 +17,15 @@ import { PlanPots } from "./Pots";
 import { toText } from "./SpendSheet";
 import { type CycleActions, ThisCycleCard } from "./ThisCycle";
 
-/** A savings set-aside (item 10): its money is moved to savings, not paid. */
-export const isSavings = (c: Pick<Commitment, "kind">) => c.kind === "savings";
+/**
+ * A savings set-aside (item 10) or a payback to savings for a prepayment (item 14):
+ * its money is moved to savings, not paid.
+ */
+export const isSavings = (c: Pick<Commitment, "kind">) =>
+  c.kind === "savings" || c.kind === "savings_payback";
+
+/** A payback to savings (item 14): made by its prepayment, not on the commitment page. */
+export const isPayback = (c: Pick<Commitment, "kind">) => c.kind === "savings_payback";
 
 /**
  * "Paid Rs 10,000 of Rs 36,000" for a part-paid open commitment ("Moved … · savings"
@@ -26,6 +33,7 @@ export const isSavings = (c: Pick<Commitment, "kind">) => c.kind === "savings";
  */
 export function paidNote(c: Commitment): string | undefined {
   const of = `${formatMoney(paidMinor(c, c.currency), c.currency)} of ${formatMoney(c.plannedMinor, c.currency)}`;
+  if (isPayback(c)) return c.payments.length ? `Paid back ${of} · savings` : "Pays back savings";
   if (isSavings(c)) return c.payments.length ? `Moved ${of} · savings` : "Savings";
   if (c.payments.length === 0) return undefined;
   return `Paid ${of}`;
@@ -188,6 +196,8 @@ export function CommitmentPage({
   const cur = data.settings.spendingCurrency;
   const today = useToday(data.settings.homeTimeZone);
   const [kind, setKind] = useState<CommitmentKind>(editing?.kind === "savings" ? "savings" : "bill");
+  // A payback keeps its kind and never repeats: salary day makes the next one (item 14).
+  const payback = editing !== undefined && isPayback(editing);
   const [name, setName] = useState(editing?.name ?? "");
   const [text, setText] = useState(editing ? toText(editing.plannedMinor, cur) : "");
   const [dueOn, setDueOn] = useState(editing?.dueOn ?? today);
@@ -197,6 +207,7 @@ export function CommitmentPage({
 
   const plannedMinor = parseAmount(text, cur) ?? 0;
   const draft = { kind, name: name.trim(), plannedMinor, dueOn, everyCycle };
+  const changed = payback ? { name: draft.name, plannedMinor, dueOn } : draft;
   const problems = checkCommitment(
     { ...draft, currency: cur },
     { cycleStartedOn: data.cycle.startedOn, spendingCurrency: cur },
@@ -235,24 +246,32 @@ export function CommitmentPage({
       </div>
       <h1>{editing ? "Change commitment" : "New commitment"}</h1>
       <section className="card stack">
-        <fieldset className="chips" aria-label="Kind">
-          <button
-            type="button"
-            className="btn"
-            aria-pressed={kind === "bill"}
-            onClick={() => setKind("bill")}
-          >
-            Bill
-          </button>
-          <button
-            type="button"
-            className="btn"
-            aria-pressed={kind === "savings"}
-            onClick={() => setKind("savings")}
-          >
-            Savings
-          </button>
-        </fieldset>
+        {payback && (
+          <p className="tiny mute">
+            Pays your savings back for a prepayment. Move it to savings when you put the money back. Salary
+            day sets aside the next one.
+          </p>
+        )}
+        {!payback && (
+          <fieldset className="chips" aria-label="Kind">
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={kind === "bill"}
+              onClick={() => setKind("bill")}
+            >
+              Bill
+            </button>
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={kind === "savings"}
+              onClick={() => setKind("savings")}
+            >
+              Savings
+            </button>
+          </fieldset>
+        )}
         {kind === "savings" && (
           <p className="tiny mute">
             Set aside like a bill. When you move it to savings, mark it moved: it joins your savings.
@@ -294,16 +313,18 @@ export function CommitmentPage({
               : `From ${dayLabel(data.cycle.startedOn)}. Due after ${dayLabel(data.cycle.expectedSalaryOn)} means next cycle.`}
           </span>
         </label>
-        <label className="row check">
-          <input type="checkbox" checked={everyCycle} onChange={(e) => setEveryCycle(e.target.checked)} />
-          <span className="grow">
-            Every cycle
-            <span className="tiny mute block">
-              Filled in again on salary day with this amount, on day {Number(dueOn.slice(8, 10)) || "–"} of
-              the month
+        {!payback && (
+          <label className="row check">
+            <input type="checkbox" checked={everyCycle} onChange={(e) => setEveryCycle(e.target.checked)} />
+            <span className="grow">
+              Every cycle
+              <span className="tiny mute block">
+                Filled in again on salary day with this amount, on day {Number(dueOn.slice(8, 10)) || "–"} of
+                the month
+              </span>
             </span>
-          </span>
-        </label>
+          </label>
+        )}
         <p className="small" data-testid="commitment-after">
           You can spend today after this: <b>{formatMoney(after.allowanceMinor, cur)}</b>
         </p>
@@ -314,7 +335,7 @@ export function CommitmentPage({
       {failed && <p className="error">Not saved. Check the connection and try again.</p>}
 
       <div className="row">
-        {editing && (
+        {editing && !payback && (
           <button
             type="button"
             className="btn"
@@ -328,7 +349,9 @@ export function CommitmentPage({
           type="button"
           className="btn pri grow"
           disabled={busy || problems.length > 0}
-          onClick={() => run(() => (editing ? actions.change(editing, draft) : actions.add(newId(), draft)))}
+          onClick={() =>
+            run(() => (editing ? actions.change(editing, changed) : actions.add(newId(), draft)))
+          }
         >
           Save
         </button>
