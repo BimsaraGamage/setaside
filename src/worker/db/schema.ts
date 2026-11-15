@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // Tables from docs/data-model.md arrive with the backlog items that need them.
 // Migrations are additive only (spec 18).
@@ -244,5 +244,42 @@ export const commitmentPayment = sqliteTable(
   (t) => [
     index("commitment_payment_user_id_idx").on(t.userId),
     index("commitment_payment_commitment_id_idx").on(t.commitmentId, t.paidOn),
+  ],
+);
+
+/** A user-made pot (item 7); lasts across cycles. Each cycle's amount is a `pot_allocation`. */
+export const pot = sqliteTable(
+  "pot",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    usualAmountMinor: integer("usual_amount_minor").notNull(),
+    /** "Stop using this pot": not offered for spends, not set aside again. */
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    ...appTimestamps,
+  },
+  (t) => [index("pot_user_id_idx").on(t.userId)],
+);
+
+/** Money set aside for a pot in one cycle (item 7); salary day makes the next one (item 11). */
+export const potAllocation = sqliteTable(
+  "pot_allocation",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    potId: text("pot_id")
+      .notNull()
+      .references(() => pot.id, { onDelete: "cascade" }),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    amountMinor: integer("amount_minor").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("pot_allocation_user_id_idx").on(t.userId),
+    uniqueIndex("pot_allocation_pot_cycle_idx").on(t.potId, t.cycleId),
   ],
 );

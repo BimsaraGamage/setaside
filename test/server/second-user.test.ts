@@ -91,6 +91,31 @@ const probes: Record<string, Probe> = {
     init: { body: JSON.stringify({ amountMinor: 1 }) },
   }),
   "DELETE /api/payments/:id": (o) => ({ path: `/api/payments/${firstRow(o, "commitment_payment")}` }),
+  // Aimed at the first user's pot and its allocation: must not take over, change, stop or delete.
+  "POST /api/pots": (o) => ({
+    path: "/api/pots",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "pot"),
+        allocationId: firstRow(o, "pot_allocation"),
+        name: "x",
+        usualAmountMinor: 1,
+        amountMinor: 1,
+      }),
+    },
+  }),
+  "PATCH /api/pots/:id": (o) => ({
+    path: `/api/pots/${firstRow(o, "pot")}`,
+    init: {
+      body: JSON.stringify({
+        name: "x",
+        amountMinor: 1,
+        allocationId: firstRow(o, "pot_allocation"),
+        archived: true,
+      }),
+    },
+  }),
+  "DELETE /api/pots/:id": (o) => ({ path: `/api/pots/${firstRow(o, "pot")}` }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -105,6 +130,8 @@ async function seedOwnerData(ownerId: string) {
   const sp = crypto.randomUUID();
   const k = crypto.randomUUID();
   const p = crypto.randomUUID();
+  const pt = crypto.randomUUID();
+  const pa = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -125,6 +152,12 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into commitment_payment (id, user_id, commitment_id, currency, amount_minor, paid_on, created_at, updated_at) values (?, ?, ?, 'LKR', 1000000, '2026-11-12', ?, ?)",
     ).bind(p, ownerId, k, now, now),
+    env.DB.prepare(
+      "insert into pot (id, user_id, name, currency, usual_amount_minor, archived, created_at, updated_at) values (?, ?, 'Groceries', 'LKR', 1800000, 0, ?, ?)",
+    ).bind(pt, ownerId, now, now),
+    env.DB.prepare(
+      "insert into pot_allocation (id, user_id, pot_id, cycle_id, amount_minor, created_at, updated_at) values (?, ?, ?, ?, 1800000, ?, ?)",
+    ).bind(pa, ownerId, pt, c, now, now),
   ]);
 }
 

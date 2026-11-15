@@ -1,7 +1,8 @@
 import { formatMoney, nextUp, stillToPayMinor, todayView } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, type Ready, type Spend, useToday } from "./data";
 import { paidNote } from "./Plan";
-import { SpendRow } from "./Spends";
+import { PotRow } from "./Pots";
+import { potName, SpendRow } from "./Spends";
 
 /** One Next up row: date, weekday and "in N days", the name, an optional note, the amount. */
 function NextUpRow({
@@ -34,7 +35,7 @@ function NextUpRow({
   );
 }
 
-/** Today (spec 10): header, main card with the daily allowance and today's spends, Next up, the + button. */
+/** Today (spec 10): header, main card with the daily allowance and today's spends, Next up, pots, the + button. */
 export function Today({
   data,
   onAdd,
@@ -49,6 +50,7 @@ export function Today({
   const view = todayView(entriesOf(data), today);
   const up = nextUp(data.commitments, today, cycle.expectedSalaryOn, settings.spendingCurrency);
   const money = (m: number) => formatMoney(m, view.currency);
+  const pots = data.pots.filter((p) => !p.archived);
   const over = view.leftTodayMinor < 0;
   const used = view.allowanceMinor > 0 ? Math.min(1, view.spentTodayMinor / view.allowanceMinor) : 1;
 
@@ -86,7 +88,7 @@ export function Today({
         {data.spends
           .filter((s) => s.spentOn === today)
           .map((s) => (
-            <SpendRow key={s.id} spend={s} onOpen={() => onEdit(s, today)} />
+            <SpendRow key={s.id} spend={s} pot={potName(data, s)} onOpen={() => onEdit(s, today)} />
           ))}
         <div className="li">
           <span className="grow mute">Free money</span>
@@ -140,6 +142,15 @@ export function Today({
           />
         ))}
       </section>
+
+      {pots.length > 0 && (
+        <section className="card" aria-labelledby="pots-today-h">
+          <h3 id="pots-today-h">Pots</h3>
+          {pots.map((p) => (
+            <PotRow key={p.id} pot={p} spends={data.spends} />
+          ))}
+        </section>
+      )}
 
       <button type="button" className="fab" aria-label="Add a spend" onClick={() => onAdd(today)}>
         +

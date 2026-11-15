@@ -24,7 +24,7 @@ function body(over: Record<string, unknown> = {}) {
 /** A fresh signed-in user with nothing set up (the demo users are shared across tests). */
 async function freshUser() {
   const u = await signIn("second");
-  for (const t of ["spend", "income", "cycle", "settings"]) {
+  for (const t of ["spend", "pot", "income", "cycle", "settings"]) {
     await env.DB.prepare(`delete from "${t}" where user_id = ?`).bind(u.id).run();
   }
   return u;
@@ -44,6 +44,7 @@ describe("first use (item 3, spec 2)", () => {
       incomes: [],
       spends: [],
       commitments: [],
+      pots: [],
     });
   });
 
@@ -69,6 +70,7 @@ describe("first use (item 3, spec 2)", () => {
       ],
       spends: [],
       commitments: [],
+      pots: [],
     });
   });
 

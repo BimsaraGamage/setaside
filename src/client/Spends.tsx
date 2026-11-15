@@ -1,11 +1,19 @@
 import { formatMoney } from "../money";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
 
+/** The pot a spend came from, by name; none for free money. */
+export function potName(data: Pick<Ready, "pots">, s: Spend): string | undefined {
+  return s.potId ? data.pots.find((p) => p.id === s.potId)?.name : undefined;
+}
+
 /** One spend row; tapping it opens the spend sheet to change or delete it. */
-export function SpendRow({ spend, onOpen }: { spend: Spend; onOpen: () => void }) {
+export function SpendRow({ spend, pot, onOpen }: { spend: Spend; pot?: string; onOpen: () => void }) {
   return (
     <button type="button" className="li tap" onClick={onOpen}>
-      <span className="grow">{spend.note || "Spend"}</span>
+      <span className="grow">
+        {spend.note || "Spend"}
+        {pot && <span className="tiny mute block">{pot} pot</span>}
+      </span>
       <b>{formatMoney(spend.amountMinor, spend.currency)}</b>
     </button>
   );
@@ -57,7 +65,7 @@ export function SpendsPage({ data, onOpen }: { data: Ready; onOpen: (s: Spend, t
             </span>
           </div>
           {list.map((s) => (
-            <SpendRow key={s.id} spend={s} onOpen={() => onOpen(s, today)} />
+            <SpendRow key={s.id} spend={s} pot={potName(data, s)} onOpen={() => onOpen(s, today)} />
           ))}
         </section>
       ))}

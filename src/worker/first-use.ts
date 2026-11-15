@@ -2,7 +2,16 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkFirstUse, isTimeZone, todayIn } from "../money";
-import { commitment, commitmentPayment, cycle, income, settings, spend } from "./db/schema";
+import {
+  commitment,
+  commitmentPayment,
+  cycle,
+  income,
+  pot,
+  potAllocation,
+  settings,
+  spend,
+} from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -66,6 +75,23 @@ export const firstUse = new Hono<SignedIn>()
           orderBy: [commitmentPayment.paidOn, commitmentPayment.id],
         })
       : [];
+    // Every pot (they last across cycles) with this cycle's amount, if it has one.
+    const pots = await db
+      .select({
+        id: pot.id,
+        name: pot.name,
+        currency: pot.currency,
+        usualAmountMinor: pot.usualAmountMinor,
+        archived: pot.archived,
+        amountMinor: potAllocation.amountMinor,
+      })
+      .from(pot)
+      .leftJoin(
+        potAllocation,
+        and(eq(potAllocation.potId, pot.id), eq(potAllocation.cycleId, current?.id ?? "")),
+      )
+      .where(mine(pot))
+      .orderBy(pot.createdAt, pot.id);
     return c.json({
       settings: s
         ? {
@@ -92,7 +118,9 @@ export const firstUse = new Hono<SignedIn>()
         currency: s.currency,
         amountMinor: s.amountMinor,
         note: s.note,
+        potId: s.potId,
       })),
+      pots,
       commitments: commitments.map((k) => ({
         id: k.id,
         name: k.name,

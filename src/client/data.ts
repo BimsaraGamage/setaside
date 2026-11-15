@@ -20,6 +20,19 @@ export interface Current {
   }[];
   spends: Spend[];
   commitments: Commitment[];
+  /** Every pot, in use or not, with this cycle's amount (item 7). */
+  pots: Pot[];
+}
+
+export interface Pot {
+  id: string;
+  name: string;
+  currency: string;
+  usualAmountMinor: number;
+  /** "Stop using this pot". */
+  archived: boolean;
+  /** Set aside this cycle; null when it has no amount in this cycle. */
+  amountMinor: number | null;
 }
 
 export interface Commitment {
@@ -47,6 +60,8 @@ export interface Spend {
   currency: string;
   amountMinor: number;
   note: string | null;
+  /** The pot it came from; null means free money. */
+  potId: string | null;
 }
 
 /** The current cycle's settings and cycle, once first use is done. */
@@ -63,7 +78,13 @@ export function entriesOf(data: Ready) {
     incomes: data.incomes,
     spends: data.spends,
     commitments: data.commitments,
+    pots: data.pots.map(potEntry),
   };
+}
+
+/** A pot as the money rules need it. */
+export function potEntry(p: Pot) {
+  return { id: p.id, currency: p.currency, amountMinor: p.amountMinor ?? 0, archived: p.archived };
 }
 
 /** "today", "in 3 days", "2 days late". */

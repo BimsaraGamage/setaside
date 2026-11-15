@@ -6,6 +6,8 @@ export interface SpendDraft {
   spentOn: string;
   amountMinor: number;
   note: string | null;
+  /** The pot it comes from; null means free money (item 7). */
+  potId: string | null;
 }
 
 const add = async (id: string, d: SpendDraft) =>
@@ -15,6 +17,13 @@ const change = async (id: string, d: Partial<SpendDraft>) =>
 const remove = async (id: string) =>
   (await api.api.spends[":id"].$delete({ param: { id } }).catch(() => null))?.ok ?? false;
 
+const draftOf = (s: Spend): SpendDraft => ({
+  spentOn: s.spentOn,
+  amountMinor: s.amountMinor,
+  note: s.note,
+  potId: s.potId,
+});
+
 /** Add, change and delete spends; each success shows a toast with Undo. */
 export function spendActions({ done }: Toaster) {
   return {
@@ -22,18 +31,10 @@ export function spendActions({ done }: Toaster) {
       add(id, d).then((ok) => done(ok, { text: "Spend saved", undo: () => remove(id) })),
     change: (old: Spend, d: SpendDraft) =>
       change(old.id, d).then((ok) =>
-        done(ok, {
-          text: "Spend changed",
-          undo: () => change(old.id, { spentOn: old.spentOn, amountMinor: old.amountMinor, note: old.note }),
-        }),
+        done(ok, { text: "Spend changed", undo: () => change(old.id, draftOf(old)) }),
       ),
     remove: (old: Spend) =>
-      remove(old.id).then((ok) =>
-        done(ok, {
-          text: "Spend deleted",
-          undo: () => add(old.id, { spentOn: old.spentOn, amountMinor: old.amountMinor, note: old.note }),
-        }),
-      ),
+      remove(old.id).then((ok) => done(ok, { text: "Spend deleted", undo: () => add(old.id, draftOf(old)) })),
   };
 }
 

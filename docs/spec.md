@@ -94,10 +94,11 @@ A **commitment** is an essential expense with an amount, a currency and a due da
 
 A **pot** is an essential expense with no single due date, spent bit by bit (groceries, fuel).
 
-- The user makes their own pots. Starter pots: Groceries, Fuel, Transport, Medicine; each can be renamed or deleted.
-- Each pot has a currency and a usual amount, set aside again each cycle. A pot can be archived ("Stop using this pot").
+- The user makes their own pots. Starter pots: Groceries, Fuel, Transport, Medicine, offered on Plan while there are no pots (one tap opens a new pot with that name); each can be renamed or deleted.
+- Each pot has a currency and a usual amount, set aside again each cycle. A pot made mid-cycle has an amount this cycle (the usual amount starts the same); it is set aside at once, and changing it changes today's allowance at once.
+- A pot can be archived ("Stop using this pot"): what is left in it goes back to free money at once, its spends stay in it, and it is no longer offered on the spend sheet or set aside on salary day. It can be used again. A pot can be deleted only while it has no spends and no past cycles; otherwise it is stopped.
 - **Spend entry defaults to free money**; one tap switches a spend to a pot. That choice is what makes a spend essential.
-- **Pot used up:** further spends in it come from free money and lower the allowance; the pot shows "Used up" and how far over.
+- **Pot used up:** further spends in it come from free money and lower the allowance; the pot shows "Used up" and how far over. A pot spend today shows against today's allowance only for the part past the empty pot.
 - **Pot not used up at cycle end:** the rest joins the leftover.
 - Pots have **no daily amount**. Each shows the amount left and its own verdict (section 7).
 
@@ -244,7 +245,7 @@ A bottom sheet: date chip (Today, changeable within the current cycle); amount o
 This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; an **Every cycle** link; **Salary arrived**.
 
 - **Commitment** (new or edit): name, currency and amount, due date, "Every cycle" switch; card bills and plan payments show what they are linked to. Payments list, still to pay, **Pay** (amount, currency, date; a note when paid more, less or in the other currency), **Mark finished**, Delete.
-- **Pot** (new or edit): name, currency and amount this cycle, usual amount; spends from the pot; Stop using this pot.
+- **Pot** (new or edit): name, currency and amount this cycle, usual amount, the new allowance shown; amount left with its bar and the spends from the pot; Stop using this pot (or Use this pot again); Delete while it has no spends. Pots not in use are listed under Plan's pots.
 - **Every cycle**: usual commitments with amount and day, each with an on/off (paused) switch; usual pots.
 
 ### Money
