@@ -7,6 +7,7 @@ import { dayChoices } from "./day-choices";
 import { firstUse } from "./first-use";
 import { payments } from "./payments";
 import { pots } from "./pots";
+import { savings } from "./savings";
 import { spends } from "./spends";
 import { type SignedIn, userCheck } from "./user-check";
 
@@ -24,7 +25,8 @@ const signedIn = new Hono<SignedIn>()
   .route("/", commitments)
   .route("/", payments)
   .route("/", pots)
-  .route("/", dayChoices);
+  .route("/", dayChoices)
+  .route("/", savings);
 
 const app = new Hono<{ Bindings: Bindings }>()
   .basePath("/api")

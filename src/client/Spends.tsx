@@ -1,4 +1,4 @@
-import { formatMoney } from "../money";
+import { formatMoney, savingsTotal } from "../money";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
 
 /** The pot a spend came from, by name; none for free money. */
@@ -23,9 +23,10 @@ export function SpendRow({ spend, pot, onOpen }: { spend: Spend; pot?: string; o
   );
 }
 
-/** Money (spec 10). Only the Spends row so far; Savings, cards and the rest come with later items. */
+/** Money (spec 10): Spends, Savings, Add income. Change dollars, cards, plans and people come with later items. */
 export function Money({ data }: { data: Ready }) {
   const n = data.spends.length;
+  const cur = data.settings.spendingCurrency;
   return (
     <>
       <h1>Money</h1>
@@ -33,6 +34,16 @@ export function Money({ data }: { data: Ready }) {
         <a className="li tap link" href="#Spends">
           <span className="grow">Spends</span>
           <span className="small mute">{n} this cycle ›</span>
+        </a>
+        <a className="li tap link" href="#Savings">
+          <span className="grow">Savings</span>
+          <span className="small mute" data-testid="money-savings">
+            {formatMoney(savingsTotal(data.savings, cur), cur)} ›
+          </span>
+        </a>
+        <a className="li tap link" href="#AddIncome">
+          <span className="grow">Add income</span>
+          <span className="small mute">›</span>
         </a>
       </section>
     </>

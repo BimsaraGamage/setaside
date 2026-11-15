@@ -7,6 +7,7 @@ import { PayPage } from "./Pay";
 import { CommitmentPage, Plan } from "./Plan";
 import { PotPage } from "./Pots";
 import { potActions } from "./pot-actions";
+import { AddIncomePage, SavingsMovePage, SavingsPage, savingsActions } from "./Savings";
 import { Settings } from "./Settings";
 import { SignIn } from "./SignIn";
 import { SpendSheet } from "./SpendSheet";
@@ -18,7 +19,16 @@ import { dayChoiceActions } from "./Underspend";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
-const pages = { Spends: "Money", Commitment: "Plan", Pay: "Plan", Payment: "Plan", Pot: "Plan" } as const;
+const pages = {
+  Spends: "Money",
+  Savings: "Money",
+  SavingsMove: "Money",
+  AddIncome: "Money",
+  Commitment: "Plan",
+  Pay: "Plan",
+  Payment: "Plan",
+  Pot: "Plan",
+} as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
 /** "#Commitment/<id>" → the Commitment page for that id; "#Pot/new/<name>" → a new pot named so; unknown → Today. */
@@ -44,6 +54,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const commitments = commitmentActions(toaster);
   const pots = potActions(toaster);
   const dayChoices = dayChoiceActions(toaster);
+  const savings = savingsActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -137,6 +148,16 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
           ))}
         {tab === "Money" && <Money data={ready} />}
         {tab === "Spends" && <SpendsPage data={ready} onOpen={edit} />}
+        {tab === "Savings" && <SavingsPage data={ready} />}
+        {tab === "SavingsMove" && (
+          <SavingsMovePage
+            key={id}
+            data={ready}
+            kind={id === "take_out" ? "take_out" : "put_in"}
+            actions={savings}
+          />
+        )}
+        {tab === "AddIncome" && <AddIncomePage data={ready} actions={savings} />}
         {tab === "Settings" && (
           <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
         )}

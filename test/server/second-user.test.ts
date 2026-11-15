@@ -121,6 +121,21 @@ const probes: Record<string, Probe> = {
     path: "/api/day-choices",
     init: { body: JSON.stringify({ id: firstRow(o, "day_choice"), dayOn: "2026-11-13", choice: "today" }) },
   }),
+  // Aimed at the first user's savings movement and income: must not take over or delete them.
+  "POST /api/savings-movements": (o) => ({
+    path: "/api/savings-movements",
+    init: { body: JSON.stringify({ id: firstRow(o, "savings_movement"), kind: "put_in", amountMinor: 1 }) },
+  }),
+  "DELETE /api/savings-movements/:id": (o) => ({
+    path: `/api/savings-movements/${firstRow(o, "savings_movement")}`,
+  }),
+  "POST /api/incomes": (o) => ({
+    path: "/api/incomes",
+    init: {
+      body: JSON.stringify({ id: firstRow(o, "income"), kind: "extra", amountMinor: 2, toSavingsMinor: 1 }),
+    },
+  }),
+  "DELETE /api/incomes/:id": (o) => ({ path: `/api/incomes/${firstRow(o, "income")}` }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -138,6 +153,8 @@ async function seedOwnerData(ownerId: string) {
   const pt = crypto.randomUUID();
   const pa = crypto.randomUUID();
   const dc = crypto.randomUUID();
+  const sm = crypto.randomUUID();
+  const ex = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -167,6 +184,12 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into day_choice (id, user_id, cycle_id, day_on, choice, created_at, updated_at) values (?, ?, ?, '2026-11-13', 'spread', ?, ?)",
     ).bind(dc, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into savings_movement (id, user_id, cycle_id, currency, amount_minor, kind, moved_on, created_at, updated_at) values (?, ?, ?, 'LKR', 500000, 'put_in', '2026-11-12', ?, ?)",
+    ).bind(sm, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into income (id, user_id, cycle_id, kind, currency, amount_minor, received_on, to_savings_minor, created_at, updated_at) values (?, ?, ?, 'extra', 'LKR', 2000000, '2026-11-12', 500000, ?, ?)",
+    ).bind(ex, ownerId, c, now, now),
   ]);
 }
 

@@ -2,6 +2,7 @@ import { isCurrency, type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
 import { addDays, type Day, daysBetween, isDay, isTimeZone } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
+import type { TakeOutEntry } from "./savings";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
 import type { SpendEntry } from "./spend";
 
@@ -14,6 +15,8 @@ export interface IncomeEntry {
   amountMinor: Minor;
   /** Part sent to savings; the rest is free money. */
   toSavingsMinor: Minor;
+  /** Counts in free money from this day on; none: from the cycle's start. */
+  receivedOn?: Day;
 }
 
 /** The stored entries of the current cycle that the numbers are worked out from. */
@@ -32,6 +35,8 @@ export interface CycleEntries {
   lastSpeed?: Speed | null;
   /** The stored underspend answers of this cycle (spec 7); the allowance depends on them. */
   dayChoices?: DayChoiceEntry[];
+  /** Money taken out of savings into free money in this cycle (spec 5). */
+  takenOut?: TakeOutEntry[];
 }
 
 /** The morning underspend answer (spec 7): Spread over the days left, or Add to today. */
@@ -58,11 +63,13 @@ export function daysLeft(today: Day, expectedSalaryOn: Day): number {
  * always count at once, payments and pot amounts too (spec 7: changes that are
  * not spends recalculate today). A spend in a pot comes out of the pot; only
  * the part past an empty pot comes out of free money (spec 4).
+ * Income and money taken out of savings count from the day they came (spec 5):
+ * with `startOf`, those dated after it are left out.
  * The counting rate joins in a later item.
  */
 export function freeMoney(
   entries: Pick<CycleEntries, "spendingCurrency" | "incomes"> &
-    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn" | "pots">>,
+    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn" | "pots" | "takenOut">>,
   startOf?: Day,
 ): Minor {
   const cur = entries.spendingCurrency;
@@ -73,14 +80,33 @@ export function freeMoney(
     total -= commitmentsOutMinor(entries.commitments, entries.expectedSalaryOn, cur);
   }
   for (const i of entries.incomes) {
-    if (i.currency !== cur) continue;
+    if (i.currency !== cur || !countsBy(i.receivedOn, startOf)) continue;
     total += i.amountMinor - i.toSavingsMinor;
+  }
+  for (const t of entries.takenOut ?? []) {
+    if (t.currency === cur && countsBy(t.movedOn, startOf)) total += t.amountMinor;
   }
   for (const s of spends) {
     if (s.currency !== cur || inAPot(s, pots)) continue;
     if (startOf !== undefined && s.spentOn >= startOf) continue;
     total -= s.amountMinor;
   }
+  return total;
+}
+
+/** Money dated `on` counts at the start of `startOf` when it came that day or before. */
+function countsBy(on: Day | undefined, startOf: Day | undefined): boolean {
+  return startOf === undefined || on === undefined || on <= startOf;
+}
+
+/** Income and money taken out of savings that came to free money on that very day. */
+function cameOn(entries: CycleEntries, day: Day): Minor {
+  const cur = entries.spendingCurrency;
+  let total = 0;
+  for (const i of entries.incomes) {
+    if (i.currency === cur && i.receivedOn === day) total += i.amountMinor - i.toSavingsMinor;
+  }
+  for (const t of entries.takenOut ?? []) if (t.currency === cur && t.movedOn === day) total += t.amountMinor;
   return total;
 }
 
@@ -155,7 +181,9 @@ export function allowanceToday(
       unspentDays = 0;
     }
     const next = freeMoney(entries, addDays(d, 1));
-    unspent += Math.max(0, allowance - (start - next));
+    // What was spent that day: money that came the next morning is not unspent money.
+    const spent = start - (next - cameOn(entries, addDays(d, 1)));
+    unspent += Math.max(0, allowance - spent);
     unspentDays += 1;
     start = next;
   }

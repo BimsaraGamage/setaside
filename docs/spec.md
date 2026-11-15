@@ -104,14 +104,16 @@ A **pot** is an essential expense with no single due date, spent bit by bit (gro
 
 ## 5. Savings, extra income and prepayments
 
-**Savings set-aside.** Taken out on salary day like a commitment, filled in like a recurring one, done when marked as moved.
+**Savings set-aside.** Taken out on salary day like a commitment, filled in like a recurring one, done when marked as moved. It is a commitment of kind **Savings** (the commitment page has Bill · Savings): set aside like a bill, and instead of Pay it has **Move** (amount, date, "This finishes it"; parts allowed). What is moved joins savings; a bill can be switched to Savings and back.
 
 **Savings totals.** One running total per currency (salary and spending currency), plus a combined total in the spending currency at the counting rate. Savings grow from set-asides, saved leftover, saved extra income and rate gains. Money can be:
 
-- **taken out** into free money (the new allowance is shown before saving);
-- **put in** directly.
+- **taken out** into free money (the new allowance is shown before saving), never more than the savings total in that currency;
+- **put in** directly: money from outside the app, so free money stays the same.
 
-**Extra income** (bonus, refund) is entered in its own currency and split by the user: how much to savings, how much to free money. Today's allowance rises with the free part at once. The Add income screen also records loan money received as cash, money borrowed from a person and money paid back to the user (section 9), each split the same way.
+Take out and Put in are dated today, in the current cycle, with a toast and **Undo**. Savings shows every movement, newest first: Put in, Taken out, From extra income, Set aside (with the commitment's name).
+
+**Extra income** (bonus, refund) is entered in its own currency and split by the user: how much to savings (from zero up to the amount), how much to free money. It is dated today, with a toast and **Undo**. Today's allowance rises with the free part at once. The Add income screen also records loan money received as cash, money borrowed from a person and money paid back to the user (section 9), each split the same way.
 
 **Prepayment from savings.** Example: a year of gym, 60,000, paid from savings for the discount. The savings total drops by 60,000; each cycle a "gym, 5,000" payback commitment is set aside and goes back into savings, so free money feels the same as paying monthly. Started from Take out of savings ("For a prepayment? Yes, pay back"). Savings shows each prepayment's payback progress.
 
@@ -147,6 +149,7 @@ After starting, an **Undo salary day** button shows on Plan (and in the toast ri
 - **Today's allowance** = free money at the start of the day ÷ days left, **rounded down** to a whole unit of the spending currency.
 - **Fixed for the day.** Spends during the day do not change it; they show against it ("Spent Rs 1,850 · Rs 3,500 left today", or "Over by Rs 1,000"). The following days are recalculated from what is left, so an overspend lowers them.
 - **Changes that are not spends** recalculate today's allowance at once: extra income, a commitment added, edited or paid more or less than planned, money taken out of savings, a new counting rate, a rate gain or loss.
+- **Income and money taken out of savings count from the day they came**: the days before it are not recalculated with it, so it is never "not spent" money of an earlier day (section 7, Underspend).
 - **Free money at zero or below:** today shows 0 and "Over by X" takes the place of the verdict.
 
 ### Underspend

@@ -34,6 +34,21 @@ export interface Current {
   lastCycle: { speed: Speed; pots: Record<string, Speed> } | null;
   /** This cycle's underspend answers (item 9). */
   dayChoices: DayChoiceEntry[];
+  /** Every movement into and out of savings, all cycles, newest first (item 10). */
+  savings: SavingsLine[];
+}
+
+export interface SavingsLine {
+  id: string;
+  /** Put in, Take out, extra income to savings, a savings set-aside moved. */
+  kind: "put_in" | "take_out" | "income" | "set_aside";
+  cycleId: string;
+  currency: string;
+  /** Below zero: money out of savings. */
+  amountMinor: number;
+  on: string;
+  /** The savings commitment's name, for a set-aside moved. */
+  name: string | null;
 }
 
 export interface Pot {
@@ -50,6 +65,7 @@ export interface Pot {
 export interface Commitment {
   id: string;
   name: string;
+  /** "bill" or "savings" (a savings set-aside, item 10); other kinds come with later items. */
   kind: string;
   currency: string;
   plannedMinor: number;
@@ -96,7 +112,15 @@ export function entriesOf(data: Ready) {
     spends: data.spends,
     commitments: data.commitments,
     pots: data.pots.map(potEntry),
+    takenOut: takenOut(data),
   };
+}
+
+/** This cycle's take-outs from savings, as the money rules need them (they are free money). */
+export function takenOut(data: Pick<Ready, "savings" | "cycle">) {
+  return data.savings
+    .filter((l) => l.kind === "take_out" && l.cycleId === data.cycle.id)
+    .map((l) => ({ currency: l.currency, amountMinor: -l.amountMinor, movedOn: l.on }));
 }
 
 /** A pot as the money rules need it. */
