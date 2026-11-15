@@ -1,0 +1,1 @@
+ALTER TABLE `cycle_close` ADD `undo` text;

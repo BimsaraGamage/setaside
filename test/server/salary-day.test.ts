@@ -573,3 +573,191 @@ describe("another user's ids (spec 13)", () => {
     expect(await currentOf(owner.cookie)).toEqual(before);
   });
 });
+
+describe("undo salary day (item 13, spec 2)", () => {
+  /** Every row salary day can touch outside the new cycle, to compare before and after. */
+  const outside = async (userId: string) => {
+    const all = async (sql: string) => (await env.DB.prepare(sql).bind(userId).all()).results;
+    return {
+      cycles: await all("select * from cycle where user_id = ? order by id"),
+      commitments: await all("select * from commitment where user_id = ? order by id"),
+      payments: await all("select * from commitment_payment where user_id = ? order by id"),
+      templates: await all("select * from recurring_commitment where user_id = ? order by id"),
+      pots: await all("select * from pot where user_id = ? order by id"),
+      allocations: await all("select * from pot_allocation where user_id = ? order by id"),
+      incomes: await all("select * from income where user_id = ? order by id"),
+      closes: await all("select * from cycle_close where user_id = ? order by id"),
+    };
+  };
+
+  const template = async (userId: string, name: string, usualDay: number) => {
+    const t = id();
+    const at = Date.now() - 60_000;
+    await env.DB.prepare(
+      "insert into recurring_commitment (id, user_id, name, kind, currency, usual_amount_minor, usual_day, active, created_at, updated_at) values (?, ?, ?, 'bill', 'LKR', 100000, ?, 1, ?, ?)",
+    )
+      .bind(t, userId, name, usualDay, at, at)
+      .run();
+    return t;
+  };
+
+  /**
+   * A salary day that does everything: Paid it, Carry and Drop; a coming-up one
+   * carried on; a template changed, one made, one switched off; an old pot and a new one.
+   */
+  async function bigSalaryDay() {
+    const u = await setUp();
+    const add = (k: string, name: string, plannedMinor: number, dueOn: string) =>
+      send("POST", "/api/commitments", { id: k, name, plannedMinor, dueOn }, u.cookie);
+    const [rent, gym, phone, later] = [id(), id(), id(), id()];
+    await add(rent, "Rent", 3_000_000, addDays(today(), -5));
+    await add(gym, "Gym", 500_000, today());
+    await add(phone, "Phone", 200_000, addDays(today(), -1));
+    await add(later, "Insurance", 400_000, addDays(u.expectedSalaryOn, 2));
+    const groceries = id();
+    await send(
+      "POST",
+      "/api/pots",
+      { id: groceries, allocationId: id(), name: "Groceries", usualAmountMinor: 1, amountMinor: 1_000_000 },
+      u.cookie,
+    );
+    const water = await template(u.id, "Water", 10);
+    const club = await template(u.id, "Club", 12);
+    const before = await outside(u.id);
+    const b = salaryDay({
+      commitments: [
+        // Changed: its amount and day become the last ones.
+        {
+          id: id(),
+          name: "Water",
+          plannedMinor: 150_000,
+          dueOn: addDays(today(), 3),
+          recurringId: water,
+          everyCycle: true,
+        },
+        // Switched off: its template is deleted.
+        { id: id(), name: "Club", plannedMinor: 100_000, dueOn: addDays(today(), 4), recurringId: club },
+        // New, with Every cycle: a template is made.
+        {
+          id: id(),
+          name: "Gas",
+          plannedMinor: 90_000,
+          dueOn: addDays(today(), 5),
+          recurringId: id(),
+          everyCycle: true,
+        },
+        {
+          id: id(),
+          name: "Insurance",
+          plannedMinor: 400_000,
+          dueOn: addDays(u.expectedSalaryOn, 2),
+          carriedFromId: later,
+        },
+      ],
+      pots: [
+        { id: groceries, allocationId: id(), amountMinor: 2_000_000 },
+        { id: id(), allocationId: id(), amountMinor: 500_000, name: "Fuel", usualAmountMinor: 500_000 },
+      ],
+      close: close({
+        unpaid: [
+          { id: rent, choice: "carry", newId: id() },
+          { id: gym, choice: "drop" },
+          { id: phone, choice: "paid", newId: id() },
+        ],
+        toSavingsMinor: 100_000,
+      }),
+    });
+    expect((await send("POST", "/api/salary-day", b, u.cookie)).status).toBe(201);
+    return { ...u, b, before };
+  }
+
+  const undo = (cycleId: string, cookie: string) => send("POST", "/api/salary-day/undo", { cycleId }, cookie);
+  const undoOffered = async (cookie: string) =>
+    (await (await call("/api/current", {}, cookie)).json<{ undoSalaryDay: boolean }>()).undoSalaryDay;
+
+  it("puts everything back as it was before salary day: the old cycle is current again", async () => {
+    const { cookie, id: userId, b, before, cycleId } = await bigSalaryDay();
+    expect(await undoOffered(cookie)).toBe(true);
+    const res = await undo(b.cycleId, cookie);
+    expect(res.status).toBe(200);
+    // A reopened commitment's updated_at moves with the change; the rest is the same row for row.
+    const strip = (rows: Record<string, unknown>[]) => rows.map(({ updated_at: _, ...r }) => r);
+    const after = await outside(userId);
+    expect(after.cycles).toEqual(before.cycles);
+    expect(strip(after.commitments)).toEqual(strip(before.commitments));
+    expect(after.payments).toEqual(before.payments);
+    expect(after.templates).toEqual(before.templates);
+    expect(after.pots).toEqual(before.pots);
+    expect(after.allocations).toEqual(before.allocations);
+    expect(after.incomes).toEqual(before.incomes);
+    expect(after.closes).toEqual([]);
+    expect((await currentOf(cookie)).cycle.id).toBe(cycleId);
+    // The first cycle was not started by salary day: nothing to undo.
+    expect(await undoOffered(cookie)).toBe(false);
+  });
+
+  it("is refused once anything new is entered in the new cycle", async () => {
+    const { cookie, b } = await bigSalaryDay();
+    await send("POST", "/api/spends", { id: id(), spentOn: today(), amountMinor: 100 }, cookie);
+    expect(await undoOffered(cookie)).toBe(false);
+    const res = await undo(b.cycleId, cookie);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: "too_late" });
+    expect((await currentOf(cookie)).cycle.id).toBe(b.cycleId);
+  });
+
+  it("is refused once a commitment salary day made is changed", async () => {
+    const { cookie, b } = await bigSalaryDay();
+    const k = (b.commitments as unknown as { id: string }[])[0]?.id ?? "";
+    expect((await send("PATCH", `/api/commitments/${k}`, { plannedMinor: 1 }, cookie)).status).toBe(200);
+    expect((await undo(b.cycleId, cookie)).status).toBe(409);
+  });
+
+  it("stays allowed after the salary amount or the expected salary day is changed", async () => {
+    const { cookie, b } = await bigSalaryDay();
+    expect((await send("PATCH", "/api/salary", { salaryMinor: 26_000_000 }, cookie)).status).toBe(200);
+    const day = await send("PATCH", "/api/cycle", { expectedSalaryOn: addDays(today(), 20) }, cookie);
+    expect(day.status).toBe(200);
+    expect(await undoOffered(cookie)).toBe(true);
+    expect((await undo(b.cycleId, cookie)).status).toBe(200);
+  });
+
+  it("undoes only the cycle it names: a second tap does not undo the one before", async () => {
+    const { cookie, b } = await bigSalaryDay();
+    expect((await undo(b.cycleId, cookie)).status).toBe(200);
+    expect((await undo(b.cycleId, cookie)).status).toBe(404);
+  });
+});
+
+describe("the salary amount stays editable in the current cycle (item 13, spec 2)", () => {
+  it("changes the current cycle's salary; refuses zero", async () => {
+    const { cookie } = await setUp();
+    expect((await send("POST", "/api/salary-day", salaryDay(), cookie)).status).toBe(201);
+    expect((await send("PATCH", "/api/salary", { salaryMinor: 0 }, cookie)).status).toBe(400);
+    expect((await send("PATCH", "/api/salary", { salaryMinor: 26_000_000 }, cookie)).status).toBe(200);
+    const cur = await currentOf(cookie);
+    expect(cur.incomes.find((i) => i.kind === "salary")?.amountMinor).toBe(26_000_000);
+  });
+
+  it("the first cycle has opening money, not a salary", async () => {
+    const { cookie } = await setUp();
+    const res = await send("PATCH", "/api/salary", { salaryMinor: 1 }, cookie);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "no_salary" });
+  });
+});
+
+describe("salary late: a new expected salary day (item 13, spec 2)", () => {
+  it("takes a day after today and re-counts from it; refuses today or earlier", async () => {
+    const { cookie, cycleId } = await setUp();
+    // The expected salary day came yesterday with no salary: late.
+    await env.DB.prepare("update cycle set expected_salary_on = ? where id = ?")
+      .bind(addDays(today(), -1), cycleId)
+      .run();
+    const set = (expectedSalaryOn: string) => send("PATCH", "/api/cycle", { expectedSalaryOn }, cookie);
+    expect((await set(today())).status).toBe(400);
+    expect((await set(addDays(today(), -3))).status).toBe(400);
+    expect((await set(addDays(today(), 3))).status).toBe(200);
+    expect((await currentOf(cookie)).cycle.expectedSalaryOn).toBe(addDays(today(), 3));
+  });
+});

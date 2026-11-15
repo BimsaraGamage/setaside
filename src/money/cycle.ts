@@ -51,7 +51,8 @@ export interface DayChoiceEntry {
 
 /**
  * Days left (spec 7): today included, up to the day before the expected salary day.
- * 0 on and after the expected salary day (the late-salary message is item 13).
+ * 0 on and after the expected salary day: the salary is late, and all free money
+ * is today's until a new expected day is given (item 13, `isSalaryLate`).
  */
 export function daysLeft(today: Day, expectedSalaryOn: Day): number {
   return Math.max(0, daysBetween(today, expectedSalaryOn));

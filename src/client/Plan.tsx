@@ -15,6 +15,7 @@ import { newId } from "./id";
 import { plannedGap } from "./Pay";
 import { PlanPots } from "./Pots";
 import { toText } from "./SpendSheet";
+import { type CycleActions, ThisCycleCard } from "./ThisCycle";
 
 /** A savings set-aside (item 10): its money is moved to savings, not paid. */
 export const isSavings = (c: Pick<Commitment, "kind">) => c.kind === "savings";
@@ -30,8 +31,12 @@ export function paidNote(c: Commitment): string | undefined {
   return `Paid ${of}`;
 }
 
-/** Plan (spec 10): this cycle's commitments and + Add, pots and + New pot, the Every cycle link, Salary arrived. */
-export function Plan({ data }: { data: Ready }) {
+/**
+ * Plan (spec 10): this cycle's commitments and + Add, pots and + New pot, the Every
+ * cycle link, Salary arrived; the salary, expected day and Undo salary day (item 13).
+ */
+export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) {
+  const today = useToday(data.settings.homeTimeZone);
   const cur = data.settings.spendingCurrency;
   const open = data.commitments.filter((c) => c.state === "open");
   const now = open.filter((c) => inThisCycle(c.dueOn, data.cycle.expectedSalaryOn));
@@ -88,6 +93,7 @@ export function Plan({ data }: { data: Ready }) {
         </section>
       )}
       <PlanPots data={data} />
+      <ThisCycleCard data={data} today={today} actions={actions} />
       <div className="row">
         <a className="btn link grow" href="#EveryCycle">
           Every cycle

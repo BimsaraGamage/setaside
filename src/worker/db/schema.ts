@@ -361,6 +361,24 @@ export const recurringCommitment = sqliteTable(
   (t) => [index("recurring_commitment_user_id_idx").on(t.userId)],
 );
 
+/** A `recurring_commitment` row as it was before salary day changed or deleted it. */
+export type RecurringBefore = typeof recurringCommitment.$inferSelect;
+
+/**
+ * Undo salary day's record (item 13, spec 2). Everything salary day made inside
+ * the new cycle goes with it (rows cascade from `cycle`); this keeps the rest.
+ */
+export interface SalaryDayUndo {
+  /** Templates salary day made (`before` null), changed or deleted, as they were. */
+  templates: { id: string; before: RecurringBefore | null }[];
+  /** Pots made on salary day: deleted on undo (they have no other cycle). */
+  potsMade: string[];
+  /** Last cycle's commitments salary day closed or carried on, with their state before. */
+  reopened: { id: string; state: "open" | "finished" | "carried" | "dropped" }[];
+  /** Payments Paid it made on last cycle's commitments. */
+  payments: string[];
+}
+
 /**
  * The salary-day choices about the cycle that ended (item 12, spec 6): one per
  * ended cycle and currency. The money itself goes into the new cycle as its
@@ -387,6 +405,11 @@ export const cycleClose = sqliteTable(
     leftoverToSavingsMinor: integer("leftover_to_savings_minor").notNull().default(0),
     /** Only when there was an overspend. */
     overspendChoice: text("overspend_choice", { enum: ["take", "ignore"] }),
+    /**
+     * What Undo salary day puts back (item 13): rows salary day changed outside
+     * the new cycle. Null on cycles started before item 13: those can't be undone.
+     */
+    undo: text("undo", { mode: "json" }).$type<SalaryDayUndo>(),
     ...appTimestamps,
   },
   (t) => [

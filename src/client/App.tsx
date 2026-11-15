@@ -15,6 +15,7 @@ import { SignIn } from "./SignIn";
 import { SpendSheet } from "./SpendSheet";
 import { Money, SpendsPage } from "./Spends";
 import { spendActions } from "./spend-actions";
+import { cycleActions } from "./ThisCycle";
 import { Today } from "./Today";
 import { useToast } from "./toast";
 import { dayChoiceActions } from "./Underspend";
@@ -61,6 +62,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const savings = savingsActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
+  const thisCycle = cycleActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -109,9 +111,15 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
         {tab === "Today" && (
-          <Today data={ready} onAdd={(today) => setSheet({ today })} onEdit={edit} dayChoices={dayChoices} />
+          <Today
+            data={ready}
+            onAdd={(today) => setSheet({ today })}
+            onEdit={edit}
+            dayChoices={dayChoices}
+            cycle={thisCycle}
+          />
         )}
-        {tab === "Plan" && <Plan data={ready} />}
+        {tab === "Plan" && <Plan data={ready} actions={thisCycle} />}
         {tab === "Commitment" &&
           (id && !editing ? (
             <>

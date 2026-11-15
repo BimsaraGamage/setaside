@@ -8,7 +8,7 @@ import {
   stillToPayMinor,
 } from "./commitment";
 import { type TodayView, todayView } from "./cycle";
-import { type Day, isDay } from "./days";
+import { type Day, daysBetween, isDay } from "./days";
 import { checkPot, type PotEntry } from "./pot";
 import type { Speed } from "./speed";
 
@@ -165,11 +165,11 @@ export type SalaryDayProblem = string;
 /** Checks Start new cycle (spec 2, 6). The phone shows the problems; the server refuses them. */
 export function checkSalaryDay(input: SalaryDayInput, ctx: SalaryDayContext): SalaryDayProblem[] {
   const out: SalaryDayProblem[] = [];
-  if (!Number.isSafeInteger(input.salaryMinor) || input.salaryMinor <= 0) out.push("salary");
+  out.push(...checkSalaryAmount(input.salaryMinor));
   const receivedOk =
     isDay(input.receivedOn) && input.receivedOn >= ctx.cycleStartedOn && input.receivedOn <= ctx.today;
   if (!receivedOk) out.push("received_on");
-  if (!isDay(input.expectedSalaryOn) || input.expectedSalaryOn <= ctx.today) out.push("expected_salary_on");
+  out.push(...checkExpectedSalaryDay(input.expectedSalaryOn, ctx.today));
   const startedOn = receivedOk ? input.receivedOn : ctx.today;
   input.commitments.forEach((c, i) => {
     const problems = checkCommitment(
@@ -183,6 +183,29 @@ export function checkSalaryDay(input: SalaryDayInput, ctx: SalaryDayContext): Sa
     for (const q of problems) out.push(`pot.${i}.${q}`);
   });
   return out;
+}
+
+/** The salary amount, on salary day or changed later in the current cycle (spec 2): above zero. */
+export function checkSalaryAmount(salaryMinor: number): "salary"[] {
+  return Number.isSafeInteger(salaryMinor) && salaryMinor > 0 ? [] : ["salary"];
+}
+
+/**
+ * The expected salary day, on salary day or changed later (spec 2): after today,
+ * so today at least is left to count. A late salary's new day is the same check.
+ */
+export function checkExpectedSalaryDay(day: string, today: Day): "expected_salary_on"[] {
+  return isDay(day) && day > today ? [] : ["expected_salary_on"];
+}
+
+/** Salary late (spec 2): the expected salary day has come with no salary entered in this cycle. */
+export function isSalaryLate(today: Day, expectedSalaryOn: Day): boolean {
+  return today >= expectedSalaryOn;
+}
+
+/** How many days late the salary is: 0 on the expected day itself. */
+export function lateSalaryDays(today: Day, expectedSalaryOn: Day): number {
+  return Math.max(0, daysBetween(expectedSalaryOn, today));
 }
 
 export interface SalaryDayView {

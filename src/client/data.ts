@@ -38,6 +38,8 @@ export interface Current {
   savings: SavingsLine[];
   /** The "Every cycle" templates, paused ones too (item 11). */
   recurring: Recurring[];
+  /** Undo salary day is allowed: nothing new entered since salary day started this cycle (item 13). */
+  undoSalaryDay: boolean;
 }
 
 export interface Recurring {

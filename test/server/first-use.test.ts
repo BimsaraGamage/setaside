@@ -49,6 +49,7 @@ describe("first use (item 3, spec 2)", () => {
       dayChoices: [],
       savings: [],
       recurring: [],
+      undoSalaryDay: false,
     });
   });
 
@@ -79,6 +80,7 @@ describe("first use (item 3, spec 2)", () => {
       dayChoices: [],
       savings: [],
       recurring: [],
+      undoSalaryDay: false,
     });
   });
 
