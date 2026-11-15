@@ -173,6 +173,8 @@ describe("Today's numbers (spec 7, 10)", () => {
       speedPerDayMinor: null,
       speedFromLastCycle: false,
       verdict: { kind: "early" },
+      // Nothing to ask on a cycle's first day (item 9).
+      underspend: null,
       currency: "LKR",
     });
   });

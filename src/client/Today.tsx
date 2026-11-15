@@ -3,6 +3,7 @@ import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, use
 import { paidNote } from "./Plan";
 import { PotRow } from "./Pots";
 import { potName, SpendRow } from "./Spends";
+import { type DayChoiceActions, UnderspendCard } from "./Underspend";
 import { VerdictChip } from "./Verdict";
 
 /** "Speed Rs 2,300 a day · Tomorrow Rs 4,800" (spec 10); the speed is left out while it is too early to tell. */
@@ -50,17 +51,20 @@ function NextUpRow({
 }
 
 /**
- * Today (spec 10): header, main card with the daily allowance, verdict, today's
- * spends and the speed line, Next up, pots with their verdicts, the + button.
+ * Today (spec 10): header, the underspend card, main card with the daily
+ * allowance, verdict, today's spends and the speed line, Next up, pots with
+ * their verdicts, the + button.
  */
 export function Today({
   data,
   onAdd,
   onEdit,
+  dayChoices,
 }: {
   data: Ready;
   onAdd: (today: string) => void;
   onEdit: (spend: Spend, today: string) => void;
+  dayChoices: DayChoiceActions;
 }) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
@@ -81,6 +85,15 @@ export function Today({
           </p>
         </div>
       </header>
+
+      {view.underspend && (
+        <UnderspendCard
+          question={view.underspend}
+          currency={view.currency}
+          today={today}
+          actions={dayChoices}
+        />
+      )}
 
       <section className="card main" aria-labelledby="today-h">
         <h3 id="today-h">You can spend today</h3>

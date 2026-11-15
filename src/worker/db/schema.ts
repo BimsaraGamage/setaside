@@ -283,3 +283,25 @@ export const potAllocation = sqliteTable(
     uniqueIndex("pot_allocation_pot_cycle_idx").on(t.potId, t.cycleId),
   ],
 );
+
+/**
+ * The morning underspend answer (item 9, spec 7): one per user and day. Stored
+ * because today's allowance depends on it; in the cycle it was given in.
+ */
+export const dayChoice = sqliteTable(
+  "day_choice",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    dayOn: text("day_on").notNull(),
+    choice: text("choice", { enum: ["spread", "today"] }).notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    uniqueIndex("day_choice_user_day_idx").on(t.userId, t.dayOn),
+    index("day_choice_cycle_id_idx").on(t.cycleId),
+  ],
+);

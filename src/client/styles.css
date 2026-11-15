@@ -432,3 +432,9 @@ a.btn.add {
 .verdict.bad {
   color: var(--bad);
 }
+
+/* Underspend card (item 9). */
+.answers .btn {
+  flex: 1 1 0;
+  padding: 0.5rem 0.75rem;
+}

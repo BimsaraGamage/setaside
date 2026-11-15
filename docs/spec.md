@@ -153,6 +153,12 @@ After starting, an **Undo salary day** button shows on Plan (and in the toast ri
 
 The first time the app is opened on a new day, if yesterday's allowance was not all spent, a card asks: **Spread over the days left** · **Add to today**. Days the app was not opened are added together into one question. It does not ask on the last day of the cycle. The answer is stored (the numbers depend on it).
 
+- **Unspent** = a day's allowance less its spends out of free money, never below zero (an overspent day already lowered the days after it). It is added up over every day since the last answer (or the cycle's first day), so a question left unanswered rolls into the next one. Not asked on a cycle's first day.
+- **Spread over the days left** keeps today's allowance as it is: the unspent money is already in free money, spread by the usual sum.
+- **Add to today**: today's allowance = the unspent money + (free money at the start of today − the unspent money) ÷ days left, rounded down. Fixed for the day like any allowance.
+- The answer is given once, for today only, and has no Undo. It changes neither free money nor tomorrow's amount.
+- The verdict's 90% compares the speed with the **spread** allowance, so adding to today never makes the verdict look better.
+
 ### Spending speed
 
 - Average per day since salary day: spends that came out of free money (cash, card, and pot spends past an empty pot) ÷ finished days. Today's spends count from the next morning.
@@ -231,7 +237,7 @@ Top to bottom:
 - **Header**: app name, cycle dates ("Cycle 31 Oct → salary Mon 30 Nov"), **Salary arrived** button.
 - **Offline line** when offline or with unsent items (section 11).
 - **Reminders list and turn-on banner** when phone alerts are off (section 12).
-- **Underspend card** when there is a question to answer (section 7).
+- **Underspend card** when there is a question to answer (section 7): "Rs 6,000 not spent yesterday" (or "in the last N days") and the two answers, each with what it makes today's allowance ("Rs 10,666 a day", "Rs 16,000 today").
 - **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount ("Speed Rs 2,300 a day · Tomorrow Rs 4,800"; "(last cycle)" after the speed in a cycle's first 3 days).
 - **Next up · already set aside**: open commitments from today to the expected salary day, each with date, weekday, "in N days", a note (card balance, "7 of 12"), and amount; total at the top; ends with "Salary expected" on its day. This is the timeline; there is no chart.
 - **Pots**: amount left, a bar, each pot's verdict.
