@@ -15,6 +15,9 @@ export interface PrepaymentLine {
   currency: string;
   totalMinor: number;
   paybackMinor: number;
+  /** The normal monthly price and months covered, for the prepayment saving; null when not given. */
+  normalMonthlyMinor: number | null;
+  months: number | null;
   /** Payments on its payback commitments, all cycles. */
   paidBackMinor: number;
   /** The day its money came out of savings. */
@@ -31,6 +34,8 @@ export async function prepaymentLines(c: { var: SignedIn["Variables"] }): Promis
       currency: prepayment.currency,
       totalMinor: prepayment.totalMinor,
       paybackMinor: prepayment.paybackMinor,
+      normalMonthlyMinor: prepayment.normalMonthlyMinor,
+      months: prepayment.months,
       startedOn: savingsMovement.movedOn,
     })
     .from(prepayment)
@@ -56,6 +61,9 @@ const newPrepayment = z.object({
   name: z.string().transform((n) => n.trim()),
   totalMinor: z.number().int(),
   paybackMinor: z.number().int(),
+  /** For the prepayment saving: the normal monthly price and the months covered (both or neither). */
+  normalMonthlyMinor: z.number().int().nullish(),
+  months: z.number().int().nullish(),
 });
 
 /**
@@ -84,6 +92,8 @@ export const prepayments = new Hono<SignedIn>()
           currency,
           totalMinor: b.totalMinor,
           paybackMinor: b.paybackMinor,
+          normalMonthlyMinor: b.normalMonthlyMinor ?? null,
+          months: b.months ?? null,
         }),
         db.insert(savingsMovement).values({
           id: b.movementId,

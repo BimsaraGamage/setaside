@@ -9,6 +9,7 @@ import {
   paybackDrafts,
   paybackDueMinor,
   prepaymentProgress,
+  prepaymentSavingMinor,
   savingsTotal,
 } from "../../src/money";
 
@@ -189,5 +190,34 @@ describe("free money and savings (spec 5)", () => {
         "LKR",
       ),
     ).toBe(2_500_000);
+  });
+});
+
+describe("prepayment saving (spec 5)", () => {
+  const base = { name: "Gym", currency: "LKR", totalMinor: 6_000_000, paybackMinor: 500_000 };
+
+  it("normal monthly price and months are optional; when given, both are whole and above zero", () => {
+    expect(checkPrepayment(base, ctx)).toEqual([]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 600_000, months: 12 }, ctx)).toEqual([]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 0, months: 12 }, ctx)).toEqual(["monthly"]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 600_000, months: 0 }, ctx)).toEqual(["months"]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 600_000, months: 1.5 }, ctx)).toEqual(["months"]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 600_000, months: 601 }, ctx)).toEqual(["months"]);
+    expect(checkPrepayment({ ...base, normalMonthlyMinor: 600_000 }, ctx)).toEqual(["months"]);
+    // Months without a monthly price mean nothing.
+    expect(checkPrepayment({ ...base, months: 12 }, ctx)).toEqual(["monthly"]);
+  });
+
+  it("a year of gym for 60,000, normally 6,000 a month: saved 12,000 vs paying monthly", () => {
+    expect(prepaymentSavingMinor({ totalMinor: 6_000_000, normalMonthlyMinor: 600_000, months: 12 })).toBe(
+      1_200_000,
+    );
+    // Paying up front cost more: below zero.
+    expect(prepaymentSavingMinor({ totalMinor: 6_000_000, normalMonthlyMinor: 400_000, months: 12 })).toBe(
+      -1_200_000,
+    );
+    expect(
+      prepaymentSavingMinor({ totalMinor: 6_000_000, normalMonthlyMinor: null, months: null }),
+    ).toBeNull();
   });
 });

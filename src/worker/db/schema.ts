@@ -353,8 +353,10 @@ export const prepayment = sqliteTable(
     totalMinor: integer("total_minor").notNull(),
     /** The usual payback each cycle; the last one is only what is left. */
     paybackMinor: integer("payback_minor").notNull(),
-    /** For the prepayment saving of instalment plans (item 19); unused here. */
+    /** The normal monthly price, for the prepayment saving (optional). */
     normalMonthlyMinor: integer("normal_monthly_minor"),
+    /** Months the prepayment covers; set with the monthly price. */
+    months: integer("months"),
     ...appTimestamps,
   },
   (t) => [index("prepayment_user_id_idx").on(t.userId)],

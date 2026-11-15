@@ -29,6 +29,14 @@ test("take out for a prepayment, move the payback, salary day sets aside the nex
   await expect(page.getByTestId("payback-cycles")).toHaveText(
     "Paid back in 12 cycles, the first set aside now.",
   );
+  // Normally Rs 1,200 a month: the months start at one per payback (12) and can be changed.
+  await page.getByLabel("Normal monthly price, optional (LKR)").fill("1200");
+  const months = page.getByLabel("How many months it covers");
+  await expect(months).toHaveValue("12");
+  await expect(page.getByTestId("prepayment-saving-new")).toHaveText("Saved Rs 2,400 vs paying monthly");
+  await months.fill("11");
+  await expect(page.getByTestId("prepayment-saving-new")).toHaveText("Saved Rs 1,200 vs paying monthly");
+  await months.fill("12");
   await expect(page.getByTestId("savings-after")).toContainText("Free money stays the same");
   await page.getByRole("button", { name: "Take out" }).click();
   await expect(page.getByRole("status")).toContainText("Gym prepayment saved");
@@ -38,6 +46,7 @@ test("take out for a prepayment, move the payback, salary day sets aside the nex
   const gym = page.getByTestId("prepayment");
   await expect(gym).toContainText("Rs 0 of Rs 12,000");
   await expect(gym).toContainText("Rs 1,000 a cycle · 12 more cycles");
+  await expect(page.getByTestId("prepayment-saving")).toHaveText("Saved Rs 2,400 vs paying monthly");
   await expect(page.getByRole("region", { name: "Movements" }).getByText("Prepayment")).toBeVisible();
 
   // Free money: only this cycle's payback is set aside.

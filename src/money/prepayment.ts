@@ -24,11 +24,26 @@ export interface PrepaymentInput {
   currency: string;
   totalMinor: number;
   paybackMinor: number;
+  /** What it would cost a month without paying up front (optional, for the saving). */
+  normalMonthlyMinor?: number | null;
+  /** How many months the prepayment covers; given with the monthly price. */
+  months?: number | null;
 }
 
-export type PrepaymentProblem = "name" | "currency" | "amount" | "payback" | "too_much";
+export type PrepaymentProblem =
+  | "name"
+  | "currency"
+  | "amount"
+  | "payback"
+  | "too_much"
+  | "monthly"
+  | "months";
+
+/** The most months a prepayment can cover (50 years). */
+export const MONTHS_MAX = 600;
 
 const whole = (n: number) => Number.isSafeInteger(n) && n > 0;
+const given = (n: number | null | undefined): n is number => n !== null && n !== undefined;
 
 /**
  * Checks Take out of savings "for a prepayment" (spec 5): never more than is
@@ -47,7 +62,28 @@ export function checkPrepayment(
   if (!amountOk) out.push("amount");
   if (!whole(input.paybackMinor) || (amountOk && input.paybackMinor > input.totalMinor)) out.push("payback");
   if (amountOk && input.totalMinor > ctx.savingsMinor) out.push("too_much");
+  // The saving needs both: the monthly price and the months it covers.
+  const monthly = input.normalMonthlyMinor;
+  const months = input.months;
+  if (given(monthly) || given(months)) {
+    if (!given(monthly) || !whole(monthly)) out.push("monthly");
+    if (!given(months) || !whole(months) || months > MONTHS_MAX) out.push("months");
+  }
   return out;
+}
+
+/**
+ * The prepayment saving (glossary, spec 5): the normal monthly price × the months
+ * it covers, less what was paid up front. Below zero: paying up front cost more.
+ * Null when no monthly price was given.
+ */
+export function prepaymentSavingMinor(p: {
+  totalMinor: Minor;
+  normalMonthlyMinor: Minor | null;
+  months: number | null;
+}): Minor | null {
+  if (p.normalMonthlyMinor === null || p.months === null) return null;
+  return p.normalMonthlyMinor * p.months - p.totalMinor;
 }
 
 /** How many cycles it takes to pay back `totalMinor` at `paybackMinor` a cycle. */

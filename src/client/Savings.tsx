@@ -4,10 +4,12 @@ import {
   checkPrepayment,
   checkSavingsMove,
   formatMoney,
+  MONTHS_MAX,
   NAME_MAX,
   parseAmount,
   paybackCycles,
   prepaymentProgress,
+  prepaymentSavingMinor,
   savingsTotal,
   todayView,
 } from "../money";
@@ -31,7 +33,16 @@ const addPrepayment = (json: {
   name: string;
   totalMinor: number;
   paybackMinor: number;
+  normalMonthlyMinor: number | null;
+  months: number | null;
 }) => ok(api.api.prepayments.$post({ json }));
+
+/** What a prepayment saved against paying monthly: "Saved Rs 12,000 vs paying monthly". */
+export function savingLabel(savingMinor: number, currency: string): string {
+  return savingMinor >= 0
+    ? `Saved ${formatMoney(savingMinor, currency)} vs paying monthly`
+    : `Cost ${formatMoney(-savingMinor, currency)} more than paying monthly`;
+}
 const removePrepayment = (id: string) => ok(api.api.prepayments[":id"].$delete({ param: { id } }));
 
 /** Put in, Take out and Add income; each success shows a toast with Undo (spec 5). */
@@ -50,16 +61,18 @@ export function savingsActions({ done }: Toaster) {
       );
     },
     /** Take out "for a prepayment" (item 14): out of savings, with this cycle's payback set aside. */
-    prepay: (name: string, totalMinor: number, paybackMinor: number) => {
+    prepay: (p: {
+      name: string;
+      totalMinor: number;
+      paybackMinor: number;
+      normalMonthlyMinor: number | null;
+      months: number | null;
+    }) => {
       const id = newId();
-      return addPrepayment({
-        id,
-        movementId: newId(),
-        commitmentId: newId(),
-        name,
-        totalMinor,
-        paybackMinor,
-      }).then((ok) => done(ok, { text: `${name} prepayment saved`, undo: () => removePrepayment(id) }));
+      const { name } = p;
+      return addPrepayment({ id, movementId: newId(), commitmentId: newId(), ...p }).then((ok) =>
+        done(ok, { text: `${name} prepayment saved`, undo: () => removePrepayment(id) }),
+      );
     },
     addIncome: (amountMinor: number, toSavingsMinor: number) => {
       const id = newId();
@@ -152,6 +165,7 @@ export function SavingsPage({ data }: { data: Ready }) {
           <h3 id="prepay-h">Prepayments</h3>
           {data.prepayments.map((p) => {
             const g = prepaymentProgress(p);
+            const saving = prepaymentSavingMinor(p);
             return (
               <div key={p.id} className="stack" data-testid="prepayment">
                 <div className="li">
@@ -177,6 +191,11 @@ export function SavingsPage({ data }: { data: Ready }) {
                 >
                   <span style={{ width: `${Math.min(1, g.paidBackMinor / p.totalMinor) * 100}%` }} />
                 </span>
+                {saving !== null && (
+                  <p className="tiny mute" data-testid="prepayment-saving">
+                    {savingLabel(saving, p.currency)}
+                  </p>
+                )}
               </div>
             );
           })}
@@ -231,6 +250,9 @@ export function SavingsMovePage({
   const [prepay, setPrepay] = useState(false);
   const [name, setName] = useState("");
   const [paybackText, setPaybackText] = useState("");
+  const [monthlyText, setMonthlyText] = useState("");
+  /** Null until changed: the months shown are the number of paybacks. */
+  const [monthsText, setMonthsText] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const total = savingsTotal(data.savings, cur);
@@ -238,9 +260,19 @@ export function SavingsMovePage({
   const paybackMinor = parseAmount(paybackText, cur) ?? 0;
   const takeOut = kind === "take_out";
   const forPrepayment = takeOut && prepay;
+  const cycles =
+    paybackMinor > 0 && paybackMinor <= amountMinor ? paybackCycles(amountMinor, paybackMinor) : 0;
+  const monthsShown = monthsText ?? (cycles > 0 ? String(cycles) : "");
+  const withMonthly = monthlyText !== "";
+  const normalMonthlyMinor = withMonthly ? (parseAmount(monthlyText, cur) ?? -1) : null;
+  const months = withMonthly ? (/^\d+$/.test(monthsShown) ? Number(monthsShown) : -1) : null;
+  const saving =
+    normalMonthlyMinor !== null && normalMonthlyMinor > 0 && months !== null && months > 0 && amountMinor > 0
+      ? prepaymentSavingMinor({ totalMinor: amountMinor, normalMonthlyMinor, months })
+      : null;
   const problems: string[] = forPrepayment
     ? checkPrepayment(
-        { name, currency: cur, totalMinor: amountMinor, paybackMinor },
+        { name, currency: cur, totalMinor: amountMinor, paybackMinor, normalMonthlyMinor, months },
         { spendingCurrency: cur, savingsMinor: total },
       )
     : checkSavingsMove({ kind, currency: cur, amountMinor, totalMinor: total }, { spendingCurrency: cur });
@@ -268,7 +300,13 @@ export function SavingsMovePage({
     setBusy(true);
     setFailed(false);
     const ok = forPrepayment
-      ? await actions.prepay(name.trim(), amountMinor, paybackMinor)
+      ? await actions.prepay({
+          name: name.trim(),
+          totalMinor: amountMinor,
+          paybackMinor,
+          normalMonthlyMinor,
+          months,
+        })
       : await actions.move(kind, amountMinor, cur);
     setBusy(false);
     if (ok) window.location.hash = "Savings";
@@ -326,6 +364,36 @@ export function SavingsMovePage({
               <p className="small" data-testid="payback-cycles">
                 Paid back in <b>{paybackCycles(amountMinor, paybackMinor)} cycles</b>, the first set aside
                 now.
+              </p>
+            )}
+            <AmountField
+              label="Normal monthly price, optional"
+              text={monthlyText}
+              currency={cur}
+              onChange={setMonthlyText}
+            />
+            {withMonthly && (
+              <label className="field">
+                How many months it covers
+                <input
+                  value={monthsShown}
+                  inputMode="numeric"
+                  placeholder="12"
+                  onChange={(e) => /^\d{0,3}$/.test(e.target.value) && setMonthsText(e.target.value)}
+                />
+                {monthsText === null && cycles > 0 && (
+                  <span className="tiny mute">
+                    One per payback. Change it if it covers more or fewer months.
+                  </span>
+                )}
+              </label>
+            )}
+            {problems.includes("months") && withMonthly && (
+              <p className="small bad">Type the months it covers (1 to {MONTHS_MAX}).</p>
+            )}
+            {saving !== null && (
+              <p className="small" data-testid="prepayment-saving-new">
+                {savingLabel(saving, cur)}
               </p>
             )}
           </>

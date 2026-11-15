@@ -62,6 +62,9 @@ export interface Prepayment {
   totalMinor: number;
   /** The usual payback each cycle. */
   paybackMinor: number;
+  /** The normal monthly price and months covered, for the prepayment saving; null when not given. */
+  normalMonthlyMinor: number | null;
+  months: number | null;
   /** Moved back into savings so far, all cycles. */
   paidBackMinor: number;
   /** The day its money came out of savings. */

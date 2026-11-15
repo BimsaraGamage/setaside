@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f9111eda-61dc-4f1f-8a1c-1023a8b05211",
+  "id": "7fc52ed1-22ed-45ac-b11c-205c4bac403d",
   "prevId": "7f03722f-ab4f-42e2-af53-bc5491286f48",
   "tables": {
     "account": {
@@ -1260,6 +1260,13 @@
         },
         "normal_monthly_minor": {
           "name": "normal_monthly_minor",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "months": {
+          "name": "months",
           "type": "integer",
           "primaryKey": false,
           "notNull": false,

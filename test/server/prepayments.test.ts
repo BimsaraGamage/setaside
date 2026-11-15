@@ -132,11 +132,23 @@ describe("take out of savings for a prepayment (item 14, spec 5)", () => {
         currency: "LKR",
         totalMinor: 6_000_000,
         paybackMinor: 500_000,
+        normalMonthlyMinor: null,
+        months: null,
         paidBackMinor: 0,
         startedOn: today(),
       },
     ]);
     expect(cur.cycle.id).toBe(cycleId);
+  });
+
+  it("keeps the normal monthly price and the months it covers, for the saving", async () => {
+    const { cookie } = await setUp();
+    const b = gym({ normalMonthlyMinor: 600_000, months: 12 });
+    expect((await send("POST", "/api/prepayments", b, cookie)).status).toBe(201);
+    expect((await currentOf(cookie)).prepayments[0]).toMatchObject({
+      normalMonthlyMinor: 600_000,
+      months: 12,
+    });
   });
 
   it("refuses more than is saved, a payback above the whole amount, and no name", async () => {
@@ -149,6 +161,8 @@ describe("take out of savings for a prepayment (item 14, spec 5)", () => {
     expect(await bad({ totalMinor: 10_000_001 })).toEqual(["too_much"]);
     expect(await bad({ paybackMinor: 6_000_001 })).toEqual(["payback"]);
     expect(await bad({ name: "  " })).toEqual(["name"]);
+    expect(await bad({ normalMonthlyMinor: 600_000 })).toEqual(["months"]);
+    expect(await bad({ normalMonthlyMinor: 600_000, months: 601 })).toEqual(["months"]);
     expect((await currentOf(cookie)).prepayments).toEqual([]);
   });
 
