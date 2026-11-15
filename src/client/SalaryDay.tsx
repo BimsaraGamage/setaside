@@ -10,7 +10,6 @@ import {
   formatMoney,
   isComingUp,
   leftoverOf,
-  NAME_MAX,
   type OverspendChoice,
   parseAmount,
   type SalaryDayInput,
@@ -22,6 +21,7 @@ import {
   unpaidAtEnd,
 } from "../money";
 import { api } from "./api";
+import { CommitmentsStep, type PotRow, PotsStep, type Row, typedOk } from "./CycleSteps";
 import { dayLabel, entriesOf, potEntry, type Ready, useToday } from "./data";
 import { newId } from "./id";
 import { toText } from "./SpendSheet";
@@ -41,27 +41,6 @@ export function salaryDayActions({ done }: Toaster) {
 }
 
 export type SalaryDayActions = ReturnType<typeof salaryDayActions>;
-
-/** One row of step 4 while it is being changed. */
-interface Row {
-  id: string;
-  recurringId: string | null;
-  carriedFromId: string | null;
-  name: string;
-  kind: "bill" | "savings";
-  text: string;
-  dueOn: string;
-  everyCycle: boolean;
-}
-
-/** One pot of step 5: a pot in use, or a new one. */
-interface PotRow {
-  id: string;
-  allocationId: string;
-  name: string;
-  text: string;
-  isNew: boolean;
-}
 
 const STEPS = [1, 2, 3, 4, 5, 6, 7] as const;
 type Step = (typeof STEPS)[number];
@@ -111,8 +90,6 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         isNew: false,
       })),
   );
-  const [newPotName, setNewPotName] = useState("");
-  const [newPotText, setNewPotText] = useState("");
   const [expected, setExpected] = useState(() => suggestSalaryDay(today, data.settings.usualPayDay));
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -184,11 +161,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const at = STEPS.indexOf(step);
   const next = () => go(STEPS[at + 1] as Step);
   const back = () => go(STEPS[at - 1] as Step);
-  const change = (i: number, patch: Partial<Row>) =>
-    setRows((rs) => (rs ?? []).map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const changePot = (i: number, text: string) =>
-    setPots((ps) => ps.map((p, j) => (j === i ? { ...p, text } : p)));
-  const typed = (t: string) => t === "" || parseAmount(t.replace(/\.$/, ""), cur) !== null;
+  const typed = (t: string) => typedOk(t, cur);
 
   // The cycle that ends: its speed is the new cycle's in its first days (spec 7).
   const ended = cycleSpeeds(
@@ -413,137 +386,18 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         <>
           <p className="mute">Filled from your Every cycle list. Change any, remove any, or add more.</p>
           {rows.length === 0 && <p className="tiny mute">Nothing to fill in yet.</p>}
-          {rows.map((r, i) => (
-            <fieldset key={r.id} className="card stack" aria-label={`Commitment ${i + 1}`}>
-              {r.carriedFromId && <p className="tiny mute">From last cycle: due after its salary day.</p>}
-              <label className="field">
-                Name
-                <input
-                  value={r.name}
-                  maxLength={NAME_MAX}
-                  onChange={(e) => change(i, { name: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                Amount ({cur})
-                <input
-                  value={r.text}
-                  inputMode="decimal"
-                  placeholder="0"
-                  onChange={(e) => typed(e.target.value) && change(i, { text: e.target.value })}
-                />
-              </label>
-              <label className="field">
-                Due date
-                <input
-                  type="date"
-                  value={r.dueOn}
-                  min={receivedOn}
-                  onChange={(e) => change(i, { dueOn: e.target.value })}
-                />
-                {r.dueOn > expected && (
-                  <span className="tiny mute">After the next salary day: coming up only, not set aside.</span>
-                )}
-              </label>
-              <label className="row check">
-                <input
-                  type="checkbox"
-                  checked={r.everyCycle}
-                  onChange={(e) => change(i, { everyCycle: e.target.checked })}
-                />
-                <span className="grow">
-                  Every cycle
-                  {r.recurringId && !r.everyCycle && (
-                    <span className="tiny mute block">Off: it stops repeating after this cycle.</span>
-                  )}
-                </span>
-              </label>
-              {has(`commitment.${i}.`) && <p className="tiny bad">Check the name, amount and due date.</p>}
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setRows((rs) => (rs ?? []).filter((_, j) => j !== i))}
-              >
-                Remove from this cycle
-              </button>
-            </fieldset>
-          ))}
-          <button
-            type="button"
-            className="btn add"
-            onClick={() =>
-              setRows((rs) => [
-                ...(rs ?? []),
-                {
-                  id: newId(),
-                  recurringId: null,
-                  carriedFromId: null,
-                  name: "",
-                  kind: "bill",
-                  text: "",
-                  dueOn: receivedOn,
-                  everyCycle: false,
-                },
-              ])
-            }
-          >
-            + Add
-          </button>
+          <CommitmentsStep
+            rows={rows}
+            setRows={(f) => setRows((rs) => f(rs ?? []))}
+            cur={cur}
+            startedOn={receivedOn}
+            expected={expected}
+            has={has}
+          />
         </>
       )}
 
-      {step === 5 && (
-        <section className="card stack" aria-label="Pots this cycle">
-          {pots.length === 0 && <p className="tiny mute">No pots yet.</p>}
-          {pots.map((p, i) => (
-            <label key={p.id} className="field">
-              {p.name} ({cur})
-              <input
-                value={p.text}
-                inputMode="decimal"
-                placeholder="0"
-                onChange={(e) => typed(e.target.value) && changePot(i, e.target.value)}
-              />
-              {has(`pot.${i}.`) && <span className="tiny bad">Type a plain amount.</span>}
-            </label>
-          ))}
-          <h3>+ New pot</h3>
-          <label className="field">
-            New pot name
-            <input value={newPotName} maxLength={NAME_MAX} onChange={(e) => setNewPotName(e.target.value)} />
-          </label>
-          <label className="field">
-            New pot amount ({cur})
-            <input
-              value={newPotText}
-              inputMode="decimal"
-              placeholder="0"
-              onChange={(e) => typed(e.target.value) && setNewPotText(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn"
-            disabled={!newPotName.trim() || parseAmount(newPotText, cur) === null}
-            onClick={() => {
-              setPots((ps) => [
-                ...ps,
-                {
-                  id: newId(),
-                  allocationId: newId(),
-                  name: newPotName.trim(),
-                  text: newPotText,
-                  isNew: true,
-                },
-              ]);
-              setNewPotName("");
-              setNewPotText("");
-            }}
-          >
-            Add pot
-          </button>
-        </section>
-      )}
+      {step === 5 && <PotsStep pots={pots} setPots={setPots} cur={cur} has={has} />}
 
       {step === 6 && (
         <section className="card stack">

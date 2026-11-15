@@ -44,6 +44,23 @@ const probes: Record<string, Probe> = {
         usualPayDay: 25,
         heldMinor: 1,
         expectedSalaryOn: "2999-01-01",
+        commitments: [
+          {
+            id: firstRow(o, "commitment"),
+            name: "Rent",
+            plannedMinor: 1,
+            dueOn: "2998-01-01",
+            recurringId: firstRow(o, "recurring_commitment"),
+          },
+        ],
+        pots: [
+          {
+            id: firstRow(o, "pot"),
+            allocationId: firstRow(o, "pot_allocation"),
+            name: "Fuel",
+            amountMinor: 1,
+          },
+        ],
       }),
     },
   }),

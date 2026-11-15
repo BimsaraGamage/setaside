@@ -1,6 +1,6 @@
-import { isCurrency, type Minor, unitMinor } from "./amount";
+import { type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
-import { addDays, type Day, daysBetween, isDay, isTimeZone } from "./days";
+import { addDays, type Day, daysBetween } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
 import type { TakeOutEntry } from "./savings";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
@@ -241,37 +241,4 @@ export function todayView(entries: CycleEntries, today: Day): TodayView {
     underspend: question,
     currency: cur,
   };
-}
-
-export interface FirstUseInput {
-  salaryCurrency: string;
-  spendingCurrency: string;
-  homeTimeZone: string;
-  usualPayDay: number;
-  /** Money held now, in the spending currency (one currency until item 15). */
-  heldMinor: Minor;
-  expectedSalaryOn: Day;
-}
-
-export type FirstUseProblem =
-  | "spending_currency"
-  | "salary_currency"
-  | "home_time_zone"
-  | "usual_pay_day"
-  | "held"
-  | "expected_salary_on";
-
-/** Checks first use (spec 2). The phone shows the problems; the server refuses them. */
-export function checkFirstUse(input: FirstUseInput, today: Day): FirstUseProblem[] {
-  const out: FirstUseProblem[] = [];
-  if (!isCurrency(input.spendingCurrency)) out.push("spending_currency");
-  // One currency until item 15 (two currencies).
-  if (input.salaryCurrency !== input.spendingCurrency) out.push("salary_currency");
-  if (!isTimeZone(input.homeTimeZone)) out.push("home_time_zone");
-  if (!Number.isInteger(input.usualPayDay) || input.usualPayDay < 1 || input.usualPayDay > 31) {
-    out.push("usual_pay_day");
-  }
-  if (!Number.isSafeInteger(input.heldMinor) || input.heldMinor < 0) out.push("held");
-  if (!isDay(input.expectedSalaryOn) || input.expectedSalaryOn <= today) out.push("expected_salary_on");
-  return out;
 }

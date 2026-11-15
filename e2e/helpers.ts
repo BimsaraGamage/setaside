@@ -12,12 +12,17 @@ export async function signInToToday(page: Page) {
  * whole cycle, and finishes first use.
  */
 export async function signInFreshToToday(page: Page) {
+  await signInFresh(page);
+  await firstUseToToday(page);
+}
+
+/** Signs in as a new demo user of its own and stops at first use's welcome. */
+export async function signInFresh(page: Page) {
   await page.goto("/");
   const fresh = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const res = await page.request.post("/api/auth/demo/sign-in", { data: { fresh } });
   expect(res.ok()).toBe(true);
   await page.reload();
-  await firstUseToToday(page);
 }
 
 /** Finishes first use (Rs 90,000 held, pay day 25) when the user is new, then waits for Today. */
@@ -30,7 +35,11 @@ async function firstUseToToday(page: Page) {
     await page.getByLabel("Usual pay day").selectOption("25");
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByLabel("Amount (LKR)").fill("90,000");
-    await page.getByRole("button", { name: "Next" }).click();
+    // Next salary day, then no bills and no pots.
+    for (const heading of ["Next salary day", "Bills still to pay", "Pots"]) {
+      await page.getByRole("button", { name: "Next" }).click();
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByRole("button", { name: "Start" }).click();
   }

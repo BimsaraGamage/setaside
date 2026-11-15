@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkFirstUse, cycleSpeeds, isTimeZone, todayIn } from "../money";
+import { checkFirstUse, cycleSpeeds, isTimeZone, todayIn, usualDayOf } from "../money";
 import {
   commitment,
   commitmentPayment,
@@ -28,6 +29,32 @@ const firstUseBody = z.object({
   usualPayDay: z.number().int(),
   heldMinor: z.number().int(),
   expectedSalaryOn: z.string(),
+  /** Step 4 (ticket 37): the bills still unpaid before the expected salary day. */
+  commitments: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        name: z.string().transform((n) => n.trim()),
+        plannedMinor: z.number().int(),
+        dueOn: z.string(),
+        /** With "Every cycle" on: the id of the template made from it. */
+        recurringId: z.uuid().nullish(),
+      }),
+    )
+    .max(100)
+    .default([]),
+  /** Step 4: new pots, each with this cycle's amount (also its usual amount). */
+  pots: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        allocationId: z.uuid(),
+        name: z.string().transform((n) => n.trim()),
+        amountMinor: z.number().int(),
+      }),
+    )
+    .max(50)
+    .default([]),
 });
 
 const settingsBody = z
@@ -200,42 +227,91 @@ export const firstUse = new Hono<SignedIn>()
       })),
     });
   })
-  /** First use: settings row, the first cycle and its opening income, in one write. */
+  /**
+   * First use: settings row, the first cycle, its opening income, bills (with
+   * their Every cycle templates), pots and their amounts, in one write.
+   */
   .post("/first-use", json(firstUseBody), async (c) => {
     const { db, mine, userId } = c.var;
     const b = c.req.valid("json");
     const today = isTimeZone(b.homeTimeZone) ? todayIn(b.homeTimeZone, Date.now()) : "";
     const problems = checkFirstUse(b, today);
+    if (new Set(b.pots.map((p) => p.id)).size !== b.pots.length) problems.push("pot.twice");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     if (await db.query.settings.findFirst({ where: mine(settings), columns: { id: true } })) {
       return c.json({ error: "already_set_up" as const }, 409);
     }
-    try {
-      await db.batch([
-        db.insert(settings).values({
-          id: b.settingsId,
-          userId,
-          salaryCurrency: b.salaryCurrency,
-          spendingCurrency: b.spendingCurrency,
-          homeTimeZone: b.homeTimeZone,
-          usualPayDay: b.usualPayDay,
-        }),
-        db.insert(cycle).values({
-          id: b.cycleId,
-          userId,
-          startedOn: today,
-          expectedSalaryOn: b.expectedSalaryOn,
-        }),
-        db.insert(income).values({
-          id: b.incomeId,
+    const cur = b.spendingCurrency;
+    const writes: BatchItem<"sqlite">[] = [
+      db.insert(settings).values({
+        id: b.settingsId,
+        userId,
+        salaryCurrency: b.salaryCurrency,
+        spendingCurrency: cur,
+        homeTimeZone: b.homeTimeZone,
+        usualPayDay: b.usualPayDay,
+      }),
+      db.insert(cycle).values({
+        id: b.cycleId,
+        userId,
+        startedOn: today,
+        expectedSalaryOn: b.expectedSalaryOn,
+      }),
+      db.insert(income).values({
+        id: b.incomeId,
+        userId,
+        cycleId: b.cycleId,
+        kind: "opening",
+        currency: cur,
+        amountMinor: b.heldMinor,
+        receivedOn: today,
+      }),
+    ];
+    for (const k of b.commitments) {
+      const recurringId = k.recurringId ?? null;
+      if (recurringId) {
+        writes.push(
+          db.insert(recurringCommitment).values({
+            id: recurringId,
+            userId,
+            name: k.name,
+            kind: "bill",
+            currency: cur,
+            usualAmountMinor: k.plannedMinor,
+            usualDay: usualDayOf(k.dueOn),
+          }),
+        );
+      }
+      writes.push(
+        db.insert(commitment).values({
+          id: k.id,
           userId,
           cycleId: b.cycleId,
-          kind: "opening",
-          currency: b.spendingCurrency,
-          amountMinor: b.heldMinor,
-          receivedOn: today,
+          recurringId,
+          name: k.name,
+          kind: "bill",
+          currency: cur,
+          plannedMinor: k.plannedMinor,
+          dueOn: k.dueOn,
         }),
-      ]);
+      );
+    }
+    for (const p of b.pots) {
+      writes.push(
+        db
+          .insert(pot)
+          .values({ id: p.id, userId, name: p.name, currency: cur, usualAmountMinor: p.amountMinor }),
+        db.insert(potAllocation).values({
+          id: p.allocationId,
+          userId,
+          potId: p.id,
+          cycleId: b.cycleId,
+          amountMinor: p.amountMinor,
+        }),
+      );
+    }
+    try {
+      await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
     } catch {
       // An id already in use (or a second phone finishing first use at the same time).
       return c.json({ error: "conflict" as const }, 409);
