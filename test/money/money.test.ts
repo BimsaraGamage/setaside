@@ -5,6 +5,7 @@ import {
   dailyAllowance,
   daysBetween,
   daysLeft,
+  firstUseView,
   formatMoney,
   freeMoney,
   isCurrency,
@@ -218,5 +219,66 @@ describe("first use (spec 2)", () => {
     expect(checkFirstUse({ ...ok, usualPayDay: 32 }, "2026-11-12")).toEqual(["usual_pay_day"]);
     expect(checkFirstUse({ ...ok, heldMinor: -1 }, "2026-11-12")).toEqual(["held"]);
     expect(checkFirstUse({ ...ok, heldMinor: 1.5 }, "2026-11-12")).toEqual(["held"]);
+  });
+
+  it("checks step 4's bills and pots like salary day's (ticket 37)", () => {
+    const bill = { name: "Rent", plannedMinor: 4_000_000, dueOn: "2026-11-20" };
+    const pot = { name: "Groceries", amountMinor: 1_500_000 };
+    expect(checkFirstUse({ ...ok, commitments: [bill], pots: [pot] }, "2026-11-12")).toEqual([]);
+    // Due today is fine (a late one is put on today); before the first cycle starts is not.
+    expect(checkFirstUse({ ...ok, commitments: [{ ...bill, dueOn: "2026-11-12" }] }, "2026-11-12")).toEqual(
+      [],
+    );
+    expect(
+      checkFirstUse(
+        { ...ok, commitments: [bill, { name: " ", plannedMinor: 0, dueOn: "2026-11-11" }] },
+        "2026-11-12",
+      ),
+    ).toEqual(["commitment.1.name", "commitment.1.amount", "commitment.1.due_on"]);
+    // Due after the expected salary day: allowed, coming up only (spec 3).
+    expect(checkFirstUse({ ...ok, commitments: [{ ...bill, dueOn: "2026-12-02" }] }, "2026-11-12")).toEqual(
+      [],
+    );
+    expect(
+      checkFirstUse(
+        { ...ok, pots: [pot, { name: "", amountMinor: -1 }, { ...pot, amountMinor: 0 }] },
+        "2026-11-12",
+      ),
+    ).toEqual(["pot.1.name", "pot.1.usual_amount", "pot.1.amount"]);
+  });
+});
+
+describe("first use summary (ticket 37)", () => {
+  it("sets aside the bills due by salary day and the pots; the gap is what they pass the money held by", () => {
+    const view = firstUseView({
+      heldMinor: 5_000_000,
+      spendingCurrency: "LKR",
+      today: "2026-11-12",
+      expectedSalaryOn: "2026-11-25",
+      commitments: [
+        { name: "Rent", plannedMinor: 4_000_000, dueOn: "2026-11-20" },
+        { name: "Phone", plannedMinor: 300_000, dueOn: "2026-11-30" },
+      ],
+      pots: [{ name: "Groceries", amountMinor: 1_500_000 }],
+    });
+    expect(view.setAsideMinor).toBe(4_000_000);
+    expect(view.potsMinor).toBe(1_500_000);
+    expect(view.today.freeMinor).toBe(-500_000);
+    expect(view.gapMinor).toBe(500_000);
+    expect(view.today.daysLeft).toBe(13);
+  });
+
+  it("with nothing set aside, free money is the money held", () => {
+    const view = firstUseView({
+      heldMinor: 9_000_000,
+      spendingCurrency: "LKR",
+      today: "2026-11-12",
+      expectedSalaryOn: "2026-11-25",
+      commitments: [],
+      pots: [],
+    });
+    expect(view.today.freeMinor).toBe(9_000_000);
+    expect(view.today.allowanceMinor).toBe(dailyAllowance(9_000_000, 13, "LKR"));
+    expect(view.gapMinor).toBe(0);
   });
 });
