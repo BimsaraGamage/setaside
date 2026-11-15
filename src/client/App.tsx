@@ -14,6 +14,7 @@ import { Money, SpendsPage } from "./Spends";
 import { spendActions } from "./spend-actions";
 import { Today } from "./Today";
 import { useToast } from "./toast";
+import { dayChoiceActions } from "./Underspend";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
@@ -42,6 +43,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const spends = spendActions(toaster);
   const commitments = commitmentActions(toaster);
   const pots = potActions(toaster);
+  const dayChoices = dayChoiceActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -89,7 +91,9 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
-        {tab === "Today" && <Today data={ready} onAdd={(today) => setSheet({ today })} onEdit={edit} />}
+        {tab === "Today" && (
+          <Today data={ready} onAdd={(today) => setSheet({ today })} onEdit={edit} dayChoices={dayChoices} />
+        )}
         {tab === "Plan" && <Plan data={ready} />}
         {tab === "Commitment" &&
           (id && !editing ? (

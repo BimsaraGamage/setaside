@@ -1,6 +1,6 @@
 import { isCurrency, type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
-import { type Day, daysBetween, isDay, isTimeZone } from "./days";
+import { addDays, type Day, daysBetween, isDay, isTimeZone } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
 import type { SpendEntry } from "./spend";
@@ -30,6 +30,17 @@ export interface CycleEntries {
   startedOn?: Day;
   /** Last cycle's speed, used in the first 3 days; none on the very first cycle. */
   lastSpeed?: Speed | null;
+  /** The stored underspend answers of this cycle (spec 7); the allowance depends on them. */
+  dayChoices?: DayChoiceEntry[];
+}
+
+/** The morning underspend answer (spec 7): Spread over the days left, or Add to today. */
+export type DayChoice = "spread" | "today";
+
+/** One `day_choice` row, as the money rules need it. */
+export interface DayChoiceEntry {
+  dayOn: Day;
+  choice: DayChoice;
 }
 
 /**
@@ -85,6 +96,71 @@ export function dailyAllowance(freeMinor: Minor, days: number, currency: string)
   return perDay - (perDay % unit);
 }
 
+/** The underspend question on Today (spec 7), with what each answer makes today's allowance. */
+export interface UnderspendQuestion {
+  /** Allowance not spent on the days since the last answer (an overspent day adds nothing). */
+  unspentMinor: Minor;
+  /** How many days it was added up from (1: yesterday). */
+  days: number;
+  /** Today's allowance with Spread over the days left: free money at the start of today ÷ days left. */
+  spreadMinor: Minor;
+  /** Today's allowance with Add to today: the unspent money plus the rest ÷ days left. */
+  todayMinor: Minor;
+}
+
+/** Today's allowance with the unspent money added on top (spec 7). */
+function addedToToday(startMinor: Minor, unspentMinor: Minor, days: number, currency: string): Minor {
+  const added = Math.min(unspentMinor, Math.max(0, startMinor));
+  return added + dailyAllowance(startMinor - added, days, currency);
+}
+
+/**
+ * Today's allowance with the underspend answers (spec 7), walking the cycle day by
+ * day: each day's allowance is free money at its start ÷ days left, plus the
+ * unspent money when that day's answer was Add to today. A day's unspent money is
+ * its allowance less its free-money spends, never below zero; days with no answer
+ * are added together into the next question. No question on the cycle's first
+ * day or its last. `spreadMinor` is the allowance without the added money.
+ */
+export function allowanceToday(
+  entries: CycleEntries,
+  today: Day,
+): { allowanceMinor: Minor; spreadMinor: Minor; question: UnderspendQuestion | null } {
+  const cur = entries.spendingCurrency;
+  const choices = new Map((entries.dayChoices ?? []).map((c) => [c.dayOn, c.choice]));
+  const first = entries.startedOn && entries.startedOn < today ? entries.startedOn : today;
+  let unspent = 0;
+  let unspentDays = 0;
+  let start = freeMoney(entries, first);
+  for (let d = first; ; d = addDays(d, 1)) {
+    const days = daysLeft(d, entries.expectedSalaryOn);
+    const spread = dailyAllowance(start, days, cur);
+    const asks = d > first && days >= 2 && unspent > 0;
+    const choice = asks ? choices.get(d) : undefined;
+    const allowance = choice === "today" ? addedToToday(start, unspent, days, cur) : spread;
+    if (d >= today) {
+      const question =
+        asks && !choice
+          ? {
+              unspentMinor: unspent,
+              days: unspentDays,
+              spreadMinor: spread,
+              todayMinor: addedToToday(start, unspent, days, cur),
+            }
+          : null;
+      return { allowanceMinor: allowance, spreadMinor: spread, question };
+    }
+    if (choice) {
+      unspent = 0;
+      unspentDays = 0;
+    }
+    const next = freeMoney(entries, addDays(d, 1));
+    unspent += Math.max(0, allowance - (start - next));
+    unspentDays += 1;
+    start = next;
+  }
+}
+
 export interface TodayView {
   currency: string;
   /** Free money now, after every spend so far. */
@@ -104,6 +180,8 @@ export interface TodayView {
   speedFromLastCycle: boolean;
   /** The run-out verdict, or "Over by" when free money is at zero or below (spec 7). */
   verdict: Verdict;
+  /** The underspend question, while it waits for an answer (spec 7). */
+  underspend: UnderspendQuestion | null;
 }
 
 /** Everything the Today main card shows (spec 7, 10). */
@@ -112,14 +190,15 @@ export function todayView(entries: CycleEntries, today: Day): TodayView {
   const freeMinor = freeMoney(entries);
   const startMinor = freeMoney(entries, today);
   const days = daysLeft(today, entries.expectedSalaryOn);
-  const allowanceMinor = dailyAllowance(startMinor, days, cur);
+  const { allowanceMinor, spreadMinor, question } = allowanceToday(entries, today);
   // Spends are dated up to today, so the start-of-day free money differs only by today's.
   const spentTodayMinor = startMinor - freeMinor;
   const speed = speedNow(entries, today);
   const verdict: Verdict =
     freeMinor <= 0
       ? { kind: "over", overMinor: -freeMinor }
-      : runOutVerdict({ speed, startMinor, allowanceMinor, daysLeft: days, today });
+      : // The spread allowance: money added to today does not make the money last longer.
+        runOutVerdict({ speed, startMinor, allowanceMinor: spreadMinor, daysLeft: days, today });
   return {
     freeMinor,
     daysLeft: days,
@@ -130,6 +209,7 @@ export function todayView(entries: CycleEntries, today: Day): TodayView {
     speedPerDayMinor: speed ? perDayMinor(speed) : null,
     speedFromLastCycle: speed?.lastCycle ?? false,
     verdict,
+    underspend: question,
     currency: cur,
   };
 }

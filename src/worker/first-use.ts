@@ -6,6 +6,7 @@ import {
   commitment,
   commitmentPayment,
   cycle,
+  dayChoice,
   income,
   pot,
   potAllocation,
@@ -122,6 +123,13 @@ export const firstUse = new Hono<SignedIn>()
       )
       .where(mine(pot))
       .orderBy(pot.createdAt, pot.id);
+    const dayChoices = current
+      ? await db.query.dayChoice.findMany({
+          where: and(mine(dayChoice), eq(dayChoice.cycleId, current.id)),
+          columns: { dayOn: true, choice: true },
+          orderBy: [dayChoice.dayOn],
+        })
+      : [];
     const lastCycle =
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     return c.json({
@@ -155,6 +163,7 @@ export const firstUse = new Hono<SignedIn>()
       })),
       pots,
       lastCycle,
+      dayChoices,
       commitments: commitments.map((k) => ({
         id: k.id,
         name: k.name,

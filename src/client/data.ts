@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   type CommitmentState,
+  type DayChoiceEntry,
   formatMoney,
   type IncomeKind,
   type Speed,
@@ -31,6 +32,8 @@ export interface Current {
   pots: Pot[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
   lastCycle: { speed: Speed; pots: Record<string, Speed> } | null;
+  /** This cycle's underspend answers (item 9). */
+  dayChoices: DayChoiceEntry[];
 }
 
 export interface Pot {
@@ -88,6 +91,7 @@ export function entriesOf(data: Ready) {
     startedOn: data.cycle.startedOn,
     expectedSalaryOn: data.cycle.expectedSalaryOn,
     lastSpeed: data.lastCycle?.speed ?? null,
+    dayChoices: data.dayChoices,
     incomes: data.incomes,
     spends: data.spends,
     commitments: data.commitments,

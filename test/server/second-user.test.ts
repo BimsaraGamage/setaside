@@ -116,6 +116,11 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/pots/:id": (o) => ({ path: `/api/pots/${firstRow(o, "pot")}` }),
+  // Aimed at the first user's answer: must not take it over or answer for them.
+  "POST /api/day-choices": (o) => ({
+    path: "/api/day-choices",
+    init: { body: JSON.stringify({ id: firstRow(o, "day_choice"), dayOn: "2026-11-13", choice: "today" }) },
+  }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -132,6 +137,7 @@ async function seedOwnerData(ownerId: string) {
   const p = crypto.randomUUID();
   const pt = crypto.randomUUID();
   const pa = crypto.randomUUID();
+  const dc = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -158,6 +164,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into pot_allocation (id, user_id, pot_id, cycle_id, amount_minor, created_at, updated_at) values (?, ?, ?, ?, 1800000, ?, ?)",
     ).bind(pa, ownerId, pt, c, now, now),
+    env.DB.prepare(
+      "insert into day_choice (id, user_id, cycle_id, day_on, choice, created_at, updated_at) values (?, ?, ?, '2026-11-13', 'spread', ?, ?)",
+    ).bind(dc, ownerId, c, now, now),
   ]);
 }
 

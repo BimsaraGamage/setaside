@@ -46,6 +46,7 @@ describe("first use (item 3, spec 2)", () => {
       commitments: [],
       pots: [],
       lastCycle: null,
+      dayChoices: [],
     });
   });
 
@@ -73,6 +74,7 @@ describe("first use (item 3, spec 2)", () => {
       commitments: [],
       pots: [],
       lastCycle: null,
+      dayChoices: [],
     });
   });
 
