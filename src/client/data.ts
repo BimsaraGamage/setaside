@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { type CommitmentState, type IncomeKind, todayIn } from "../money";
+import {
+  type CommitmentState,
+  formatMoney,
+  type IncomeKind,
+  type Speed,
+  todayIn,
+  type Verdict,
+} from "../money";
 import { api } from "./api";
 
 export interface Current {
@@ -22,6 +29,8 @@ export interface Current {
   commitments: Commitment[];
   /** Every pot, in use or not, with this cycle's amount (item 7). */
   pots: Pot[];
+  /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
+  lastCycle: { speed: Speed; pots: Record<string, Speed> } | null;
 }
 
 export interface Pot {
@@ -62,6 +71,8 @@ export interface Spend {
   note: string | null;
   /** The pot it came from; null means free money. */
   potId: string | null;
+  /** Left out of the spending speed (item 8). */
+  oneOff: boolean;
 }
 
 /** The current cycle's settings and cycle, once first use is done. */
@@ -74,7 +85,9 @@ export type Ready = Current & {
 export function entriesOf(data: Ready) {
   return {
     spendingCurrency: data.settings.spendingCurrency,
+    startedOn: data.cycle.startedOn,
     expectedSalaryOn: data.cycle.expectedSalaryOn,
+    lastSpeed: data.lastCycle?.speed ?? null,
     incomes: data.incomes,
     spends: data.spends,
     commitments: data.commitments,
@@ -85,6 +98,24 @@ export function entriesOf(data: Ready) {
 /** A pot as the money rules need it. */
 export function potEntry(p: Pot) {
   return { id: p.id, currency: p.currency, amountMinor: p.amountMinor ?? 0, archived: p.archived };
+}
+
+/** The verdict chip's words (spec 7): "On track", "Runs out on Tue 24 Nov", "Over by Rs 1,000". */
+export function verdictLabel(v: Verdict, currency: string): string {
+  switch (v.kind) {
+    case "early":
+      return "Too early to tell";
+    case "on_track":
+      return "On track";
+    case "tight":
+      return "Tight";
+    case "runs_out":
+      return `Runs out on ${dayLabel(v.on)}`;
+    case "over":
+      return `Over by ${formatMoney(v.overMinor, currency)}`;
+    case "used_up":
+      return "Used up";
+  }
 }
 
 /** "today", "in 3 days", "2 days late". */

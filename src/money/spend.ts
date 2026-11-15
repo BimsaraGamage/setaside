@@ -9,6 +9,8 @@ export interface SpendEntry {
   amountMinor: Minor;
   /** The pot it came from (spec 4); none means free money. */
   potId?: string | null;
+  /** Uses free money but is left out of the spending speed (spec 7). */
+  oneOff?: boolean;
 }
 
 export interface SpendInput {

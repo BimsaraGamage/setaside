@@ -8,4 +8,5 @@ export * from "./commitment";
 export * from "./cycle";
 export * from "./days";
 export * from "./pot";
+export * from "./speed";
 export * from "./spend";

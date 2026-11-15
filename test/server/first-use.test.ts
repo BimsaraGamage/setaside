@@ -45,6 +45,7 @@ describe("first use (item 3, spec 2)", () => {
       spends: [],
       commitments: [],
       pots: [],
+      lastCycle: null,
     });
   });
 
@@ -71,6 +72,7 @@ describe("first use (item 3, spec 2)", () => {
       spends: [],
       commitments: [],
       pots: [],
+      lastCycle: null,
     });
   });
 
