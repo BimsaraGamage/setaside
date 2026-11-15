@@ -380,8 +380,8 @@ describe("closing the old cycle (item 12, spec 3, 6)", () => {
     expect(await bad({ unpaid: all.slice(1) })).toEqual(["close.unpaid"]);
     expect(await bad({ unpaid: [...all.slice(1), { id: rent, choice: "carry" }] })).toEqual(["close.new_id"]);
     expect(await bad({ unpaid: [...all.slice(1), { id: rent, choice: "paid" }] })).toEqual(["close.new_id"]);
-    // Step 2's amount: Rs 90,000 held − Rs 37,000 set aside or paid = Rs 53,000; dropped money isn't in it.
-    expect(await bad({ unpaid: all, toSavingsMinor: 5_300_001 })).toEqual(["close.to_savings"]);
+    // All dropped: leftover = Rs 90,000 held less the Rs 10,000 paid on Rent.
+    expect(await bad({ unpaid: all, toSavingsMinor: 8_000_001 })).toEqual(["close.to_savings"]);
     expect(await bad({ unpaid: all, overspend: "take" })).toEqual(["close.overspend"]);
     const state = await row("select state from commitment where id = ?", rent);
     expect(state?.state).toBe("open");

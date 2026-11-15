@@ -39,17 +39,7 @@ test("salary arrived: leftover, unpaid ones, steps filled from Every cycle, new 
   await page.getByLabel("Salary (LKR)").fill("250000");
   await page.getByRole("button", { name: "Next" }).click();
 
-  // Step 2: leftover 90,000 − 38,000 set aside = 52,000; Rs 50,000 in hand, all to savings.
-  await expect(page.getByRole("heading", { name: "Last cycle's leftover" })).toBeVisible();
-  await expect(page.getByTestId("leftover")).toHaveText("Rs 52,000");
-  await page.getByLabel("Actually have in hand (LKR)").fill("50000");
-  await page.getByLabel("To savings (LKR)").fill("50001");
-  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
-  await page.getByLabel("To savings (LKR)").fill("50000");
-  await expect(page.getByTestId("leftover-to-cycle")).toHaveText("Rs 0");
-  await page.getByRole("button", { name: "Next" }).click();
-
-  // Step 3: Rent was paid; Water carries on to the new cycle.
+  // Step 2: Rent was paid; Water carries on to the new cycle.
   await expect(page.getByRole("heading", { name: "Last cycle's unpaid commitments" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
   await page.getByRole("region", { name: "Rent" }).getByRole("radio", { name: "Paid it" }).click();
@@ -57,6 +47,16 @@ test("salary arrived: leftover, unpaid ones, steps filled from Every cycle, new 
     .getByRole("region", { name: "Water" })
     .getByRole("radio", { name: "Carry to new cycle" })
     .click();
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 3: leftover 90,000 − 38,000 set aside = 52,000; Rs 50,000 in hand, all to savings.
+  await expect(page.getByRole("heading", { name: "Last cycle's leftover" })).toBeVisible();
+  await expect(page.getByTestId("leftover")).toHaveText("Rs 52,000");
+  await page.getByLabel("Actually have in hand (LKR)").fill("50000");
+  await page.getByLabel("To savings (LKR)").fill("50001");
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await page.getByLabel("To savings (LKR)").fill("50000");
+  await expect(page.getByTestId("leftover-to-cycle")).toHaveText("Rs 0");
   await page.getByRole("button", { name: "Next" }).click();
 
   // Step 4: Rent filled in from Every cycle; change it, add a gym bill.

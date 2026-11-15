@@ -195,7 +195,7 @@ export interface SalaryDayView {
  * Step 7's summary (spec 6): the new cycle's free money, daily allowance and
  * verdict (from the cycle that ends in the first days), and the gap. With what
  * last cycle brings in (its `leftover` income) and the commitments carried from
- * step 3, set aside again in the new cycle.
+ * step 2, set aside again in the new cycle.
  */
 export function salaryDayView(a: {
   input: SalaryDayInput;

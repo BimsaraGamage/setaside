@@ -67,8 +67,8 @@ const STEPS = [1, 2, 3, 4, 5, 6, 7] as const;
 type Step = (typeof STEPS)[number];
 const TITLES: Record<Step, string> = {
   1: "Salary",
-  2: "Last cycle's leftover",
-  3: "Last cycle's unpaid commitments",
+  2: "Last cycle's unpaid commitments",
+  3: "Last cycle's leftover",
   4: "This cycle's commitments",
   5: "Pots",
   6: "Next salary day",
@@ -87,9 +87,9 @@ const OVERSPEND: { choice: OverspendChoice; label: string }[] = [
 ];
 
 /**
- * Salary day (spec 6): Salary → last cycle's leftover (correct and split, or
- * the overspend choice) → its unpaid commitments (Paid it · Carry · Drop) →
- * this cycle's commitments (filled from the recurring ones and last cycle's
+ * Salary day (spec 6): Salary → last cycle's unpaid commitments (Paid it ·
+ * Carry · Drop) → its leftover, dropped ones' money included (correct and
+ * split, or the overspend choice) → this cycle's commitments (filled from the recurring ones and last cycle's
  * coming-up ones) → pots → expected next salary day → summary with the gap
  * warning → Start new cycle. One step per screen.
  */
@@ -145,7 +145,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     return c ? [{ id: k.id, choice: c.choice, newId: c.newId }] : [];
   });
   const leftover = leftoverOf(entriesOf(data), chosen);
-  const overspent = leftover.stepTwoMinor < 0;
+  const overspent = leftover.leftoverMinor < 0;
   const closeInput: CloseInput = {
     unpaid: chosen.map(({ id, choice }) => ({ id, choice })),
     inHandMinor: overspent || inHandText === "" ? null : (parseAmount(inHandText, cur) ?? -1),
@@ -156,7 +156,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     problems.push(`close.${p}`);
   }
   const brought = broughtIn(closeInput, leftover);
-  const kept = closeInput.inHandMinor ?? leftover.stepTwoMinor;
+  const kept = closeInput.inHandMinor ?? leftover.leftoverMinor;
   const carried = unpaid
     .filter((k) => choices[k.id]?.choice === "carry")
     .map((k) => ({ ...k, plannedMinor: stillToPayMinor(k), payments: [] }));
@@ -287,7 +287,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         </section>
       )}
 
-      {step === 2 && !overspent && (
+      {step === 3 && !overspent && (
         <section className="card stack" aria-label="Leftover">
           <div className="li">
             <span className="grow">Free money left</span>
@@ -297,9 +297,15 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             <span className="grow">Left in pots</span>
             <b>{money(leftover.potsMinor)}</b>
           </div>
+          {leftover.droppedMinor > 0 && (
+            <div className="li">
+              <span className="grow">Bills dropped</span>
+              <b>{money(leftover.droppedMinor)}</b>
+            </div>
+          )}
           <div className="li">
             <span className="grow">Leftover</span>
-            <b data-testid="leftover">{money(leftover.stepTwoMinor)}</b>
+            <b data-testid="leftover">{money(leftover.leftoverMinor)}</b>
           </div>
           <label className="field">
             Actually have in hand ({cur})
@@ -307,7 +313,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               value={inHandText}
               inputMode="decimal"
               autoComplete="off"
-              placeholder={toText(leftover.stepTwoMinor, cur)}
+              placeholder={toText(leftover.leftoverMinor, cur)}
               onChange={(e) => typed(e.target.value) && setInHandText(e.target.value)}
             />
             <span className="tiny mute">Change it if some spends were never entered.</span>
@@ -330,17 +336,14 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               {money(Math.max(0, kept - Math.max(0, closeInput.toSavingsMinor)))}
             </b>
           </div>
-          {unpaid.length > 0 && (
-            <p className="tiny mute">Money of bills you drop in the next step also goes to the new cycle.</p>
-          )}
         </section>
       )}
 
-      {step === 2 && overspent && (
+      {step === 3 && overspent && (
         <section className="card stack" aria-label="Overspend">
           <p>
-            You spent <b data-testid="overspend">{money(-leftover.stepTwoMinor)}</b> more than your free money
-            last cycle.
+            You spent <b data-testid="overspend">{money(-leftover.leftoverMinor)}</b> more than your free
+            money last cycle.
           </p>
           <div className="row" role="radiogroup" aria-label="Overspend">
             {OVERSPEND.map((o) => (
@@ -359,7 +362,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         </section>
       )}
 
-      {step === 3 && (
+      {step === 2 && (
         <>
           <p className="mute">
             {unpaid.length === 0
@@ -398,7 +401,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
                   ))}
                 </div>
                 {pick === "drop" && rest > 0 && (
-                  <p className="tiny mute">{money(rest)} goes to the new cycle's free money.</p>
+                  <p className="tiny mute">{money(rest)} joins the leftover (next step).</p>
                 )}
               </section>
             );
@@ -631,8 +634,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             onClick={next}
             disabled={
               (step === 1 && (input.salaryMinor <= 0 || has("salary") || has("received_on"))) ||
-              (step === 2 && (has("close.in_hand") || has("close.to_savings") || has("close.overspend"))) ||
-              (step === 3 && has("close.unpaid")) ||
+              (step === 2 && has("close.unpaid")) ||
+              (step === 3 && (has("close.in_hand") || has("close.to_savings") || has("close.overspend"))) ||
               (step === 4 && has("commitment.")) ||
               (step === 5 && has("pot.")) ||
               (step === 6 && has("expected_salary_on"))

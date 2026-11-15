@@ -4,21 +4,21 @@ import { type CycleEntries, freeMoney } from "./cycle";
 import { addDays, type Day } from "./days";
 import { potView } from "./pot";
 
-/** Step 3's answer for one unpaid commitment (spec 3): Paid it · Carry to the new cycle · Drop. */
+/** Step 2's answer for one unpaid commitment (spec 3): Paid it · Carry to the new cycle · Drop. */
 export type UnpaidChoice = "paid" | "carry" | "drop";
 
-/** Step 2's answer when there is an overspend (spec 6). */
+/** Step 3's answer when there is an overspend (spec 6). */
 export type OverspendChoice = "take" | "ignore";
 
 /**
- * Step 3's list (spec 3, 6): open commitments of the cycle that ends, due by
+ * Step 2's list (spec 3, 6): open commitments of the cycle that ends, due by
  * its expected salary day (late ones too). Ones due after it moved with step 4.
  */
 export function unpaidAtEnd<C extends CommitmentEntry>(list: C[], expectedSalaryOn: Day): C[] {
   return list.filter((c) => c.state === "open" && inThisCycle(c.dueOn, expectedSalaryOn));
 }
 
-/** The ending cycle's entries; its commitments have ids (the step 3 choices name them). */
+/** The ending cycle's entries; its commitments have ids (the step 2 choices name them). */
 export type ClosingEntries = CycleEntries & { commitments?: (CommitmentEntry & { id: string })[] };
 
 /** The leftover of the cycle that ends, in the spending currency (spec 6). */
@@ -32,12 +32,10 @@ export interface Leftover {
   /** Still to pay on the commitments carried: their set-aside money goes with them, it is not leftover. */
   carriedMinor: Minor;
   /**
-   * Step 2's amount: free money left + unused pot money; below zero is an
-   * overspend. Step 2 (correct, split) comes before step 3, so dropped money is
-   * not in it: it goes to the new cycle's free money.
+   * Free money left + unused pot money + dropped; below zero is an overspend.
+   * Unpaid commitments (step 2) are answered first, so dropped money is in it
+   * when the leftover is corrected and split (step 3).
    */
-  stepTwoMinor: Minor;
-  /** Free money left + unused pot money + dropped. */
   leftoverMinor: Minor;
 }
 
@@ -69,7 +67,6 @@ export function leftoverOf(
     potsMinor,
     droppedMinor,
     carriedMinor,
-    stepTwoMinor: freeMinor + potsMinor,
     leftoverMinor: freeMinor + potsMinor + droppedMinor,
   };
 }
@@ -88,9 +85,9 @@ export function paidItOn(dueOn: Day, cycleStartedOn: Day, receivedOn: Day): Day 
 export interface CloseInput {
   /** One choice for each unpaid commitment. */
   unpaid: { id: string; choice: UnpaidChoice }[];
-  /** "Actually have in hand", when it differs from step 2's amount; null keeps that amount. */
+  /** "Actually have in hand", when it differs from the leftover; null keeps the leftover. */
   inHandMinor: number | null;
-  /** Part of step 2's amount (or what is in hand) sent to savings; the rest goes to the new cycle. */
+  /** Part of the leftover (or what is in hand) sent to savings; the rest goes to the new cycle. */
   toSavingsMinor: number;
   /** Only when there is an overspend. */
   overspend: OverspendChoice | null;
@@ -112,8 +109,8 @@ export function checkCycleClose(
   if (new Set(ids).size !== ids.length || ids.length !== want.size || ids.some((id) => !want.has(id))) {
     out.push("unpaid");
   }
-  if (ctx.leftover.stepTwoMinor >= 0) {
-    const inHand = input.inHandMinor ?? ctx.leftover.stepTwoMinor;
+  if (ctx.leftover.leftoverMinor >= 0) {
+    const inHand = input.inHandMinor ?? ctx.leftover.leftoverMinor;
     const inHandOk = input.inHandMinor === null || minor(input.inHandMinor);
     if (!inHandOk) out.push("in_hand");
     if (!minor(input.toSavingsMinor) || (inHandOk && input.toSavingsMinor > inHand)) out.push("to_savings");
@@ -128,20 +125,23 @@ export function checkCycleClose(
 
 /**
  * What the cycle that ends brings into the new one (spec 6), stored as the new
- * cycle's `leftover` income: step 2's amount (or what is actually in hand),
- * split into savings and free money, plus dropped ones' money and carried ones'
- * set-aside money. An overspend taken lowers the new free money; ignored, it is gone.
+ * cycle's `leftover` income: the leftover (or what is actually in hand), split
+ * into savings and free money, plus the carried ones' set-aside money. An
+ * overspend taken lowers the new free money; ignored, it is gone.
  */
 export function broughtIn(
   input: CloseInput,
   leftover: Leftover,
 ): { amountMinor: Minor; toSavingsMinor: Minor; correctionMinor: Minor } {
-  const base = leftover.stepTwoMinor;
-  const after = leftover.droppedMinor + leftover.carriedMinor;
-  if (base < 0) {
-    const taken = input.overspend === "take" ? base : 0;
-    return { amountMinor: taken + after, toSavingsMinor: 0, correctionMinor: 0 };
+  const l = leftover.leftoverMinor;
+  if (l < 0) {
+    const taken = input.overspend === "take" ? l : 0;
+    return { amountMinor: taken + leftover.carriedMinor, toSavingsMinor: 0, correctionMinor: 0 };
   }
-  const kept = input.inHandMinor ?? base;
-  return { amountMinor: kept + after, toSavingsMinor: input.toSavingsMinor, correctionMinor: kept - base };
+  const kept = input.inHandMinor ?? l;
+  return {
+    amountMinor: kept + leftover.carriedMinor,
+    toSavingsMinor: input.toSavingsMinor,
+    correctionMinor: kept - l,
+  };
 }

@@ -87,7 +87,7 @@ A **commitment** is an essential expense with an amount, a currency and a due da
 - **Paid in the other currency:** see section 8.
 - **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle. On salary day it moves to the new cycle: step 4 lists it (with what is still to pay) as a new commitment that points back, and the old one is marked carried; one made from a recurring commitment stands in for that one (no second row). A fully paid one stays behind.
 - **Late:** an open commitment whose due day has passed stays set aside and shows at the top of Next up as "N days late".
-- **Unpaid at cycle end:** salary day asks, for each one (open, due by the old expected salary day, late ones too): Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover and goes to the new cycle's free money). Each must be answered. Paid it records a payment of what was still to pay, dated on its due day (kept inside the old cycle), and finishes it. A carried commitment is a new commitment in the new cycle, with what was still to pay and the same due day, that points back to the old one; it can be changed later, and keeps its old due day until moved.
+- **Unpaid at cycle end:** salary day asks, for each one (open, due by the old expected salary day, late ones too): Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover). Each must be answered. Paid it records a payment of what was still to pay, dated on its due day (kept inside the old cycle), and finishes it. A carried commitment is a new commitment in the new cycle, with what was still to pay and the same due day, that points back to the old one; it can be changed later, and keeps its old due day until moved.
 - Card bills, instalment-plan payments and paybacks are made by their card, plan, person or prepayment (section 9), not from the Every cycle list.
 
 ## 4. Pots
@@ -125,15 +125,15 @@ Take out and Put in are dated today, in the current cycle, with a toast and **Un
 
 **Overspend** = spending beyond free money at cycle end, in the spending currency.
 
-On salary day the app shows the leftover per currency. The user can correct the amount (for spends never entered), then splits it: savings or the new cycle. Step 2 comes before step 3, so the amount shown, corrected and split in step 2 is free money left + unused pot money; money of commitments dropped in step 3 goes to the new cycle's free money. Everything the old cycle brings in (to the new cycle, to savings, and carried commitments' money) is stored as one income of kind leftover in the new cycle. Unconverted dollars go to dollar savings or carry over as unconverted dollars; rupees go to rupee savings or the new free money. If there is an overspend instead (step 2's amount below zero), the user chooses: take it from the new cycle's free money, or ignore it; there is nothing to correct or save.
+On salary day the app shows the leftover per currency. The user can correct the amount (for spends never entered), then splits it: savings or the new cycle. Unpaid commitments (step 2) are answered before the leftover (step 3), so dropped ones' money is in the leftover shown, corrected and split. Everything the old cycle brings in (to the new cycle, to savings, and carried commitments' money) is stored as one income of kind leftover in the new cycle. Unconverted dollars go to dollar savings or carry over as unconverted dollars; rupees go to rupee savings or the new free money. If there is an overspend instead (leftover below zero), the user chooses: take it from the new cycle's free money, or ignore it; there is nothing to correct or save.
 
 ### Salary-day steps
 
 Started from **Salary arrived** (Today header or Plan tab). Seven steps, one per screen, always in this order:
 
 1. **Salary**: amount (salary currency) and date received (from the ending cycle's first day up to today). The new cycle starts on that day.
-2. **Last cycle's leftover**: free money left + unused pot money; "actually have in hand" correction; split into savings and the new cycle, or the overspend choice.
-3. **Last cycle's unpaid commitments**: Paid it · Carry to new cycle · Drop.
+2. **Last cycle's unpaid commitments**: Paid it · Carry to new cycle · Drop.
+3. **Last cycle's leftover**: free money left + unused pot money + dropped commitments; "actually have in hand" correction; split into savings and the new cycle, or the overspend choice.
 4. **This cycle's commitments**, filled from the recurring ones and from cards, plans, people and prepayments; each editable; + Add.
 5. **Pots** and their amounts; + New pot.
 6. **Expected next salary day** (suggested from the usual pay day) and the **counting rate** (last conversion's by default).

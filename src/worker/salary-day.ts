@@ -299,7 +299,7 @@ export const salaryDay = new Hono<SignedIn>()
         );
       }
     }
-    // Step 3: last cycle's unpaid commitments. The ended cycle's only writes are these (spec 2).
+    // Step 2: last cycle's unpaid commitments. The ended cycle's only writes are these (spec 2).
     for (const u of b.close.unpaid) {
       const k = unpaidById.get(u.id);
       if (!k) continue;
@@ -343,7 +343,7 @@ export const salaryDay = new Hono<SignedIn>()
         );
       }
     }
-    // Step 2: the leftover (or what is in hand) to savings and the new cycle, with carried ones' money.
+    // Step 3: the leftover (or what is in hand) to savings and the new cycle, with carried ones' money.
     const brought = broughtIn(b.close, leftover);
     writes.push(
       db.insert(cycleClose).values({

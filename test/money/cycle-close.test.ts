@@ -41,7 +41,7 @@ const bill = (id: string, plannedMinor: number, dueOn: string, more: Partial<Com
   ...more,
 });
 
-describe("step 3 lists last cycle's unpaid commitments (spec 3: unpaid at cycle end)", () => {
+describe("step 2 lists last cycle's unpaid commitments (spec 3: unpaid at cycle end)", () => {
   it("open ones due by the expected salary day, late ones too; not coming-up, finished or carried ones", () => {
     const list = [
       bill("rent", 3_000_000, "2026-11-05"),
@@ -55,10 +55,9 @@ describe("step 3 lists last cycle's unpaid commitments (spec 3: unpaid at cycle 
 });
 
 describe("the leftover (spec 6: free money left + unused pot money + dropped commitments)", () => {
-  it("an overspend in step 2 is decided before drops: dropped money still reaches the new cycle", () => {
-    expect(
-      checkCycleClose(close({ overspend: "take" }), { unpaidIds: [], leftover: left(-100, 0, 500) }),
-    ).toEqual([]);
+  it("unpaid ones are answered first, so dropped money can cover an overspend", () => {
+    // Free money −100, dropped 500: a leftover of 400, nothing overspent.
+    expect(checkCycleClose(close(), { unpaidIds: [], leftover: left(400, 0, 500) })).toEqual([]);
   });
 
   it("is free money left plus what is left in pots in use", () => {
@@ -79,7 +78,6 @@ describe("the leftover (spec 6: free money left + unused pot money + dropped com
       potsMinor: 1_700_000,
       droppedMinor: 0,
       carriedMinor: 0,
-      stepTwoMinor: 8_700_000,
       leftoverMinor: 8_700_000,
     });
   });
@@ -114,7 +112,6 @@ describe("the leftover (spec 6: free money left + unused pot money + dropped com
       potsMinor: 0,
       droppedMinor: 500_000,
       carriedMinor: 2_000_000,
-      stepTwoMinor: 6_300_000,
       leftoverMinor: 6_800_000,
     });
   });
@@ -159,13 +156,13 @@ describe("Paid it is dated in the old cycle (spec 2: ended cycles are locked)", 
   });
 });
 
-const left = (stepTwoMinor: number, carriedMinor = 0, droppedMinor = 0): Leftover => ({
-  freeMinor: stepTwoMinor,
+/** A leftover of `leftoverMinor`, of which `droppedMinor` came from dropped commitments. */
+const left = (leftoverMinor: number, carriedMinor = 0, droppedMinor = 0): Leftover => ({
+  freeMinor: leftoverMinor - droppedMinor,
   potsMinor: 0,
   droppedMinor,
   carriedMinor,
-  stepTwoMinor,
-  leftoverMinor: stepTwoMinor + droppedMinor,
+  leftoverMinor,
 });
 
 const close = (more: Partial<CloseInput> = {}): CloseInput => ({
@@ -238,17 +235,22 @@ describe("checks on the closing choices (spec 6 steps 2 and 3)", () => {
 });
 
 describe("what the old cycle brings into the new one (spec 6)", () => {
-  it("step 2's amount split into savings and the new cycle, plus dropped and carried ones' money", () => {
+  it("the leftover split into savings and the new cycle, plus carried ones' set-aside money", () => {
     expect(broughtIn(close({ toSavingsMinor: 300_000 }), left(1_000_000, 200_000, 50_000))).toEqual({
-      amountMinor: 1_250_000,
+      amountMinor: 1_200_000,
       toSavingsMinor: 300_000,
       correctionMinor: 0,
     });
   });
 
-  it("the amount actually in hand replaces step 2's amount; the gap is the correction", () => {
+  it("dropped ones' money can go to savings too", () => {
+    const leftover = left(1_000_000, 0, 50_000);
+    expect(checkCycleClose(close({ toSavingsMinor: 1_000_000 }), { unpaidIds: [], leftover })).toEqual([]);
+  });
+
+  it("the amount actually in hand replaces the leftover; the gap is the correction", () => {
     expect(broughtIn(close({ inHandMinor: 700_000 }), left(1_000_000, 0, 50_000))).toEqual({
-      amountMinor: 750_000,
+      amountMinor: 700_000,
       toSavingsMinor: 0,
       correctionMinor: -300_000,
     });
@@ -260,9 +262,7 @@ describe("what the old cycle brings into the new one (spec 6)", () => {
       toSavingsMinor: 0,
       correctionMinor: 0,
     });
-    expect(broughtIn(close({ overspend: "ignore" }), left(-400_000, 100_000, 50_000)).amountMinor).toBe(
-      150_000,
-    );
+    expect(broughtIn(close({ overspend: "ignore" }), left(-400_000, 100_000)).amountMinor).toBe(100_000);
   });
 });
 
