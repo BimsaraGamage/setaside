@@ -33,7 +33,7 @@ export function PayPage({
   const today = useToday(data.settings.homeTimeZone);
   const still = stillToPayMinor(c);
   // A savings set-aside is moved to savings, not paid (item 10).
-  const saving = c.kind === "savings";
+  const saving = c.kind === "savings" || c.kind === "savings_payback";
   const paidWord = saving ? "moved" : "paid";
   const [text, setText] = useState(() => {
     if (editing) return toText(editing.amountMinor, cur);

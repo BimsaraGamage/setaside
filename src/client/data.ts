@@ -36,6 +36,8 @@ export interface Current {
   dayChoices: DayChoiceEntry[];
   /** Every movement into and out of savings, all cycles, newest first (item 10). */
   savings: SavingsLine[];
+  /** Prepayments from savings with their payback so far, oldest first (item 14). */
+  prepayments: Prepayment[];
   /** The "Every cycle" templates, paused ones too (item 11). */
   recurring: Recurring[];
   /** Undo salary day is allowed: nothing new entered since salary day started this cycle (item 13). */
@@ -53,16 +55,32 @@ export interface Recurring {
   active: boolean;
 }
 
+export interface Prepayment {
+  id: string;
+  name: string;
+  currency: string;
+  totalMinor: number;
+  /** The usual payback each cycle. */
+  paybackMinor: number;
+  /** The normal monthly price and months covered, for the prepayment saving; null when not given. */
+  normalMonthlyMinor: number | null;
+  months: number | null;
+  /** Moved back into savings so far, all cycles. */
+  paidBackMinor: number;
+  /** The day its money came out of savings. */
+  startedOn: string;
+}
+
 export interface SavingsLine {
   id: string;
-  /** Put in, Take out, extra income to savings, a savings set-aside moved. */
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside";
+  /** Put in, Take out, extra income to savings, a savings set-aside moved, a prepayment and its paybacks. */
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback";
   cycleId: string;
   currency: string;
   /** Below zero: money out of savings. */
   amountMinor: number;
   on: string;
-  /** The savings commitment's name, for a set-aside moved. */
+  /** The commitment's name for a set-aside or payback moved; the prepayment's name. */
   name: string | null;
 }
 
@@ -80,7 +98,7 @@ export interface Pot {
 export interface Commitment {
   id: string;
   name: string;
-  /** "bill" or "savings" (a savings set-aside, item 10); other kinds come with later items. */
+  /** "bill", "savings" (a savings set-aside, item 10) or "savings_payback" (item 14); more with later items. */
   kind: string;
   currency: string;
   plannedMinor: number;
@@ -90,6 +108,8 @@ export interface Commitment {
   recurringId: string | null;
   /** Last cycle's commitment it carries on (item 11). */
   carriedFromId: string | null;
+  /** The prepayment a payback to savings pays back (item 14). */
+  prepaymentId: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }

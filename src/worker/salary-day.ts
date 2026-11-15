@@ -26,6 +26,7 @@ import {
   income,
   pot,
   potAllocation,
+  prepayment,
   type RecurringBefore,
   recurringCommitment,
   type SalaryDayUndo,
@@ -48,7 +49,9 @@ const salaryDayBody = z.object({
     .array(
       z.object({
         id: z.uuid(),
-        kind: z.enum(["bill", "savings"]).default("bill"),
+        kind: z.enum(["bill", "savings", "savings_payback"]).default("bill"),
+        /** A payback to savings: the prepayment it pays back (item 14). */
+        prepaymentId: z.uuid().nullish(),
         name,
         plannedMinor: z.number().int(),
         dueOn: z.string(),
@@ -165,6 +168,7 @@ type Stamped =
   | typeof potAllocation
   | typeof dayChoice
   | typeof savingsMovement
+  | typeof prepayment
   | typeof recurringCommitment
   | typeof income;
 
@@ -201,6 +205,7 @@ export async function undoRecord(
     any(potAllocation),
     any(dayChoice),
     any(savingsMovement),
+    any(prepayment),
     any(recurringCommitment),
     // The salary amount stays editable during the current cycle (spec 2).
     any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
@@ -259,6 +264,28 @@ export const salaryDay = new Hono<SignedIn>()
     if (new Set(carriedIds).size !== carriedIds.length || carriedIds.some((id) => !comingUp.has(id))) {
       problems.push("carried_from");
     }
+
+    // Paybacks to savings (item 14): one of the user's prepayments, never Every cycle; a carried
+    // one keeps the prepayment of the commitment it carries on.
+    const carriedById = new Map(carried.map((k) => [k.id, k]));
+    const prepaymentOf = (k: (typeof b.commitments)[number]) =>
+      k.carriedFromId ? (carriedById.get(k.carriedFromId)?.prepaymentId ?? null) : (k.prepaymentId ?? null);
+    const wanted = [...new Set(b.commitments.flatMap((k) => (k.prepaymentId ? [k.prepaymentId] : [])))];
+    const myPrepayments = wanted.length
+      ? await db.query.prepayment.findMany({
+          where: and(mine(prepayment), inArray(prepayment.id, wanted)),
+          columns: { id: true },
+        })
+      : [];
+    const prepaymentIds = new Set(myPrepayments.map((p) => p.id));
+    b.commitments.forEach((k, i) => {
+      const linked = prepaymentOf(k);
+      const payback = k.kind === "savings_payback";
+      if (payback !== (linked !== null) || (payback && k.everyCycle)) problems.push(`commitment.${i}.kind`);
+      else if (payback && !k.carriedFromId && !prepaymentIds.has(linked as string)) {
+        problems.push(`commitment.${i}.prepayment`);
+      }
+    });
 
     // Steps 2 and 3: the leftover is worked out here from the ending cycle's rows (spec 6).
     const entries = await entriesOf(c, now);
@@ -320,7 +347,8 @@ export const salaryDay = new Hono<SignedIn>()
     for (const k of b.commitments) {
       const template = {
         name: k.name,
-        kind: k.kind,
+        // A payback is never Every cycle (checked above).
+        kind: k.kind as "bill" | "savings",
         usualAmountMinor: k.plannedMinor,
         usualDay: usualDayOf(k.dueOn),
       };
@@ -367,6 +395,7 @@ export const salaryDay = new Hono<SignedIn>()
           plannedMinor: k.plannedMinor,
           dueOn: k.dueOn,
           carriedFromId: k.carriedFromId ?? null,
+          prepaymentId: prepaymentOf(k),
         }),
       );
       if (k.carriedFromId) {

@@ -16,6 +16,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { prepaymentLines } from "./prepayments";
 import { undoRecord } from "./salary-day";
 import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
@@ -162,6 +163,8 @@ export const firstUse = new Hono<SignedIn>()
       : [];
     // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
     const savings = current ? await savingsLines(c) : [];
+    // Prepayments from savings with their payback so far (item 14).
+    const prepayments = current ? await prepaymentLines(c) : [];
     // The "Every cycle" templates, paused ones too (item 11).
     const recurring = await db.query.recurringCommitment.findMany({
       where: mine(recurringCommitment),
@@ -214,6 +217,7 @@ export const firstUse = new Hono<SignedIn>()
       undoSalaryDay,
       dayChoices,
       savings,
+      prepayments,
       recurring,
       commitments: commitments.map((k) => ({
         id: k.id,
@@ -225,6 +229,7 @@ export const firstUse = new Hono<SignedIn>()
         state: k.state,
         recurringId: k.recurringId,
         carriedFromId: k.carriedFromId,
+        prepaymentId: k.prepaymentId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
           .map((p) => ({ id: p.id, amountMinor: p.amountMinor, currency: p.currency, paidOn: p.paidOn })),

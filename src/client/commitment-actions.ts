@@ -48,9 +48,14 @@ const draftOf = (c: Commitment): CommitmentDraft => ({
   dueOn: c.dueOn,
   everyCycle: c.recurringId !== null,
 });
+/** What the commitment page changes: a payback to savings keeps its kind and never repeats (item 14). */
+export type CommitmentChange = Pick<CommitmentDraft, "name" | "plannedMinor" | "dueOn"> &
+  Partial<Pick<CommitmentDraft, "kind" | "everyCycle">>;
+const changeOf = (c: Commitment): CommitmentChange =>
+  c.kind === "savings_payback" ? { name: c.name, plannedMinor: c.plannedMinor, dueOn: c.dueOn } : draftOf(c);
 /** Puts a commitment's fields and its "Every cycle" switch back (the template keeps its id). */
 const changeBack = (old: Commitment) =>
-  change(old.id, { ...draftOf(old), recurringId: old.recurringId ?? undefined });
+  change(old.id, { ...changeOf(old), recurringId: old.recurringId ?? undefined });
 const paymentDraftOf = (p: Payment): PaymentDraft => ({ amountMinor: p.amountMinor, paidOn: p.paidOn });
 
 /** Steps in order; stops at the first that fails. */
@@ -72,7 +77,7 @@ export function commitmentActions({ done }: Toaster) {
   return {
     add: (id: string, d: CommitmentDraft) =>
       add(id, d).then((ok) => done(ok, { text: "Commitment saved", undo: () => remove(id) })),
-    change: (old: Commitment, d: CommitmentDraft) =>
+    change: (old: Commitment, d: CommitmentChange) =>
       change(old.id, { ...d, recurringId: d.everyCycle && !old.recurringId ? newId() : undefined }).then(
         (ok) => done(ok, { text: "Commitment changed", undo: () => changeBack(old) }),
       ),
@@ -83,8 +88,8 @@ export function commitmentActions({ done }: Toaster) {
       addPayment(c.id, id, d, finish).then((ok) =>
         done(ok, {
           text: finish
-            ? `${c.name} ${c.kind === "savings" ? "moved" : "paid"} · finished`
-            : c.kind === "savings"
+            ? `${c.name} ${c.kind === "savings" || c.kind === "savings_payback" ? "moved" : "paid"} · finished`
+            : c.kind === "savings" || c.kind === "savings_payback"
               ? "Moved to savings"
               : "Payment saved",
           undo: () =>
