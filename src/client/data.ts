@@ -54,7 +54,7 @@ export interface Recurring {
 export interface SavingsLine {
   id: string;
   /** Put in, Take out, extra income to savings, a savings set-aside moved. */
-  kind: "put_in" | "take_out" | "income" | "set_aside";
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside";
   cycleId: string;
   currency: string;
   /** Below zero: money out of savings. */

@@ -10,7 +10,7 @@ import type { SignedIn } from "./user-check";
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
   id: string;
-  kind: "put_in" | "take_out" | "income" | "set_aside";
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside";
   cycleId: string;
   currency: string;
   amountMinor: number;
@@ -21,7 +21,8 @@ export interface SavingsLine {
 
 /**
  * Every movement into and out of savings, all cycles, newest first (spec 5):
- * Put in and Take out, extra income sent to savings, savings set-asides moved.
+ * Put in and Take out, extra income sent to savings, leftover saved on salary
+ * day, savings set-asides moved.
  * Totals are worked out from it with the money rules.
  */
 export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<SavingsLine[]> {
@@ -29,7 +30,7 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
   const moves = await db.query.savingsMovement.findMany({ where: mine(savingsMovement) });
   const incomes = await db.query.income.findMany({
     where: and(mine(income), gt(income.toSavingsMinor, 0)),
-    columns: { id: true, cycleId: true, currency: true, toSavingsMinor: true, receivedOn: true },
+    columns: { id: true, kind: true, cycleId: true, currency: true, toSavingsMinor: true, receivedOn: true },
   });
   const setAsides = await db
     .select({
@@ -59,7 +60,8 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       })),
     ...incomes.map((i) => ({
       id: i.id,
-      kind: "income" as const,
+      // Last cycle's leftover saved on salary day (item 12), or extra income.
+      kind: i.kind === "leftover" ? ("leftover" as const) : ("income" as const),
       cycleId: i.cycleId,
       currency: i.currency,
       amountMinor: i.toSavingsMinor,

@@ -1,20 +1,27 @@
 import { expect, test } from "@playwright/test";
 import { signInFreshToToday } from "./helpers";
 
-// Journey: salary-day steps (backlog item 11, spec 6). Salary day changes the
-// whole cycle, so this runs as a fresh demo user of its own; the other journeys
-// share the one demo user and would see their rows move to an ended cycle.
+// Journey: salary-day steps (backlog items 11 and 12, spec 6). Salary day changes
+// the whole cycle, so this runs as a fresh demo user of its own; the other
+// journeys share the one demo user and would see their rows move to an ended cycle.
 
-test("salary arrived: steps filled from Every cycle, new pot, summary, Start new cycle", async ({ page }) => {
+test("salary arrived: leftover, unpaid ones, steps filled from Every cycle, new pot, Start new cycle", async ({
+  page,
+}) => {
   await signInFreshToToday(page);
   const tabs = page.getByRole("navigation", { name: "Main" });
 
-  // A commitment with "Every cycle" on: Rs 36,000 due today.
+  // A commitment with "Every cycle" on: Rs 36,000 due today. And Water, Rs 2,000.
   await tabs.getByRole("link", { name: "Plan" }).click();
   await page.getByRole("link", { name: "+ Add" }).click();
   await page.getByLabel("Name").fill("Rent");
   await page.getByLabel("Amount (LKR)").fill("36000");
   await page.getByRole("checkbox", { name: /Every cycle/ }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Commitment saved");
+  await page.getByRole("link", { name: "+ Add" }).click();
+  await page.getByLabel("Name").fill("Water");
+  await page.getByLabel("Amount (LKR)").fill("2000");
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("status")).toContainText("Commitment saved");
 
@@ -30,6 +37,26 @@ test("salary arrived: steps filled from Every cycle, new pot, summary, Start new
   await expect(page.getByRole("heading", { name: "Salary", exact: true })).toBeVisible();
   await expect(tabs).toBeHidden();
   await page.getByLabel("Salary (LKR)").fill("250000");
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 2: Rent was paid; Water carries on to the new cycle.
+  await expect(page.getByRole("heading", { name: "Last cycle's unpaid commitments" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await page.getByRole("region", { name: "Rent" }).getByRole("radio", { name: "Paid it" }).click();
+  await page
+    .getByRole("region", { name: "Water" })
+    .getByRole("radio", { name: "Carry to new cycle" })
+    .click();
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 3: leftover 90,000 − 38,000 set aside = 52,000; Rs 50,000 in hand, all to savings.
+  await expect(page.getByRole("heading", { name: "Last cycle's leftover" })).toBeVisible();
+  await expect(page.getByTestId("leftover")).toHaveText("Rs 52,000");
+  await page.getByLabel("Actually have in hand (LKR)").fill("50000");
+  await page.getByLabel("To savings (LKR)").fill("50001");
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await page.getByLabel("To savings (LKR)").fill("50000");
+  await expect(page.getByTestId("leftover-to-cycle")).toHaveText("Rs 0");
   await page.getByRole("button", { name: "Next" }).click();
 
   // Step 4: Rent filled in from Every cycle; change it, add a gym bill.
@@ -56,8 +83,9 @@ test("salary arrived: steps filled from Every cycle, new pot, summary, Start new
   await expect(page.getByRole("heading", { name: "Next salary day" })).toBeVisible();
   await page.getByRole("button", { name: "Next" }).click();
 
-  // Step 7: summary. 250,000 − 37,000 − 5,000 − 5,000 = 203,000.
+  // Step 7: summary. 250,000 + 2,000 Water's money − 37,000 − 5,000 − 2,000 Water − 5,000 = 203,000.
   await expect(page.getByRole("heading", { name: "Summary" })).toBeVisible();
+  await expect(page.getByTestId("salary-day-from-last")).toHaveText("Rs 2,000");
   await expect(page.getByTestId("salary-day-free")).toHaveText("Rs 203,000");
   await expect(page.getByTestId("salary-day-gap")).toHaveCount(0);
   await page.getByRole("button", { name: "Start new cycle" }).click();
@@ -68,6 +96,13 @@ test("salary arrived: steps filled from Every cycle, new pot, summary, Start new
   const nextUp = page.getByRole("region", { name: "Next up · already set aside" });
   await expect(nextUp.getByText("Rent")).toBeVisible();
   await expect(nextUp.getByText("Gym")).toBeVisible();
+  await expect(nextUp.getByText("Water")).toBeVisible();
+
+  // The leftover saved shows in Savings.
+  await tabs.getByRole("link", { name: "Money" }).click();
+  await page.getByRole("link", { name: /^Savings/ }).click();
+  await expect(page.getByText("Saved leftover")).toBeVisible();
+  await page.getByRole("link", { name: "← Back" }).click();
 
   // Every cycle keeps the confirmed amount; pause it.
   await tabs.getByRole("link", { name: "Plan" }).click();

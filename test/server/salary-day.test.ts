@@ -9,7 +9,7 @@ const id = () => crypto.randomUUID();
 
 interface Current {
   cycle: { id: string; startedOn: string; expectedSalaryOn: string };
-  incomes: { kind: string; amountMinor: number; receivedOn: string }[];
+  incomes: { kind: string; amountMinor: number; toSavingsMinor: number; receivedOn: string }[];
   commitments: {
     id: string;
     name: string;
@@ -21,6 +21,7 @@ interface Current {
   }[];
   pots: { id: string; name: string; amountMinor: number | null; archived: boolean }[];
   recurring: { id: string; name: string; usualAmountMinor: number; usualDay: number; active: boolean }[];
+  savings: { kind: string; amountMinor: number }[];
 }
 
 /** A user with first use done 20 days ago: Rs 90,000 held. `who` "demo" is the other user. */
@@ -68,6 +69,18 @@ const salaryDay = (more: Record<string, unknown> = {}) => ({
   expectedSalaryOn: addDays(today(), 30),
   commitments: [],
   pots: [],
+  close: close(),
+  ...more,
+});
+
+/** Steps 2 and 3 with no unpaid commitments and the leftover kept as worked out. */
+const close = (more: Record<string, unknown> = {}) => ({
+  closeId: id(),
+  leftoverIncomeId: id(),
+  unpaid: [] as { id: string; choice: string; newId?: string }[],
+  inHandMinor: null as number | null,
+  toSavingsMinor: 0,
+  overspend: null as string | null,
   ...more,
 });
 
@@ -107,6 +120,8 @@ describe("salary day starts a new cycle (item 11, spec 2, 6)", () => {
     });
     expect(cur.incomes).toMatchObject([
       { kind: "salary", amountMinor: 25_000_000, receivedOn: addDays(today(), -1) },
+      // Last cycle's leftover: Rs 90,000 held, less Groceries' Rs 10,000, plus the Rs 10,000 left in it.
+      { kind: "leftover", amountMinor: 9_000_000, receivedOn: addDays(today(), -1) },
     ]);
     expect(cur.commitments).toMatchObject([
       { name: "Rent", plannedMinor: 3_600_000, state: "open", recurringId: null },
@@ -128,7 +143,8 @@ describe("salary day starts a new cycle (item 11, spec 2, 6)", () => {
       { id: commitmentId, name: "Water", plannedMinor: 100_000, dueOn: today() },
       cookie,
     );
-    expect((await send("POST", "/api/salary-day", salaryDay(), cookie)).status).toBe(201);
+    const b = salaryDay({ close: close({ unpaid: [{ id: commitmentId, choice: "drop" }] }) });
+    expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
     expect((await send("PATCH", `/api/spends/${spendId}`, { amountMinor: 1 }, cookie)).status).toBe(409);
     expect((await send("DELETE", `/api/commitments/${commitmentId}`, undefined, cookie)).status).toBe(409);
     // New spends go into the new cycle, dated within it only.
@@ -232,10 +248,169 @@ describe("last cycle's coming-up commitments move to the new cycle (spec 3)", ()
       commitments: [
         { id: id(), name: "Water", plannedMinor: 1, dueOn: addDays(today(), 1), carriedFromId: water },
       ],
+      close: close({ unpaid: [{ id: water, choice: "drop" }] }),
     });
     const res = await send("POST", "/api/salary-day", b, cookie);
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ problems: ["carried_from"] });
+  });
+});
+
+const row = (sql: string, ...binds: unknown[]) =>
+  env.DB.prepare(sql)
+    .bind(...binds)
+    .first<Record<string, unknown>>();
+
+describe("closing the old cycle (item 12, spec 3, 6)", () => {
+  /** Rent Rs 30,000 (Rs 10,000 paid), Gym Rs 5,000, Phone Rs 2,000: all due in the cycle that ends. */
+  async function withUnpaid() {
+    const u = await setUp();
+    const rent = id();
+    const gym = id();
+    const phone = id();
+    const add = (k: string, name: string, plannedMinor: number, dueOn: string) =>
+      send("POST", "/api/commitments", { id: k, name, plannedMinor, dueOn }, u.cookie);
+    await add(rent, "Rent", 3_000_000, addDays(today(), -5));
+    await add(gym, "Gym", 500_000, today());
+    await add(phone, "Phone", 200_000, addDays(today(), -1));
+    const paid = await send(
+      "POST",
+      `/api/commitments/${rent}/payments`,
+      { id: id(), amountMinor: 1_000_000, paidOn: addDays(today(), -5) },
+      u.cookie,
+    );
+    expect(paid.status).toBe(201);
+    return { ...u, rent, gym, phone };
+  }
+
+  it("Paid it, Carry and Drop; the leftover split into savings and the new cycle", async () => {
+    const { cookie, rent, gym, phone } = await withUnpaid();
+    const carriedId = id();
+    const paymentId = id();
+    const b = salaryDay({
+      close: close({
+        unpaid: [
+          { id: rent, choice: "carry", newId: carriedId },
+          { id: gym, choice: "drop" },
+          { id: phone, choice: "paid", newId: paymentId },
+        ],
+        toSavingsMinor: 800_000,
+      }),
+    });
+    const res = await send("POST", "/api/salary-day", b, cookie);
+    expect(res.status).toBe(201);
+
+    const state = async (k: string) => (await row("select state from commitment where id = ?", k))?.state;
+    expect(await state(rent)).toBe("carried");
+    expect(await state(gym)).toBe("dropped");
+    expect(await state(phone)).toBe("finished");
+    expect(await row("select amount_minor, paid_on from commitment_payment where id = ?", paymentId)).toEqual(
+      {
+        amount_minor: 200_000,
+        paid_on: addDays(today(), -1),
+      },
+    );
+
+    const cur = await currentOf(cookie);
+    // Carried: what is still to pay, due as before (late), pointing back.
+    expect(cur.commitments).toMatchObject([
+      { id: carriedId, name: "Rent", plannedMinor: 2_000_000, dueOn: addDays(today(), -5), state: "open" },
+    ]);
+    expect(cur.commitments[0]?.carriedFromId).toBe(rent);
+    // Free money left 53,000 + dropped 5,000 = 58,000 leftover; 8,000 saved; + 20,000 carried money.
+    expect(cur.incomes).toMatchObject([
+      { kind: "salary" },
+      { kind: "leftover", amountMinor: 7_800_000, toSavingsMinor: 800_000, receivedOn: today() },
+    ]);
+    expect(
+      await row(
+        "select leftover_correction_minor c, leftover_to_savings_minor s, overspend_choice o, next_cycle_id n from cycle_close where id = ?",
+        b.close.closeId,
+      ),
+    ).toEqual({ c: 0, s: 800_000, o: null, n: b.cycleId });
+    expect(cur.savings).toContainEqual(expect.objectContaining({ kind: "leftover", amountMinor: 800_000 }));
+  });
+
+  it("the amount actually in hand replaces the leftover", async () => {
+    const { cookie } = await setUp();
+    const b = salaryDay({ close: close({ inHandMinor: 5_000_000 }) });
+    expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
+    expect((await currentOf(cookie)).incomes).toMatchObject([
+      { kind: "salary" },
+      { kind: "leftover", amountMinor: 5_000_000 },
+    ]);
+    const c = await row("select leftover_correction_minor c from cycle_close where id = ?", b.close.closeId);
+    expect(c?.c).toBe(-4_000_000);
+  });
+
+  it("an overspend must be taken or ignored; taken, it lowers the new free money", async () => {
+    const { cookie } = await setUp();
+    await send("POST", "/api/spends", { id: id(), spentOn: today(), amountMinor: 10_000_000 }, cookie);
+    const none = await send("POST", "/api/salary-day", salaryDay(), cookie);
+    expect(none.status).toBe(400);
+    expect(await none.json()).toMatchObject({ problems: ["close.overspend"] });
+    const b = salaryDay({ close: close({ overspend: "take" }) });
+    expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
+    expect((await currentOf(cookie)).incomes).toMatchObject([
+      { kind: "salary" },
+      { kind: "leftover", amountMinor: -1_000_000 },
+    ]);
+  });
+
+  it("ignored, nothing comes in", async () => {
+    const { cookie } = await setUp();
+    await send("POST", "/api/spends", { id: id(), spentOn: today(), amountMinor: 10_000_000 }, cookie);
+    const b = salaryDay({ close: close({ overspend: "ignore" }) });
+    expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
+    expect((await currentOf(cookie)).incomes.map((i) => i.kind)).toEqual(["salary"]);
+  });
+
+  it("refuses a missing choice, a carry or Paid it without its new id, and saving more than the leftover", async () => {
+    const { cookie, rent, gym, phone } = await withUnpaid();
+    const bad = async (more: Record<string, unknown>) => {
+      const res = await send("POST", "/api/salary-day", salaryDay({ close: close(more) }), cookie);
+      expect(res.status).toBe(400);
+      return ((await res.json()) as { problems: string[] }).problems;
+    };
+    const all = [
+      { id: rent, choice: "drop" },
+      { id: gym, choice: "drop" },
+      { id: phone, choice: "drop" },
+    ];
+    expect(await bad({ unpaid: all.slice(1) })).toEqual(["close.unpaid"]);
+    expect(await bad({ unpaid: [...all.slice(1), { id: rent, choice: "carry" }] })).toEqual(["close.new_id"]);
+    expect(await bad({ unpaid: [...all.slice(1), { id: rent, choice: "paid" }] })).toEqual(["close.new_id"]);
+    // All dropped: leftover = Rs 90,000 held less the Rs 10,000 paid on Rent.
+    expect(await bad({ unpaid: all, toSavingsMinor: 8_000_001 })).toEqual(["close.to_savings"]);
+    expect(await bad({ unpaid: all, overspend: "take" })).toEqual(["close.overspend"]);
+    const state = await row("select state from commitment where id = ?", rent);
+    expect(state?.state).toBe("open");
+  });
+
+  it("a carried one can still be changed in the new cycle, though due before it began", async () => {
+    const { cookie, rent, gym, phone } = await withUnpaid();
+    const carriedId = id();
+    const b = salaryDay({
+      close: close({
+        unpaid: [
+          { id: rent, choice: "carry", newId: carriedId },
+          { id: gym, choice: "drop" },
+          { id: phone, choice: "drop" },
+        ],
+      }),
+    });
+    expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
+    expect(
+      (await send("PATCH", `/api/commitments/${carriedId}`, { plannedMinor: 1_900_000 }, cookie)).status,
+    ).toBe(200);
+    // Moving it to another day before the cycle is still refused.
+    const moved = await send(
+      "PATCH",
+      `/api/commitments/${carriedId}`,
+      { dueOn: addDays(today(), -6) },
+      cookie,
+    );
+    expect(moved.status).toBe(400);
   });
 });
 
@@ -309,16 +484,18 @@ describe("Every cycle (spec 3, 10)", () => {
     const { cookie } = await setUp();
     const rent = id();
     const phone = id();
+    const rentNow = id();
+    const phoneNow = id();
     await send(
       "POST",
       "/api/commitments",
-      { id: id(), name: "Rent", plannedMinor: 3_600_000, dueOn: today(), recurringId: rent },
+      { id: rentNow, name: "Rent", plannedMinor: 3_600_000, dueOn: today(), recurringId: rent },
       cookie,
     );
     await send(
       "POST",
       "/api/commitments",
-      { id: id(), name: "Phone", plannedMinor: 250_000, dueOn: today(), recurringId: phone },
+      { id: phoneNow, name: "Phone", plannedMinor: 250_000, dueOn: today(), recurringId: phone },
       cookie,
     );
     const newDue = addDays(today(), 10);
@@ -342,6 +519,12 @@ describe("Every cycle (spec 3, 10)", () => {
         },
         { id: id(), name: "Gym", plannedMinor: 500_000, dueOn: newDue, recurringId: id(), everyCycle: true },
       ],
+      close: close({
+        unpaid: [
+          { id: rentNow, choice: "paid", newId: id() },
+          { id: phoneNow, choice: "paid", newId: id() },
+        ],
+      }),
     });
     expect((await send("POST", "/api/salary-day", b, cookie)).status).toBe(201);
     const cur = await currentOf(cookie);

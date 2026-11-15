@@ -7,7 +7,8 @@ import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "
 import type { SpendEntry } from "./spend";
 
 /** Kinds of `income` rows (data-model.md). */
-export type IncomeKind = "salary" | "extra" | "opening" | "loan" | "borrowed" | "paid_back";
+/** `leftover`: what the cycle before brought in on salary day (item 12). */
+export type IncomeKind = "salary" | "extra" | "opening" | "leftover" | "loan" | "borrowed" | "paid_back";
 
 export interface IncomeEntry {
   kind: IncomeKind;
