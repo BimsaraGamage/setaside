@@ -1,6 +1,7 @@
 import { isCurrency, type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
 import { type Day, daysBetween, isDay, isTimeZone } from "./days";
+import { inAPot, type PotEntry, potOutMinor } from "./pot";
 import type { SpendEntry } from "./spend";
 
 /** Kinds of `income` rows (data-model.md). */
@@ -22,6 +23,8 @@ export interface CycleEntries {
   spends: SpendEntry[];
   /** This cycle's commitments with their payments; open ones due by the expected salary day are set aside. */
   commitments?: CommitmentEntry[];
+  /** The user's pots with this cycle's amounts; their spends come out of the pot first (spec 4). */
+  pots?: PotEntry[];
 }
 
 /**
@@ -36,25 +39,29 @@ export function daysLeft(today: Day, expectedSalaryOn: Day): number {
  * Free money (glossary): income to free money less the commitments (paid, and
  * still set aside) and the spends, in the spending currency. With `startOf`, only spends dated before
  * that day count: the free money at the start of that day. Income and commitments
- * always count at once, payments too (spec 7: changes that are not spends
- * recalculate today).
- * Pots and the counting rate join in later items.
+ * always count at once, payments and pot amounts too (spec 7: changes that are
+ * not spends recalculate today). A spend in a pot comes out of the pot; only
+ * the part past an empty pot comes out of free money (spec 4).
+ * The counting rate joins in a later item.
  */
 export function freeMoney(
   entries: Pick<CycleEntries, "spendingCurrency" | "incomes"> &
-    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn">>,
+    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn" | "pots">>,
   startOf?: Day,
 ): Minor {
-  let total = 0;
+  const cur = entries.spendingCurrency;
+  const pots = entries.pots ?? [];
+  const spends = entries.spends ?? [];
+  let total = -potOutMinor(pots, spends, cur, startOf);
   if (entries.commitments && entries.expectedSalaryOn) {
-    total -= commitmentsOutMinor(entries.commitments, entries.expectedSalaryOn, entries.spendingCurrency);
+    total -= commitmentsOutMinor(entries.commitments, entries.expectedSalaryOn, cur);
   }
   for (const i of entries.incomes) {
-    if (i.currency !== entries.spendingCurrency) continue;
+    if (i.currency !== cur) continue;
     total += i.amountMinor - i.toSavingsMinor;
   }
-  for (const s of entries.spends ?? []) {
-    if (s.currency !== entries.spendingCurrency) continue;
+  for (const s of spends) {
+    if (s.currency !== cur || inAPot(s, pots)) continue;
     if (startOf !== undefined && s.spentOn >= startOf) continue;
     total -= s.amountMinor;
   }
@@ -80,6 +87,7 @@ export interface TodayView {
   daysLeft: number;
   /** Today's allowance: from the free money at the start of today, fixed for the day. */
   allowanceMinor: Minor;
+  /** Today's spends that came out of free money (a pot's only past its amount). */
   spentTodayMinor: Minor;
   /** Allowance less today's spends; below zero is "Over by". */
   leftTodayMinor: Minor;
@@ -91,12 +99,11 @@ export interface TodayView {
 export function todayView(entries: CycleEntries, today: Day): TodayView {
   const cur = entries.spendingCurrency;
   const freeMinor = freeMoney(entries);
+  const startMinor = freeMoney(entries, today);
   const days = daysLeft(today, entries.expectedSalaryOn);
-  const allowanceMinor = dailyAllowance(freeMoney(entries, today), days, cur);
-  let spentTodayMinor = 0;
-  for (const s of entries.spends) {
-    if (s.currency === cur && s.spentOn === today) spentTodayMinor += s.amountMinor;
-  }
+  const allowanceMinor = dailyAllowance(startMinor, days, cur);
+  // Spends are dated up to today, so the start-of-day free money differs only by today's.
+  const spentTodayMinor = startMinor - freeMinor;
   return {
     freeMinor,
     daysLeft: days,

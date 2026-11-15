@@ -51,7 +51,7 @@ Free money, daily allowance, days left, spending speed, run-out verdict, pot amo
 
 - **Pay cycle id**: its own `cycle` row, made when the salary is entered. A cycle ends when the next one starts; the newest is the current one.
 - **Recurring commitments**: on salary day each active `recurring_commitment` makes a `commitment` row in the new cycle, filled with the last amount and date, for the user to check.
-- **Pots**: the `pot` lives across cycles; each cycle gets its own `pot_allocation`.
+- **Pots**: the `pot` lives across cycles; each cycle gets its own `pot_allocation` (at most one per pot and cycle). A spend's `pot_id` has no foreign key: a spend whose pot is gone counts as free money.
 - **Carried over**: the old commitment is marked `carried`; a new row in the new cycle points back with `carried_from_id` (history kept).
 - **Instalment plans, card bills, person paybacks, prepayment paybacks**: each makes a `commitment` per cycle, linked by its `*_id`.
 

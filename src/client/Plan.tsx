@@ -13,6 +13,7 @@ import type { CommitmentActions } from "./commitment-actions";
 import { type Commitment, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
 import { plannedGap } from "./Pay";
+import { PlanPots } from "./Pots";
 import { toText } from "./SpendSheet";
 
 /** "Paid Rs 10,000 of Rs 36,000" for a part-paid open commitment; nothing when unpaid. */
@@ -21,7 +22,7 @@ export function paidNote(c: Commitment): string | undefined {
   return `Paid ${formatMoney(paidMinor(c, c.currency), c.currency)} of ${formatMoney(c.plannedMinor, c.currency)}`;
 }
 
-/** Plan (spec 10): this cycle's commitments and + Add. Pots, Every cycle and Salary arrived come later. */
+/** Plan (spec 10): this cycle's commitments and + Add, pots and + New pot. Every cycle and Salary arrived come later. */
 export function Plan({ data }: { data: Ready }) {
   const cur = data.settings.spendingCurrency;
   const open = data.commitments.filter((c) => c.state === "open");
@@ -78,6 +79,7 @@ export function Plan({ data }: { data: Ready }) {
           {finished.map(row)}
         </section>
       )}
+      <PlanPots data={data} />
     </>
   );
 }

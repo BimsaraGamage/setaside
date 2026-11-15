@@ -1,6 +1,15 @@
 import { useMemo, useState } from "react";
-import { addDays, checkSpend, formatMoney, minorDigits, NOTE_MAX, parseAmount, todayView } from "../money";
-import { dayLabel, entriesOf, type Ready, type Spend } from "./data";
+import {
+  addDays,
+  checkSpend,
+  formatMoney,
+  minorDigits,
+  NOTE_MAX,
+  parseAmount,
+  potView,
+  todayView,
+} from "../money";
+import { dayLabel, entriesOf, potEntry, type Ready, type Spend } from "./data";
 import { newId } from "./id";
 import type { SpendActions } from "./spend-actions";
 
@@ -31,7 +40,8 @@ export function toText(minor: number, currency: string): string {
 
 /**
  * The spend sheet (spec 10): date chip, amount on a number pad, the live
- * "left today" line, note, Save. Opened with a spend, it edits it and can delete it.
+ * "left today" (or "from <pot> pot") line, note, Free money or a pot, Save.
+ * Opened with a spend, it edits it and can delete it.
  */
 export function SpendSheet({
   data,
@@ -50,21 +60,40 @@ export function SpendSheet({
   const [text, setText] = useState(editing ? toText(editing.amountMinor, cur) : "");
   const [spentOn, setSpentOn] = useState(editing?.spentOn ?? today);
   const [note, setNote] = useState(editing?.note ?? "");
+  // Spends default to free money; one tap switches to a pot (spec 4).
+  const [potId, setPotId] = useState<string | null>(editing?.potId ?? null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const days = useMemo(() => cycleDays(today, data.cycle.startedOn), [today, data.cycle.startedOn]);
 
   const amountMinor = parseAmount(text, cur) ?? 0;
-  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur };
-  const problems = checkSpend(draft, { today, cycleStartedOn: data.cycle.startedOn, spendingCurrency: cur });
+  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId };
+  const problems = checkSpend(draft, {
+    today,
+    cycleStartedOn: data.cycle.startedOn,
+    spendingCurrency: cur,
+    pots: data.pots,
+    keepPotId: editing?.potId,
+  });
+  // Pots to choose from: those in use, and a stopped one this spend is already in.
+  const choices = data.pots.filter((p) => !p.archived || p.id === editing?.potId);
+  const pot = data.pots.find((p) => p.id === potId);
 
   // The live line: today's numbers as they will be after this spend is saved.
   const others = data.spends.filter((s) => s.id !== editing?.id);
-  const after = todayView(
-    { ...entriesOf(data), spends: amountMinor > 0 ? [...others, draft] : others },
-    today,
-  );
+  const spendsAfter = amountMinor > 0 ? [...others, { ...draft, id: "draft" }] : others;
+  const after = todayView({ ...entriesOf(data), spends: spendsAfter }, today);
+  const potAfter = pot ? potView(potEntry(pot), spendsAfter) : null;
   const money = (m: number) => formatMoney(m, cur);
+  const todayLine =
+    after.leftTodayMinor < 0
+      ? `Over today by ${money(-after.leftTodayMinor)}`
+      : `${money(after.leftTodayMinor)} left today after this`;
+  const liveLine = !pot
+    ? todayLine
+    : potAfter && potAfter.overMinor === 0
+      ? `From ${pot.name} pot · ${money(potAfter.leftMinor)} left in it`
+      : `${pot.name} used up · ${todayLine}`;
 
   function press(k: (typeof keys)[number]) {
     setFailed(false);
@@ -87,8 +116,8 @@ export function SpendSheet({
   const save = () =>
     run(() =>
       editing
-        ? actions.change(editing, { spentOn, amountMinor, note: draft.note })
-        : actions.add(newId(), { spentOn, amountMinor, note: draft.note }),
+        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId })
+        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId }),
     );
 
   return (
@@ -125,11 +154,36 @@ export function SpendSheet({
           {text ? money(amountMinor) : <span className="mute">{money(0)}</span>}
         </p>
 
-        <p className={`small ${after.leftTodayMinor < 0 ? "bad" : "mute"}`} data-testid="sheet-left">
-          {after.leftTodayMinor < 0
-            ? `Over today by ${money(-after.leftTodayMinor)}`
-            : `${money(after.leftTodayMinor)} left today after this`}
+        <p
+          className={`small ${after.leftTodayMinor < 0 && (!pot || potAfter?.overMinor) ? "bad" : "mute"}`}
+          data-testid="sheet-left"
+        >
+          {liveLine}
         </p>
+
+        {choices.length > 0 && (
+          <fieldset className="chips" aria-label="Spend from">
+            <button
+              type="button"
+              className="btn"
+              aria-pressed={potId === null}
+              onClick={() => setPotId(null)}
+            >
+              Free money
+            </button>
+            {choices.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="btn"
+                aria-pressed={potId === p.id}
+                onClick={() => setPotId(p.id)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </fieldset>
+        )}
 
         <label className="field">
           <span className="sr">Note</span>

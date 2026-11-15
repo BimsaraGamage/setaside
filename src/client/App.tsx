@@ -5,6 +5,8 @@ import { type Spend, useCurrent } from "./data";
 import { FirstUse } from "./FirstUse";
 import { PayPage } from "./Pay";
 import { CommitmentPage, Plan } from "./Plan";
+import { PotPage } from "./Pots";
+import { potActions } from "./pot-actions";
 import { Settings } from "./Settings";
 import { SignIn } from "./SignIn";
 import { SpendSheet } from "./SpendSheet";
@@ -15,13 +17,13 @@ import { useToast } from "./toast";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
-const pages = { Spends: "Money", Commitment: "Plan", Pay: "Plan", Payment: "Plan" } as const;
+const pages = { Spends: "Money", Commitment: "Plan", Pay: "Plan", Payment: "Plan", Pot: "Plan" } as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
-/** "#Commitment/<id>" → the Commitment page for that id; unknown → Today. */
-function routeFromHash(): { tab: Tab; id?: string } {
-  const [h = "", id] = decodeURIComponent(window.location.hash.slice(1)).split("/");
-  if ((tabs as readonly string[]).includes(h) || h in pages) return { tab: h as Tab, id };
+/** "#Commitment/<id>" → the Commitment page for that id; "#Pot/new/<name>" → a new pot named so; unknown → Today. */
+function routeFromHash(): { tab: Tab; id?: string; extra?: string } {
+  const [h = "", id, extra] = window.location.hash.slice(1).split("/").map(decodeURIComponent);
+  if ((tabs as readonly string[]).includes(h) || h in pages) return { tab: h as Tab, id, extra };
   return { tab: "Today" };
 }
 
@@ -39,6 +41,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const toaster = useToast(reload);
   const spends = spendActions(toaster);
   const commitments = commitmentActions(toaster);
+  const pots = potActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -68,7 +71,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
 
   const ready = { ...data, settings: data.settings, cycle: data.cycle };
   const edit = (editing: Spend, today: string) => setSheet({ today, editing });
-  const { tab, id } = route;
+  const { tab, id, extra } = route;
   const isPage = tab in pages;
   const editing = tab === "Commitment" && id ? ready.commitments.find((c) => c.id === id) : undefined;
   // "#Pay/<commitment id>" pays it; "#Payment/<payment id>" changes that payment.
@@ -79,6 +82,9 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
         ? ready.commitments.find((c) => c.payments.some((p) => p.id === id))
         : undefined;
   const payment = tab === "Payment" ? payFor?.payments.find((p) => p.id === id) : undefined;
+  // "#Pot" and "#Pot/new/<starter name>" make a pot; "#Pot/<id>" opens one.
+  const newPot = tab === "Pot" && (!id || id === "new");
+  const pot = tab === "Pot" && !newPot ? ready.pots.find((p) => p.id === id) : undefined;
   const toast = toaster.toast;
   return (
     <>
@@ -105,6 +111,24 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
                 ← Back
               </a>
               <p className="mute">This payment is no longer here.</p>
+            </>
+          ))}
+        {tab === "Pot" &&
+          (newPot || pot ? (
+            <PotPage
+              key={id ?? "new"}
+              data={ready}
+              editing={pot}
+              starter={newPot ? extra : undefined}
+              actions={pots}
+              onOpenSpend={edit}
+            />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Plan">
+                ← Back
+              </a>
+              <p className="mute">This pot is no longer here.</p>
             </>
           ))}
         {tab === "Money" && <Money data={ready} />}
