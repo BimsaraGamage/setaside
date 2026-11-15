@@ -55,11 +55,11 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - The entered salary amount is the truth. A salary that differs from last time needs no special handling.
 - **Expected salary day.** On salary day the app suggests the next one from the usual pay day; the user confirms it and can change it later. The daily allowance counts days up to it.
 - **Salary early:** entering it ends the current cycle early.
-- **Salary late:** when the expected salary day passes with no salary entered, the app says the salary is late and asks for a new expected day. What is left is spread over the extra days.
+- **Salary late:** when the expected salary day comes with no salary entered, Today says the salary is late ("expected Mon 30 Nov, 2 days ago") and asks for a new expected day, after today. What is left is spread over the extra days. Until a new day is given, all free money is today's (no days left).
 - **Set-asides larger than the salary:** if commitments + pots + savings set-aside are more than the salary plus the free money last cycle brings in (steps 2 and 3 of section 6; compared at the **counting rate** when currencies differ), the app shows the gap before the cycle starts; the user lowers something or takes money from savings. It is a warning: Start new cycle stays allowed.
 - **Ended cycles are locked.** Nothing in an ended cycle can be added, changed or deleted. A forgotten spend from last cycle is entered in the current cycle; the leftover correction on salary day (section 6) is the only fix to an ended cycle.
 - **Spends can be dated back** only within the current cycle.
-- **Undo salary day:** allowed until anything new is entered in the new cycle. It removes the new cycle and everything salary day made (its cycle-end choices, generated commitments and pot amounts) and reopens the old cycle as it was. The salary amount itself stays editable during the current cycle.
+- **Undo salary day:** allowed until anything new is entered or changed after salary day: a spend, payment, commitment, pot, savings movement, income, underspend answer or Every cycle change. Changing the salary amount or the expected salary day doesn't count. It removes the new cycle and everything salary day made (its cycle-end choices, generated commitments, Paid it payments, new pots and pot amounts, Every cycle changes) and reopens the old cycle as it was. It is asked once more before it is done, and has no Undo of its own (salary day can be done again). The salary amount itself stays editable during the current cycle (Plan).
 
 ### First use
 
@@ -242,6 +242,7 @@ Top to bottom:
 - **Header**: app name, cycle dates ("Cycle 31 Oct → salary Mon 30 Nov"), **Salary arrived** button.
 - **Offline line** when offline or with unsent items (section 11).
 - **Reminders list and turn-on banner** when phone alerts are off (section 12).
+- **Salary late card** from the expected salary day with no salary entered (section 2): a new expected day and Set; It arrived opens salary day.
 - **Underspend card** when there is a question to answer (section 7): "Rs 6,000 not spent yesterday" (or "in the last N days") and the two answers, each with what it makes today's allowance ("Rs 10,666 a day", "Rs 16,000 today").
 - **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount ("Speed Rs 2,300 a day · Tomorrow Rs 4,800"; "(last cycle)" after the speed in a cycle's first 3 days).
 - **Next up · already set aside**: open commitments from today to the expected salary day, each with date, weekday, "in N days", a note (card balance, "7 of 12"), and amount; total at the top; ends with "Salary expected" on its day. This is the timeline; there is no chart.
@@ -254,7 +255,7 @@ A bottom sheet: date chip (Today, changeable within the current cycle); amount o
 
 ### Plan
 
-This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; an **Every cycle** link; **Salary arrived**.
+This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; **This cycle**: the salary (Change), the expected salary day (Change) and **Undo salary day** while it is allowed (section 2); an **Every cycle** link; **Salary arrived**.
 
 - **Commitment** (new or edit): name, currency and amount, due date, "Every cycle" switch; card bills and plan payments show what they are linked to. Payments list, still to pay, **Pay** (amount, currency, date; a note when paid more, less or in the other currency), **Mark finished**, Delete.
 - **Pot** (new or edit): name, currency and amount this cycle, usual amount, the new allowance shown; amount left with its bar and the spends from the pot; Stop using this pot (or Use this pot again); Delete while it has no spends. Pots not in use are listed under Plan's pots.

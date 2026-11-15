@@ -78,6 +78,13 @@
       "when": 1794719713624,
       "tag": "0010_cycle_close",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794760660779,
+      "tag": "0011_undo_salary_day",
+      "breakpoints": true
     }
   ]
 }

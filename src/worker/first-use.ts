@@ -16,6 +16,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { undoRecord } from "./salary-day";
 import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
 
@@ -175,6 +176,8 @@ export const firstUse = new Hono<SignedIn>()
       },
       orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
     });
+    // Undo salary day is offered while nothing new is entered (item 13).
+    const undoSalaryDay = current ? (await undoRecord(c, current)) !== null : false;
     const lastCycle =
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     return c.json({
@@ -208,6 +211,7 @@ export const firstUse = new Hono<SignedIn>()
       })),
       pots,
       lastCycle,
+      undoSalaryDay,
       dayChoices,
       savings,
       recurring,

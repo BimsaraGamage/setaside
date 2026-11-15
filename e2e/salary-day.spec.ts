@@ -115,3 +115,39 @@ test("salary arrived: leftover, unpaid ones, steps filled from Every cycle, new 
   await expect(rentSwitch).not.toBeChecked();
   await expect(page.getByText(/Rs 37,000 on the .* · paused/)).toBeVisible();
 });
+
+// Journey: Undo salary day and the salary amount (item 13, spec 2).
+test("salary amount changed on Plan, then Undo salary day reopens last cycle", async ({ page }) => {
+  await signInFreshToToday(page);
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 90,000");
+
+  // A salary day with only the salary: Rs 90,000 left over comes along.
+  await page.getByRole("link", { name: "Salary arrived" }).click();
+  await page.getByLabel("Salary (LKR)").fill("250000");
+  while (!(await page.getByRole("button", { name: "Start new cycle" }).isVisible())) {
+    await page.getByRole("button", { name: "Next" }).click();
+  }
+  await page.getByRole("button", { name: "Start new cycle" }).click();
+  await expect(page.getByRole("status")).toContainText("New cycle started");
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 340,000");
+
+  // Plan: the salary can still be changed.
+  await tabs.getByRole("link", { name: "Plan" }).click();
+  const thisCycle = page.getByRole("region", { name: "This cycle" });
+  await expect(thisCycle.getByTestId("salary-amount")).toHaveText("Rs 250,000");
+  await thisCycle.getByRole("button", { name: "Change" }).first().click();
+  await thisCycle.getByLabel("Salary (LKR)").fill("260000");
+  await thisCycle.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Salary changed");
+  await expect(thisCycle.getByTestId("salary-amount")).toHaveText("Rs 260,000");
+
+  // Undo salary day, asked once more first: last cycle is back as it was.
+  await thisCycle.getByRole("button", { name: "Undo salary day" }).click();
+  await thisCycle.getByRole("button", { name: "Undo salary day" }).click();
+  await expect(page.getByRole("status")).toContainText("Salary day undone");
+  await expect(thisCycle.getByTestId("salary-amount")).toHaveCount(0);
+  await expect(thisCycle.getByRole("button", { name: "Undo salary day" })).toHaveCount(0);
+  await tabs.getByRole("link", { name: "Today" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 90,000");
+});

@@ -32,11 +32,16 @@ const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(
 
 type Body = Parameters<(typeof api.api)["salary-day"]["$post"]>[0]["json"];
 
-/** Start new cycle; on success a toast (Undo salary day comes with item 13). */
+/** Start new cycle; on success a toast with Undo salary day (item 13; also on Plan while allowed). */
 export function salaryDayActions({ done }: Toaster) {
   return {
     start: (body: Body) =>
-      ok(api.api["salary-day"].$post({ json: body })).then((ok) => done(ok, { text: "New cycle started" })),
+      ok(api.api["salary-day"].$post({ json: body })).then((started) =>
+        done(started, {
+          text: "New cycle started",
+          undo: () => ok(api.api["salary-day"].undo.$post({ json: { cycleId: body.cycleId } })),
+        }),
+      ),
   };
 }
 

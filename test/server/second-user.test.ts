@@ -203,6 +203,20 @@ const probes: Record<string, Probe> = {
     path: `/api/recurring-commitments/${firstRow(o, "recurring_commitment")}`,
     init: { body: JSON.stringify({ active: false }) },
   }),
+  // Aimed at the first user's cycle: must not undo their salary day.
+  "POST /api/salary-day/undo": (o) => ({
+    path: "/api/salary-day/undo",
+    init: { body: JSON.stringify({ cycleId: firstRow(o, "cycle") }) },
+  }),
+  // Only ever the signed-in user's own current cycle.
+  "PATCH /api/salary": () => ({
+    path: "/api/salary",
+    init: { body: JSON.stringify({ salaryMinor: 1 }) },
+  }),
+  "PATCH /api/cycle": () => ({
+    path: "/api/cycle",
+    init: { body: JSON.stringify({ expectedSalaryOn: "2999-01-01" }) },
+  }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },

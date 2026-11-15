@@ -1,8 +1,9 @@
-import { formatMoney, nextUp, potVerdict, stillToPayMinor, todayView } from "../money";
+import { formatMoney, isSalaryLate, nextUp, potVerdict, stillToPayMinor, todayView } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
 import { paidNote } from "./Plan";
 import { PotRow } from "./Pots";
 import { potName, SpendRow } from "./Spends";
+import { type CycleActions, LateSalaryCard } from "./ThisCycle";
 import { type DayChoiceActions, UnderspendCard } from "./Underspend";
 import { VerdictChip } from "./Verdict";
 
@@ -51,7 +52,7 @@ function NextUpRow({
 }
 
 /**
- * Today (spec 10): header, the underspend card, main card with the daily
+ * Today (spec 10): header, the salary-late card (item 13), the underspend card, main card with the daily
  * allowance, verdict, today's spends and the speed line, Next up, pots with
  * their verdicts, the + button.
  */
@@ -60,11 +61,13 @@ export function Today({
   onAdd,
   onEdit,
   dayChoices,
+  cycle: cycleActions,
 }: {
   data: Ready;
   onAdd: (today: string) => void;
   onEdit: (spend: Spend, today: string) => void;
   dayChoices: DayChoiceActions;
+  cycle: CycleActions;
 }) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
@@ -88,6 +91,10 @@ export function Today({
           Salary arrived
         </a>
       </header>
+
+      {isSalaryLate(today, cycle.expectedSalaryOn) && (
+        <LateSalaryCard data={data} today={today} actions={cycleActions} />
+      )}
 
       {view.underspend && (
         <UnderspendCard

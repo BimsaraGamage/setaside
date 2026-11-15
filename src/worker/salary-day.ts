@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray, ne, or, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
@@ -6,6 +6,8 @@ import {
   broughtIn,
   type ClosingEntries,
   checkCycleClose,
+  checkExpectedSalaryDay,
+  checkSalaryAmount,
   checkSalaryDay,
   isComingUp,
   leftoverOf,
@@ -20,10 +22,13 @@ import {
   commitmentPayment,
   cycle,
   cycleClose,
+  dayChoice,
   income,
   pot,
   potAllocation,
+  type RecurringBefore,
   recurringCommitment,
+  type SalaryDayUndo,
   savingsMovement,
   spend,
 } from "./db/schema";
@@ -151,6 +156,58 @@ async function entriesOf(
 
 const changeRecurring = z.object({ active: z.boolean() });
 
+/** Tables whose rows count as "something new entered" for Undo salary day. */
+type Stamped =
+  | typeof spend
+  | typeof commitment
+  | typeof commitmentPayment
+  | typeof pot
+  | typeof potAllocation
+  | typeof dayChoice
+  | typeof savingsMovement
+  | typeof recurringCommitment
+  | typeof income;
+
+/**
+ * Undo salary day's record for a cycle, while it is allowed (item 13, spec 2):
+ * the cycle was started by salary day after item 13, and nothing has been
+ * entered or changed since, in it or anywhere it touches, except the salary
+ * amount and the expected salary day, which stay editable. Salary day stamps
+ * every row it writes with the new cycle's `created_at`, so "newer" is any row
+ * changed after that. Null when undo is not allowed.
+ */
+export async function undoRecord(
+  c: { var: SignedIn["Variables"] },
+  cur: { id: string; createdAt: Date },
+): Promise<SalaryDayUndo | null> {
+  const { db, mine } = c.var;
+  const close = await db.query.cycleClose.findFirst({
+    where: and(mine(cycleClose), eq(cycleClose.nextCycleId, cur.id)),
+    columns: { undo: true },
+  });
+  if (!close?.undo) return null;
+  const at = cur.createdAt;
+  const any = (t: Stamped, more?: SQL) =>
+    db
+      .select({ id: t.id })
+      .from(t)
+      .where(and(mine(t), gt(t.updatedAt, at), more))
+      .limit(1);
+  const found = await db.batch([
+    any(spend),
+    any(commitment),
+    any(commitmentPayment),
+    any(pot),
+    any(potAllocation),
+    any(dayChoice),
+    any(savingsMovement),
+    any(recurringCommitment),
+    // The salary amount stays editable during the current cycle (spec 2).
+    any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
+  ]);
+  return found.some((rows) => rows.length > 0) ? null : close.undo;
+}
+
 /**
  * Salary day (backlog item 11, spec 2, 3, 6): Start new cycle makes the new
  * cycle with its salary, commitments (filled from the recurring ones and last
@@ -223,19 +280,34 @@ export const salaryDay = new Hono<SignedIn>()
     const templates = recurringIds.length
       ? await db.query.recurringCommitment.findMany({
           where: and(mine(recurringCommitment), inArray(recurringCommitment.id, recurringIds)),
-          columns: { id: true },
         })
       : [];
-    const haveTemplate = new Set(templates.map((t) => t.id));
+    const haveTemplate = new Map(templates.map((t) => [t.id, t]));
+
+    // One time for every row salary day writes: Undo is allowed while nothing is newer (item 13).
+    const at = new Date();
+    const stamp = { createdAt: at, updatedAt: at };
+    const touched = { updatedAt: at };
+    const undo: SalaryDayUndo = {
+      templates: [],
+      potsMade: potRows.filter((p) => !p.old).map((p) => p.id),
+      reopened: [],
+      payments: [],
+    };
+    const keep = (id: string, before: RecurringBefore | null) => {
+      if (!undo.templates.some((t) => t.id === id)) undo.templates.push({ id, before });
+    };
 
     const writes: BatchItem<"sqlite">[] = [
       db.insert(cycle).values({
+        ...stamp,
         id: b.cycleId,
         userId,
         startedOn: b.receivedOn,
         expectedSalaryOn: b.expectedSalaryOn,
       }),
       db.insert(income).values({
+        ...stamp,
         id: b.incomeId,
         userId,
         cycleId: b.cycleId,
@@ -255,21 +327,27 @@ export const salaryDay = new Hono<SignedIn>()
       let recurringId: string | null = null;
       if (k.recurringId && k.everyCycle) {
         recurringId = k.recurringId;
-        if (!haveTemplate.has(k.recurringId)) {
+        const before = haveTemplate.get(k.recurringId);
+        if (!before) {
+          keep(k.recurringId, null);
           writes.push(
-            db.insert(recurringCommitment).values({ id: k.recurringId, userId, currency: cur, ...template }),
+            db
+              .insert(recurringCommitment)
+              .values({ ...stamp, id: k.recurringId, userId, currency: cur, ...template }),
           );
         } else if (!k.carriedFromId) {
           // The amount and day confirmed today become the last ones (spec 3).
+          keep(k.recurringId, before);
           writes.push(
             db
               .update(recurringCommitment)
-              .set(template)
+              .set({ ...template, ...touched })
               .where(and(mine(recurringCommitment), eq(recurringCommitment.id, k.recurringId))),
           );
         }
       } else if (k.recurringId && haveTemplate.has(k.recurringId)) {
         // "Every cycle" switched off on a filled one: it stops repeating.
+        keep(k.recurringId, haveTemplate.get(k.recurringId) ?? null);
         writes.push(
           db
             .delete(recurringCommitment)
@@ -278,6 +356,7 @@ export const salaryDay = new Hono<SignedIn>()
       }
       writes.push(
         db.insert(commitment).values({
+          ...stamp,
           id: k.id,
           userId,
           cycleId: b.cycleId,
@@ -291,10 +370,11 @@ export const salaryDay = new Hono<SignedIn>()
         }),
       );
       if (k.carriedFromId) {
+        undo.reopened.push({ id: k.carriedFromId, state: "open" });
         writes.push(
           db
             .update(commitment)
-            .set({ state: "carried" })
+            .set({ ...touched, state: "carried" })
             .where(and(mine(commitment), eq(commitment.id, k.carriedFromId))),
         );
       }
@@ -305,10 +385,13 @@ export const salaryDay = new Hono<SignedIn>()
       if (!k) continue;
       const rest = stillToPayMinor(k);
       const old = and(mine(commitment), eq(commitment.id, k.id));
+      undo.reopened.push({ id: k.id, state: k.state });
       if (u.choice === "paid") {
         if (rest > 0 && u.newId) {
+          undo.payments.push(u.newId);
           writes.push(
             db.insert(commitmentPayment).values({
+              ...stamp,
               id: u.newId,
               userId,
               commitmentId: k.id,
@@ -318,13 +401,24 @@ export const salaryDay = new Hono<SignedIn>()
             }),
           );
         }
-        writes.push(db.update(commitment).set({ state: "finished" }).where(old));
+        writes.push(
+          db
+            .update(commitment)
+            .set({ ...touched, state: "finished" })
+            .where(old),
+        );
       } else if (u.choice === "drop") {
-        writes.push(db.update(commitment).set({ state: "dropped" }).where(old));
+        writes.push(
+          db
+            .update(commitment)
+            .set({ ...touched, state: "dropped" })
+            .where(old),
+        );
       } else if (u.newId) {
         // Carried: its still to pay, due as before, so it shows as late (spec 3).
         writes.push(
           db.insert(commitment).values({
+            ...stamp,
             id: u.newId,
             userId,
             cycleId: b.cycleId,
@@ -339,7 +433,10 @@ export const salaryDay = new Hono<SignedIn>()
             personDebtId: k.personDebtId,
             prepaymentId: k.prepaymentId,
           }),
-          db.update(commitment).set({ state: "carried" }).where(old),
+          db
+            .update(commitment)
+            .set({ ...touched, state: "carried" })
+            .where(old),
         );
       }
     }
@@ -347,6 +444,7 @@ export const salaryDay = new Hono<SignedIn>()
     const brought = broughtIn(b.close, leftover);
     writes.push(
       db.insert(cycleClose).values({
+        ...stamp,
         id: b.close.closeId,
         userId,
         cycleId: now.cycle.id,
@@ -355,11 +453,14 @@ export const salaryDay = new Hono<SignedIn>()
         leftoverCorrectionMinor: brought.correctionMinor,
         leftoverToSavingsMinor: brought.toSavingsMinor,
         overspendChoice: b.close.overspend,
+        // Complete here: step 4's and step 2's entries are in, pots made are known.
+        undo,
       }),
     );
     if (brought.amountMinor !== 0 || brought.toSavingsMinor !== 0) {
       writes.push(
         db.insert(income).values({
+          ...stamp,
           id: b.close.leftoverIncomeId,
           userId,
           cycleId: b.cycleId,
@@ -375,6 +476,7 @@ export const salaryDay = new Hono<SignedIn>()
       if (!p.old) {
         writes.push(
           db.insert(pot).values({
+            ...stamp,
             id: p.id,
             userId,
             name: p.name,
@@ -385,6 +487,7 @@ export const salaryDay = new Hono<SignedIn>()
       }
       writes.push(
         db.insert(potAllocation).values({
+          ...stamp,
           id: p.allocationId,
           userId,
           potId: p.id,
@@ -400,6 +503,101 @@ export const salaryDay = new Hono<SignedIn>()
       return c.json({ error: "conflict" as const }, 409);
     }
     return c.json({ ok: true as const, cycleId: b.cycleId }, 201);
+  })
+  /**
+   * Undo salary day (item 13, spec 2): removes the new cycle and everything in it
+   * (cascades: its incomes, commitments, pot amounts, cycle-end choices), pots
+   * made that day, puts back the templates it made, changed or deleted, and
+   * reopens last cycle's commitments it paid, carried or dropped (Paid it's
+   * payments go too). The old cycle is current again, as it was. `cycleId` is
+   * the cycle to undo, so a second tap can't undo the salary day before it.
+   */
+  .post("/salary-day/undo", json(z.object({ cycleId: z.uuid() })), async (c) => {
+    const { db, mine, userId } = c.var;
+    const now = await current(c);
+    if (!now || now.cycle.id !== c.req.valid("json").cycleId) {
+      return c.json({ error: "not_found" as const }, 404);
+    }
+    const undo = await undoRecord(c, now.cycle);
+    if (!undo) return c.json({ error: "too_late" as const }, 409);
+    const writes: BatchItem<"sqlite">[] = [];
+    for (const id of undo.payments) {
+      writes.push(
+        db.delete(commitmentPayment).where(and(mine(commitmentPayment), eq(commitmentPayment.id, id))),
+      );
+    }
+    for (const k of undo.reopened) {
+      writes.push(
+        db
+          .update(commitment)
+          .set({ state: k.state })
+          .where(and(mine(commitment), eq(commitment.id, k.id))),
+      );
+    }
+    for (const t of undo.templates) {
+      const row = and(mine(recurringCommitment), eq(recurringCommitment.id, t.id));
+      if (!t.before) {
+        writes.push(db.delete(recurringCommitment).where(row));
+        continue;
+      }
+      // Stored as JSON: dates come back as text.
+      const before = {
+        ...t.before,
+        userId,
+        createdAt: new Date(t.before.createdAt),
+        updatedAt: new Date(t.before.updatedAt),
+      };
+      writes.push(
+        db
+          .insert(recurringCommitment)
+          .values(before)
+          .onConflictDoUpdate({
+            target: recurringCommitment.id,
+            set: before,
+            setWhere: eq(recurringCommitment.userId, userId),
+          }),
+      );
+    }
+    writes.push(db.delete(cycle).where(and(mine(cycle), eq(cycle.id, now.cycle.id))));
+    for (const id of undo.potsMade) {
+      writes.push(db.delete(pot).where(and(mine(pot), eq(pot.id, id))));
+    }
+    await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+    return c.json({ ok: true as const });
+  })
+  /** The salary amount stays editable during the current cycle (item 13, spec 2). */
+  .patch("/salary", json(z.object({ salaryMinor: z.number().int() })), async (c) => {
+    const { db, mine } = c.var;
+    const { salaryMinor } = c.req.valid("json");
+    const now = await current(c);
+    if (!now) return c.json({ error: "not_set_up" as const }, 404);
+    const problems = checkSalaryAmount(salaryMinor);
+    if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
+    const done = await db
+      .update(income)
+      .set({ amountMinor: salaryMinor })
+      .where(and(mine(income), eq(income.cycleId, now.cycle.id), eq(income.kind, "salary")))
+      .returning({ id: income.id });
+    // The first cycle has opening money, not a salary.
+    if (!done.length) return c.json({ error: "no_salary" as const }, 404);
+    return c.json({ ok: true as const });
+  })
+  /**
+   * The expected salary day, changed later (spec 2): also a late salary's new
+   * expected day; the days left are re-counted from it (item 13).
+   */
+  .patch("/cycle", json(z.object({ expectedSalaryOn: z.string() })), async (c) => {
+    const { db, mine } = c.var;
+    const { expectedSalaryOn } = c.req.valid("json");
+    const now = await current(c);
+    if (!now) return c.json({ error: "not_set_up" as const }, 404);
+    const problems = checkExpectedSalaryDay(expectedSalaryOn, now.today);
+    if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
+    await db
+      .update(cycle)
+      .set({ expectedSalaryOn })
+      .where(and(mine(cycle), eq(cycle.id, now.cycle.id)));
+    return c.json({ ok: true as const });
   })
   /** Every cycle page: pause a recurring commitment, or switch it back on (spec 3, 10). */
   .patch("/recurring-commitments/:id", json(changeRecurring), async (c) => {
