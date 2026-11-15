@@ -84,6 +84,9 @@ export function Today({
             Cycle {dayLabel(cycle.startedOn, false)} → salary {dayLabel(cycle.expectedSalaryOn)}
           </p>
         </div>
+        <a className="btn link" href="#SalaryDay">
+          Salary arrived
+        </a>
       </header>
 
       {view.underspend && (

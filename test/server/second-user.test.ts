@@ -136,6 +136,44 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/incomes/:id": (o) => ({ path: `/api/incomes/${firstRow(o, "income")}` }),
+  // Aimed at the first user's cycle, income, commitment, template and pot: must not take any over.
+  "POST /api/salary-day": (o) => ({
+    path: "/api/salary-day",
+    init: {
+      body: JSON.stringify({
+        cycleId: firstRow(o, "cycle"),
+        incomeId: firstRow(o, "income"),
+        salaryMinor: 1,
+        receivedOn: "2026-11-12",
+        expectedSalaryOn: "2999-01-01",
+        commitments: [
+          {
+            id: firstRow(o, "commitment"),
+            name: "x",
+            plannedMinor: 1,
+            dueOn: "2026-11-20",
+            recurringId: firstRow(o, "recurring_commitment"),
+            everyCycle: true,
+            carriedFromId: firstRow(o, "commitment"),
+          },
+        ],
+        pots: [
+          {
+            id: firstRow(o, "pot"),
+            allocationId: firstRow(o, "pot_allocation"),
+            amountMinor: 1,
+            name: "x",
+            usualAmountMinor: 1,
+          },
+        ],
+      }),
+    },
+  }),
+  // Aimed at the first user's template: must not pause it.
+  "PATCH /api/recurring-commitments/:id": (o) => ({
+    path: `/api/recurring-commitments/${firstRow(o, "recurring_commitment")}`,
+    init: { body: JSON.stringify({ active: false }) },
+  }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -155,6 +193,7 @@ async function seedOwnerData(ownerId: string) {
   const dc = crypto.randomUUID();
   const sm = crypto.randomUUID();
   const ex = crypto.randomUUID();
+  const rc = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -190,6 +229,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into income (id, user_id, cycle_id, kind, currency, amount_minor, received_on, to_savings_minor, created_at, updated_at) values (?, ?, ?, 'extra', 'LKR', 2000000, '2026-11-12', 500000, ?, ?)",
     ).bind(ex, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into recurring_commitment (id, user_id, name, kind, currency, usual_amount_minor, usual_day, active, created_at, updated_at) values (?, ?, 'Rent', 'bill', 'LKR', 3600000, 20, 1, ?, ?)",
+    ).bind(rc, ownerId, now, now),
   ]);
 }
 

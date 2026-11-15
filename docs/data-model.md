@@ -50,10 +50,10 @@ Free money, daily allowance, days left, spending speed, run-out verdict, pot amo
 ## How things link
 
 - **Pay cycle id**: its own `cycle` row, made when the salary is entered. A cycle ends when the next one starts; the newest is the current one.
-- **Recurring commitments**: on salary day each active `recurring_commitment` makes a `commitment` row in the new cycle, filled with the last amount and date, for the user to check.
+- **Recurring commitments**: on salary day each active `recurring_commitment` makes a `commitment` row in the new cycle, filled with the last amount and date, for the user to check. The template is kept in step with the commitment its Every cycle switch is on for (`commitment.recurring_id`); deleting that commitment deletes the template. `usual_day` is a day of the month (1–31). Kinds: bill, savings (card bills join with item 18).
 - **Pots**: the `pot` lives across cycles; each cycle gets its own `pot_allocation` (at most one per pot and cycle). A spend's `pot_id` has no foreign key: a spend whose pot is gone counts as free money.
 - **Savings total** (item 10): `savings_movement` rows + `income.to_savings_minor` + payments on `savings` commitments, all cycles, per currency. A `take_out` row is in free money of the cycle in its `cycle_id`.
-- **Carried over**: the old commitment is marked `carried`; a new row in the new cycle points back with `carried_from_id` (history kept).
+- **Carried over**: the old commitment is marked `carried`; a new row in the new cycle points back with `carried_from_id` (history kept). Salary day (item 11) does the same for last cycle's open commitments due after its expected salary day, with what is still to pay.
 - **Instalment plans, card bills, person paybacks, prepayment paybacks**: each makes a `commitment` per cycle, linked by its `*_id`.
 
 ## Rules that shape the data (decided in 13)

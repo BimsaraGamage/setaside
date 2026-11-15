@@ -10,6 +10,7 @@ import {
   income,
   pot,
   potAllocation,
+  recurringCommitment,
   settings,
   spend,
 } from "./db/schema";
@@ -133,6 +134,20 @@ export const firstUse = new Hono<SignedIn>()
       : [];
     // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
     const savings = current ? await savingsLines(c) : [];
+    // The "Every cycle" templates, paused ones too (item 11).
+    const recurring = await db.query.recurringCommitment.findMany({
+      where: mine(recurringCommitment),
+      columns: {
+        id: true,
+        name: true,
+        kind: true,
+        currency: true,
+        usualAmountMinor: true,
+        usualDay: true,
+        active: true,
+      },
+      orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
+    });
     const lastCycle =
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     return c.json({
@@ -168,6 +183,7 @@ export const firstUse = new Hono<SignedIn>()
       lastCycle,
       dayChoices,
       savings,
+      recurring,
       commitments: commitments.map((k) => ({
         id: k.id,
         name: k.name,
@@ -176,6 +192,8 @@ export const firstUse = new Hono<SignedIn>()
         plannedMinor: k.plannedMinor,
         dueOn: k.dueOn,
         state: k.state,
+        recurringId: k.recurringId,
+        carriedFromId: k.carriedFromId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
           .map((p) => ({ id: p.id, amountMinor: p.amountMinor, currency: p.currency, paidOn: p.paidOn })),

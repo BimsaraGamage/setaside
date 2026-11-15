@@ -64,6 +64,13 @@
       "when": 1794710404818,
       "tag": "0008_savings_movement",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794718366714,
+      "tag": "0009_recurring_commitment",
+      "breakpoints": true
     }
   ]
 }

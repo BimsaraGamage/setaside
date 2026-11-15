@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkCommitment } from "../money";
+import { checkCommitment, usualDayOf } from "../money";
 import { current } from "./current";
-import { commitment } from "./db/schema";
+import { commitment, recurringCommitment } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -18,6 +18,8 @@ const newCommitment = z.object({
   name,
   plannedMinor: z.number().int(),
   dueOn: z.string(),
+  /** "Every cycle" on: the id of the template it makes (item 11). */
+  recurringId: z.uuid().optional(),
 });
 
 const changeCommitment = z
@@ -28,20 +30,31 @@ const changeCommitment = z
     kind,
     /** Mark finished, or reopen (item 6). Carried and dropped come with salary day (item 12). */
     state: z.enum(["open", "finished"]),
+    /** The "Every cycle" switch (item 11); turning it on needs `recurringId`. */
+    everyCycle: z.boolean(),
+    recurringId: z.uuid(),
   })
   .partial();
 
+/** The "Every cycle" template's fields, from its commitment: the last amount and day (spec 3). */
+const templateOf = (k: { name: string; kind: "bill" | "savings"; plannedMinor: number; dueOn: string }) => ({
+  name: k.name,
+  kind: k.kind,
+  usualAmountMinor: k.plannedMinor,
+  usualDay: usualDayOf(k.dueOn),
+});
+
 /**
- * Commitments (backlog items 5 and 6, spec 3 and 10): add, change, mark finished,
- * reopen and delete bills and savings set-asides (item 10) in the current cycle
- * only (ended cycles are locked).
- * Payments are in payments.ts. The phone works out every number.
- * Other kinds and "Every cycle" come with later items.
+ * Commitments (backlog items 5, 6 and 11, spec 3 and 10): add, change, mark
+ * finished, reopen and delete bills and savings set-asides (item 10) in the
+ * current cycle only (ended cycles are locked). The "Every cycle" switch keeps a
+ * `recurring_commitment` in step with the commitment; deleting the commitment
+ * stops it repeating. Payments are in payments.ts. The phone works out every number.
  */
 export const commitments = new Hono<SignedIn>()
   .post("/commitments", json(newCommitment), async (c) => {
     const { db, userId } = c.var;
-    const b = c.req.valid("json");
+    const { recurringId, ...b } = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const row = { ...b, currency: now.settings.spendingCurrency };
@@ -50,17 +63,29 @@ export const commitments = new Hono<SignedIn>()
       spendingCurrency: now.settings.spendingCurrency,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
+    const insert = db
+      .insert(commitment)
+      .values({ ...row, userId, cycleId: now.cycle.id, recurringId: recurringId ?? null });
     try {
-      await db.insert(commitment).values({ ...row, userId, cycleId: now.cycle.id });
+      if (recurringId) {
+        await db.batch([
+          db
+            .insert(recurringCommitment)
+            .values({ id: recurringId, userId, currency: row.currency, ...templateOf(row) }),
+          insert,
+        ]);
+      } else {
+        await insert;
+      }
     } catch {
-      // The id is already in use.
+      // An id is already in use.
       return c.json({ error: "conflict" as const }, 409);
     }
     return c.json({ ok: true as const, cycleId: now.cycle.id }, 201);
   })
   .patch("/commitments/:id", json(changeCommitment), async (c) => {
-    const { db, mine } = c.var;
-    const b = c.req.valid("json");
+    const { db, mine, userId } = c.var;
+    const { everyCycle, recurringId, ...b } = c.req.valid("json");
     const id = c.req.param("id");
     const now = await current(c);
     const old = await db.query.commitment.findFirst({ where: and(mine(commitment), eq(commitment.id, id)) });
@@ -76,7 +101,19 @@ export const commitments = new Hono<SignedIn>()
       spendingCurrency: now.settings.spendingCurrency,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
-    await db
+    const linked = old.recurringId
+      ? await db.query.recurringCommitment.findFirst({
+          where: and(mine(recurringCommitment), eq(recurringCommitment.id, old.recurringId)),
+          columns: { id: true },
+        })
+      : undefined;
+    const repeat = everyCycle ?? linked !== undefined;
+    const newTemplate = repeat && !linked;
+    if (newTemplate && !recurringId) return c.json({ error: "bad_request" as const }, 400);
+    const canRepeat = next.kind === "bill" || next.kind === "savings";
+    if (repeat && !canRepeat) return c.json({ error: "invalid" as const, problems: ["kind"] }, 400);
+    const fields = templateOf({ ...next, kind: next.kind as "bill" | "savings" });
+    const update = db
       .update(commitment)
       .set({
         name: next.name,
@@ -84,8 +121,34 @@ export const commitments = new Hono<SignedIn>()
         plannedMinor: next.plannedMinor,
         dueOn: next.dueOn,
         state: next.state,
+        recurringId: repeat ? (linked?.id ?? recurringId) : null,
       })
       .where(and(mine(commitment), eq(commitment.id, id)));
+    const template = linked
+      ? and(mine(recurringCommitment), eq(recurringCommitment.id, linked.id))
+      : undefined;
+    try {
+      if (newTemplate) {
+        await db.batch([
+          db.insert(recurringCommitment).values({
+            id: recurringId as string,
+            userId,
+            currency: next.currency,
+            ...fields,
+          }),
+          update,
+        ]);
+      } else if (linked && repeat) {
+        await db.batch([db.update(recurringCommitment).set(fields).where(template), update]);
+      } else if (linked) {
+        await db.batch([db.delete(recurringCommitment).where(template), update]);
+      } else {
+        await update;
+      }
+    } catch {
+      // The template id is already in use.
+      return c.json({ error: "conflict" as const }, 409);
+    }
     return c.json({ ok: true as const });
   })
   .delete("/commitments/:id", async (c) => {
@@ -94,10 +157,21 @@ export const commitments = new Hono<SignedIn>()
     const now = await current(c);
     const old = await db.query.commitment.findFirst({
       where: and(mine(commitment), eq(commitment.id, id)),
-      columns: { cycleId: true },
+      columns: { cycleId: true, recurringId: true },
     });
     if (!now || !old) return c.json({ error: "not_found" as const }, 404);
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
-    await db.delete(commitment).where(and(mine(commitment), eq(commitment.id, id)));
+    const remove = db.delete(commitment).where(and(mine(commitment), eq(commitment.id, id)));
+    if (old.recurringId) {
+      // Deleting an "Every cycle" commitment stops it repeating.
+      await db.batch([
+        db
+          .delete(recurringCommitment)
+          .where(and(mine(recurringCommitment), eq(recurringCommitment.id, old.recurringId))),
+        remove,
+      ]);
+    } else {
+      await remove;
+    }
     return c.json({ ok: true as const });
   });

@@ -36,6 +36,19 @@ export interface Current {
   dayChoices: DayChoiceEntry[];
   /** Every movement into and out of savings, all cycles, newest first (item 10). */
   savings: SavingsLine[];
+  /** The "Every cycle" templates, paused ones too (item 11). */
+  recurring: Recurring[];
+}
+
+export interface Recurring {
+  id: string;
+  name: string;
+  kind: "bill" | "savings";
+  currency: string;
+  usualAmountMinor: number;
+  usualDay: number;
+  /** Off: paused, not filled in on salary day. */
+  active: boolean;
 }
 
 export interface SavingsLine {
@@ -71,6 +84,10 @@ export interface Commitment {
   plannedMinor: number;
   dueOn: string;
   state: CommitmentState;
+  /** Its "Every cycle" template, when the switch is on (item 11). */
+  recurringId: string | null;
+  /** Last cycle's commitment it carries on (item 11). */
+  carriedFromId: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }

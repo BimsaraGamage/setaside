@@ -30,7 +30,7 @@ export function paidNote(c: Commitment): string | undefined {
   return `Paid ${of}`;
 }
 
-/** Plan (spec 10): this cycle's commitments and + Add, pots and + New pot. Every cycle and Salary arrived come later. */
+/** Plan (spec 10): this cycle's commitments and + Add, pots and + New pot, the Every cycle link, Salary arrived. */
 export function Plan({ data }: { data: Ready }) {
   const cur = data.settings.spendingCurrency;
   const open = data.commitments.filter((c) => c.state === "open");
@@ -88,6 +88,14 @@ export function Plan({ data }: { data: Ready }) {
         </section>
       )}
       <PlanPots data={data} />
+      <div className="row">
+        <a className="btn link grow" href="#EveryCycle">
+          Every cycle
+        </a>
+        <a className="btn pri link grow" href="#SalaryDay">
+          Salary arrived
+        </a>
+      </div>
     </>
   );
 }
@@ -177,11 +185,12 @@ export function CommitmentPage({
   const [name, setName] = useState(editing?.name ?? "");
   const [text, setText] = useState(editing ? toText(editing.plannedMinor, cur) : "");
   const [dueOn, setDueOn] = useState(editing?.dueOn ?? today);
+  const [everyCycle, setEveryCycle] = useState(editing ? editing.recurringId !== null : false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const plannedMinor = parseAmount(text, cur) ?? 0;
-  const draft = { kind, name: name.trim(), plannedMinor, dueOn };
+  const draft = { kind, name: name.trim(), plannedMinor, dueOn, everyCycle };
   const problems = checkCommitment(
     { ...draft, currency: cur },
     { cycleStartedOn: data.cycle.startedOn, spendingCurrency: cur },
@@ -277,6 +286,16 @@ export function CommitmentPage({
             {comingUp
               ? `After the expected salary day (${dayLabel(data.cycle.expectedSalaryOn)}): coming up only, not set aside now.`
               : `From ${dayLabel(data.cycle.startedOn)}. Due after ${dayLabel(data.cycle.expectedSalaryOn)} means next cycle.`}
+          </span>
+        </label>
+        <label className="row check">
+          <input type="checkbox" checked={everyCycle} onChange={(e) => setEveryCycle(e.target.checked)} />
+          <span className="grow">
+            Every cycle
+            <span className="tiny mute block">
+              Filled in again on salary day with this amount, on day {Number(dueOn.slice(8, 10)) || "–"} of
+              the month
+            </span>
           </span>
         </label>
         <p className="small" data-testid="commitment-after">

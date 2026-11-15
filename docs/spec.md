@@ -56,7 +56,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - **Expected salary day.** On salary day the app suggests the next one from the usual pay day; the user confirms it and can change it later. The daily allowance counts days up to it.
 - **Salary early:** entering it ends the current cycle early.
 - **Salary late:** when the expected salary day passes with no salary entered, the app says the salary is late and asks for a new expected day. What is left is spread over the extra days.
-- **Set-asides larger than the salary:** if commitments + pots + savings set-aside are more than the salary (compared at the **counting rate** when currencies differ), the app shows the gap before the cycle starts; the user lowers something or takes money from savings.
+- **Set-asides larger than the salary:** if commitments + pots + savings set-aside are more than the salary (compared at the **counting rate** when currencies differ), the app shows the gap before the cycle starts; the user lowers something or takes money from savings. It is a warning: Start new cycle stays allowed.
 - **Ended cycles are locked.** Nothing in an ended cycle can be added, changed or deleted. A forgotten spend from last cycle is entered in the current cycle; the leftover correction on salary day (section 6) is the only fix to an ended cycle.
 - **Spends can be dated back** only within the current cycle.
 - **Undo salary day:** allowed until anything new is entered in the new cycle. It removes the new cycle and everything salary day made (its cycle-end choices, generated commitments and pot amounts) and reopens the old cycle as it was. The salary amount itself stays editable during the current cycle.
@@ -80,12 +80,12 @@ Spends, payments and commitments can be edited or deleted at any time within the
 
 A **commitment** is an essential expense with an amount, a currency and a due date. Kinds: bill, savings set-aside, card bill, instalment-plan payment, payback to a person, payback to savings.
 
-- **Recurring commitments** ("Every cycle") are filled in on salary day with the last amount and day; the user changes or removes any, then confirms. A recurring commitment can be paused.
+- **Recurring commitments** ("Every cycle") are filled in on salary day with the last amount and day; the user changes or removes any, then confirms. A recurring commitment can be paused. The "Every cycle" switch on a commitment keeps its template in step: changing the commitment changes the last amount and day (the day of the month of its due date; a day past a month's end falls on its last day), switching it off or deleting the commitment stops it repeating. On salary day, the amount and day confirmed become the last ones; removing a row skips it for this cycle only, switching its Every cycle off stops it repeating. The new due date is the first such day on or after the day the salary was received.
 - A commitment can be **added or edited at any time**; free money and today's allowance change at once.
 - **Paying.** The user marks it paid with the real amount and date (in the current cycle, up to today). Paid more than planned lowers free money by the gap at once; paid less raises it once the commitment is finished.
 - **Part payments** are allowed. Each payment is recorded, the rest shows as "still to pay", and the commitment is done when marked finished. Pay has a "This finishes it" switch, on when the amount covers what is still to pay. A finished commitment can be reopened; it takes no payments until then. A payment on one due after the expected salary day comes out of free money at once.
 - **Paid in the other currency:** see section 8.
-- **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle.
+- **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle. On salary day it moves to the new cycle: step 4 lists it (with what is still to pay) as a new commitment that points back, and the old one is marked carried; one made from a recurring commitment stands in for that one (no second row). A fully paid one stays behind.
 - **Late:** an open commitment whose due day has passed stays set aside and shows at the top of Next up as "N days late".
 - **Unpaid at cycle end:** salary day asks, for each one: Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover). A carried commitment is a new commitment in the new cycle that points back to the old one.
 - Card bills, instalment-plan payments and paybacks are made by their card, plan, person or prepayment (section 9), not from the Every cycle list.
@@ -131,7 +131,7 @@ On salary day the app shows the leftover per currency. The user can correct the 
 
 Started from **Salary arrived** (Today header or Plan tab). Seven steps, one per screen, always in this order:
 
-1. **Salary**: amount (salary currency) and date received.
+1. **Salary**: amount (salary currency) and date received (from the ending cycle's first day up to today). The new cycle starts on that day.
 2. **Last cycle's leftover**: free money left + unused pot money; "actually have in hand" correction; split into savings and the new cycle, or the overspend choice.
 3. **Last cycle's unpaid commitments**: Paid it · Carry to new cycle · Drop.
 4. **This cycle's commitments**, filled from the recurring ones and from cards, plans, people and prepayments; each editable; + Add.
