@@ -7,6 +7,7 @@ export * from "./amount";
 export * from "./commitment";
 export * from "./cycle";
 export * from "./days";
+export * from "./first-use";
 export * from "./pot";
 export * from "./salary-day";
 export * from "./savings";

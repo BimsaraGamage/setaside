@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { suggestSalaryDay, todayIn } from "../../src/money";
+import { addDays, suggestSalaryDay, todayIn } from "../../src/money";
 import { call, signIn } from "./helpers";
 
 const TZ = "Asia/Colombo";
@@ -24,7 +24,7 @@ function body(over: Record<string, unknown> = {}) {
 /** A fresh signed-in user with nothing set up (the demo users are shared across tests). */
 async function freshUser() {
   const u = await signIn("second");
-  for (const t of ["spend", "pot", "income", "cycle", "settings"]) {
+  for (const t of ["recurring_commitment", "spend", "pot", "income", "cycle", "settings"]) {
     await env.DB.prepare(`delete from "${t}" where user_id = ?`).bind(u.id).run();
   }
   return u;
@@ -121,6 +121,109 @@ describe("first use (item 3, spec 2)", () => {
       .bind(id)
       .first("n");
     expect(n).toBe(0);
+  });
+});
+
+interface Current {
+  commitments: {
+    id: string;
+    name: string;
+    plannedMinor: number;
+    dueOn: string;
+    recurringId: string | null;
+  }[];
+  pots: { id: string; name: string; usualAmountMinor: number; amountMinor: number | null }[];
+  recurring: { id: string; name: string; usualAmountMinor: number; usualDay: number; active: boolean }[];
+}
+
+describe("first use: bills and pots (ticket 37, spec 2 step 4)", () => {
+  const today = () => todayIn(TZ, Date.now());
+
+  it("makes the bills, Every cycle templates, pots and this cycle's pot amounts with the first cycle", async () => {
+    const { cookie } = await freshUser();
+    const rent = { id: crypto.randomUUID(), recurringId: crypto.randomUUID() };
+    const phone = { id: crypto.randomUUID() };
+    const pot = { id: crypto.randomUUID(), allocationId: crypto.randomUUID() };
+    const b = body({
+      commitments: [
+        { ...rent, name: " Rent ", plannedMinor: 4_000_000, dueOn: today() },
+        { ...phone, name: "Phone", plannedMinor: 300_000, dueOn: today() },
+      ],
+      pots: [{ ...pot, name: "Groceries", amountMinor: 1_500_000 }],
+    });
+    expect((await post(b, cookie)).status).toBe(201);
+    const cur = await (await call("/api/current", {}, cookie)).json<Current>();
+    expect(cur.commitments).toEqual([
+      expect.objectContaining({ id: phone.id, name: "Phone", recurringId: null }),
+      expect.objectContaining({
+        id: rent.id,
+        name: "Rent",
+        plannedMinor: 4_000_000,
+        dueOn: today(),
+        recurringId: rent.recurringId,
+      }),
+    ]);
+    expect(cur.recurring).toEqual([
+      {
+        id: rent.recurringId,
+        name: "Rent",
+        kind: "bill",
+        currency: "LKR",
+        usualAmountMinor: 4_000_000,
+        usualDay: Number(today().slice(8, 10)),
+        active: true,
+      },
+    ]);
+    expect(cur.pots).toEqual([
+      expect.objectContaining({
+        id: pot.id,
+        name: "Groceries",
+        usualAmountMinor: 1_500_000,
+        amountMinor: 1_500_000,
+      }),
+    ]);
+  });
+
+  it("refuses bad bills and pots, and saves nothing", async () => {
+    const { cookie, id } = await freshUser();
+    const res = await post(
+      body({
+        commitments: [{ id: crypto.randomUUID(), name: "", plannedMinor: 0, dueOn: addDays(today(), -1) }],
+        pots: [{ id: crypto.randomUUID(), allocationId: crypto.randomUUID(), name: "Fuel", amountMinor: -1 }],
+      }),
+      cookie,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "invalid",
+      problems: [
+        "commitment.0.name",
+        "commitment.0.amount",
+        "commitment.0.due_on",
+        "pot.0.usual_amount",
+        "pot.0.amount",
+      ],
+    });
+    const n = await env.DB.prepare("select count(*) as n from settings where user_id = ?")
+      .bind(id)
+      .first("n");
+    expect(n).toBe(0);
+  });
+
+  it("refuses the same pot twice", async () => {
+    const { cookie } = await freshUser();
+    const pot = { id: crypto.randomUUID(), name: "Fuel", amountMinor: 1 };
+    const res = await post(
+      body({
+        pots: [
+          { ...pot, allocationId: crypto.randomUUID() },
+          { ...pot, allocationId: crypto.randomUUID() },
+        ],
+      }),
+      cookie,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ problems: ["pot.twice"] });
   });
 });
 

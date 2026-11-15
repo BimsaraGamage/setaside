@@ -72,6 +72,8 @@ The first cycle usually starts mid-cycle. The user enters:
 
 This makes a short first cycle. The money held is stored as opening income. Screen: the salary-day steps (section 6) with step 1 asking "money you have now" per currency and steps 2–3 skipped.
 
+Step 4 is salary day's commitments and pots screens. Bills can be due from today on (one already late is put on today); one due after the expected salary day is allowed and is coming up only. "Every cycle" on a bill makes its template. Pots are all new; the starter names are offered, and the amount given is also the pot's usual amount. The summary shows the bills set aside, the pots, free money and the gap (bills + pots more than the money held); like salary day, the gap is a warning and Start stays allowed.
+
 ### Editing
 
 Spends, payments and commitments can be edited or deleted at any time within the current cycle; every number recalculates. Deletes are real deletes; the only undo is the on-screen Undo right after a change.
