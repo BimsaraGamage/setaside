@@ -82,8 +82,8 @@ A **commitment** is an essential expense with an amount, a currency and a due da
 
 - **Recurring commitments** ("Every cycle") are filled in on salary day with the last amount and day; the user changes or removes any, then confirms. A recurring commitment can be paused.
 - A commitment can be **added or edited at any time**; free money and today's allowance change at once.
-- **Paying.** The user marks it paid with the real amount and date. Paid more than planned lowers free money by the gap; paid less raises it.
-- **Part payments** are allowed. Each payment is recorded, the rest shows as "still to pay", and the commitment is done when marked finished.
+- **Paying.** The user marks it paid with the real amount and date (in the current cycle, up to today). Paid more than planned lowers free money by the gap at once; paid less raises it once the commitment is finished.
+- **Part payments** are allowed. Each payment is recorded, the rest shows as "still to pay", and the commitment is done when marked finished. Pay has a "This finishes it" switch, on when the amount covers what is still to pay. A finished commitment can be reopened; it takes no payments until then. A payment on one due after the expected salary day comes out of free money at once.
 - **Paid in the other currency:** see section 8.
 - **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle.
 - **Late:** an open commitment whose due day has passed stays set aside and shows at the top of Next up as "N days late".

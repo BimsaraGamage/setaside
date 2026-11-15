@@ -1,5 +1,6 @@
-import { formatMoney, nextUp, todayView } from "../money";
+import { formatMoney, nextUp, stillToPayMinor, todayView } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, type Ready, type Spend, useToday } from "./data";
+import { paidNote } from "./Plan";
 import { SpendRow } from "./Spends";
 
 /** One Next up row: date, weekday and "in N days", the name, an optional note, the amount. */
@@ -9,15 +10,17 @@ function NextUpRow({
   inDays,
   amount,
   note,
+  coming,
 }: {
   name: string;
   day: string;
   inDays: number;
   amount?: string;
   note?: string;
+  coming?: boolean;
 }) {
   return (
-    <div className={`li${note ? " coming" : ""}`}>
+    <div className={`li${coming ? " coming" : ""}`}>
       <span className="date">
         <b>{dayLabel(day)}</b>
         <span className={`tiny${inDays < 0 ? " bad" : " mute"}`}>{inDaysLabel(inDays)}</span>
@@ -115,7 +118,14 @@ export function Today({
           </p>
         )}
         {up.items.map(({ commitment: c, inDays }) => (
-          <NextUpRow key={c.id} name={c.name} day={c.dueOn} inDays={inDays} amount={money(c.plannedMinor)} />
+          <NextUpRow
+            key={c.id}
+            name={c.name}
+            day={c.dueOn}
+            inDays={inDays}
+            amount={money(stillToPayMinor(c))}
+            note={paidNote(c)}
+          />
         ))}
         <NextUpRow name="Salary expected" day={cycle.expectedSalaryOn} inDays={up.salaryInDays} />
         {up.comingUp.map(({ commitment: c, inDays }) => (
@@ -126,6 +136,7 @@ export function Today({
             inDays={inDays}
             amount={money(c.plannedMinor)}
             note="Coming up · next cycle"
+            coming
           />
         ))}
       </section>

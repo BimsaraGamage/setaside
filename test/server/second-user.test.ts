@@ -71,9 +71,26 @@ const probes: Record<string, Probe> = {
   }),
   "PATCH /api/commitments/:id": (o) => ({
     path: `/api/commitments/${firstRow(o, "commitment")}`,
-    init: { body: JSON.stringify({ plannedMinor: 1 }) },
+    init: { body: JSON.stringify({ plannedMinor: 1, state: "finished" }) },
   }),
   "DELETE /api/commitments/:id": (o) => ({ path: `/api/commitments/${firstRow(o, "commitment")}` }),
+  // Aimed at the first user's commitment and payment: must not pay, finish, change or delete.
+  "POST /api/commitments/:id/payments": (o) => ({
+    path: `/api/commitments/${firstRow(o, "commitment")}/payments`,
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "commitment_payment"),
+        amountMinor: 1,
+        paidOn: "2026-11-12",
+        finish: true,
+      }),
+    },
+  }),
+  "PATCH /api/payments/:id": (o) => ({
+    path: `/api/payments/${firstRow(o, "commitment_payment")}`,
+    init: { body: JSON.stringify({ amountMinor: 1 }) },
+  }),
+  "DELETE /api/payments/:id": (o) => ({ path: `/api/payments/${firstRow(o, "commitment_payment")}` }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },
@@ -87,6 +104,7 @@ async function seedOwnerData(ownerId: string) {
   const i = crypto.randomUUID();
   const sp = crypto.randomUUID();
   const k = crypto.randomUUID();
+  const p = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -104,6 +122,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into commitment (id, user_id, cycle_id, name, kind, currency, planned_minor, due_on, state, created_at, updated_at) values (?, ?, ?, 'Rent', 'bill', 'LKR', 3600000, '2026-11-20', 'open', ?, ?)",
     ).bind(k, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into commitment_payment (id, user_id, commitment_id, currency, amount_minor, paid_on, created_at, updated_at) values (?, ?, ?, 'LKR', 1000000, '2026-11-12', ?, ?)",
+    ).bind(p, ownerId, k, now, now),
   ]);
 }
 

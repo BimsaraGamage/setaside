@@ -36,6 +36,13 @@
       "when": 1794677328495,
       "tag": "0004_commitment",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794678065002,
+      "tag": "0005_commitment_payment",
+      "breakpoints": true
     }
   ]
 }
