@@ -157,18 +157,19 @@ The first time the app is opened on a new day, if yesterday's allowance was not 
 
 - Average per day since salary day: spends that came out of free money (cash, card, and pot spends past an empty pot) ÷ finished days. Today's spends count from the next morning.
 - Left out: **one-off** spends, commitment payments (including card bills and plan payments), and spends covered by a pot.
-- **One-off** is a toggle on a spend: it still uses free money but is left out of the speed. It can be set or undone at any time.
-- **First 3 days of a cycle:** last cycle's speed is used (one-offs left out). On the very first cycle: "Too early to tell".
+- **One-off** is a toggle on a spend: it still uses free money but is left out of the speed. It can be set or undone at any time. A one-off spend in a pot is taken off that pot's part past its amount first.
+- **First 3 days of a cycle:** last cycle's speed is used (one-offs left out), worked out over that whole cycle, from its first day to the day before the next one started. On the very first cycle: "Too early to tell", and Today shows no speed.
 
 ### Run-out verdict
 
 - **On track**: speed is at most 90% of today's allowance.
 - **Tight**: speed is above 90% of today's allowance and free money still lasts to the expected salary day.
-- **Runs out on <date>**: free money does not last; date = today + free money left ÷ speed.
+- **Runs out on <date>**: free money does not last; date = today + free money left ÷ speed, in whole days.
+- The verdict uses the free money at the start of the day, like the allowance, so it is fixed for the day; today's spends move it from the next morning, with the speed.
 
 ### Pots
 
-Each pot gets the same verdict from its own speed (spends in that pot ÷ finished days). A used-up pot shows "Used up".
+Each pot gets the same verdict from its own speed (spends in that pot ÷ finished days, one-offs left out), against what was left in it at the start of the day ÷ days left (not rounded). In the first 3 days, last cycle's speed of that pot. A used-up pot shows "Used up".
 
 ## 8. Two currencies
 
@@ -231,7 +232,7 @@ Top to bottom:
 - **Offline line** when offline or with unsent items (section 11).
 - **Reminders list and turn-on banner** when phone alerts are off (section 12).
 - **Underspend card** when there is a question to answer (section 7).
-- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount.
+- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount ("Speed Rs 2,300 a day · Tomorrow Rs 4,800"; "(last cycle)" after the speed in a cycle's first 3 days).
 - **Next up · already set aside**: open commitments from today to the expected salary day, each with date, weekday, "in N days", a note (card balance, "7 of 12"), and amount; total at the top; ends with "Salary expected" on its day. This is the timeline; there is no chart.
 - **Pots**: amount left, a bar, each pot's verdict.
 - Floating **+** button.

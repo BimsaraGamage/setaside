@@ -1,8 +1,22 @@
-import { formatMoney, nextUp, stillToPayMinor, todayView } from "../money";
-import { dayLabel, entriesOf, inDaysLabel, type Ready, type Spend, useToday } from "./data";
+import { formatMoney, nextUp, potVerdict, stillToPayMinor, todayView } from "../money";
+import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
 import { paidNote } from "./Plan";
 import { PotRow } from "./Pots";
 import { potName, SpendRow } from "./Spends";
+import { VerdictChip } from "./Verdict";
+
+/** "Speed Rs 2,300 a day · Tomorrow Rs 4,800" (spec 10); the speed is left out while it is too early to tell. */
+function speedLine(view: ReturnType<typeof todayView>): string {
+  const money = (m: number) => formatMoney(m, view.currency);
+  const parts: string[] = [];
+  if (view.speedPerDayMinor !== null) {
+    parts.push(
+      `Speed ${money(view.speedPerDayMinor)} a day${view.speedFromLastCycle ? " (last cycle)" : ""}`,
+    );
+  }
+  if (view.tomorrowMinor !== null) parts.push(`Tomorrow ${money(view.tomorrowMinor)}`);
+  return parts.join(" · ");
+}
 
 /** One Next up row: date, weekday and "in N days", the name, an optional note, the amount. */
 function NextUpRow({
@@ -35,7 +49,10 @@ function NextUpRow({
   );
 }
 
-/** Today (spec 10): header, main card with the daily allowance and today's spends, Next up, pots, the + button. */
+/**
+ * Today (spec 10): header, main card with the daily allowance, verdict, today's
+ * spends and the speed line, Next up, pots with their verdicts, the + button.
+ */
 export function Today({
   data,
   onAdd,
@@ -70,6 +87,7 @@ export function Today({
         <p className="big" data-testid="allowance">
           {money(view.allowanceMinor)}
         </p>
+        <VerdictChip verdict={view.verdict} currency={view.currency} />
         <div
           className={`bar${over ? " over" : ""}`}
           role="meter"
@@ -98,9 +116,9 @@ export function Today({
           <span className="grow mute">Days to salary</span>
           <b data-testid="days-left">{view.daysLeft}</b>
         </div>
-        {view.tomorrowMinor !== null && (
-          <p className="tiny mute" data-testid="tomorrow">
-            Tomorrow {money(view.tomorrowMinor)}
+        {speedLine(view) && (
+          <p className="tiny mute" data-testid="speed-line">
+            {speedLine(view)}
           </p>
         )}
       </section>
@@ -147,7 +165,17 @@ export function Today({
         <section className="card" aria-labelledby="pots-today-h">
           <h3 id="pots-today-h">Pots</h3>
           {pots.map((p) => (
-            <PotRow key={p.id} pot={p} spends={data.spends} />
+            <PotRow
+              key={p.id}
+              pot={p}
+              spends={data.spends}
+              verdict={potVerdict(potEntry(p), data.spends, {
+                startedOn: cycle.startedOn,
+                today,
+                daysLeft: view.daysLeft,
+                lastSpeed: data.lastCycle?.pots[p.id] ?? null,
+              })}
+            />
           ))}
         </section>
       )}

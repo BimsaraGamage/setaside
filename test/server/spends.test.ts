@@ -59,7 +59,15 @@ describe("spends (item 4, spec 7)", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ ok: true, cycleId });
     expect(await spendsOf(cookie)).toEqual([
-      { id, spentOn: today(), currency: "LKR", amountMinor: 185_000, note: "lunch", potId: null },
+      {
+        id,
+        spentOn: today(),
+        currency: "LKR",
+        amountMinor: 185_000,
+        note: "lunch",
+        potId: null,
+        oneOff: false,
+      },
     ]);
   });
 
@@ -140,7 +148,15 @@ describe("spends (item 4, spec 7)", () => {
     );
     expect(res.status).toBe(200);
     expect(await spendsOf(cookie)).toEqual([
-      { id, spentOn: addDays(today(), -1), currency: "LKR", amountMinor: 250_000, note: null, potId: null },
+      {
+        id,
+        spentOn: addDays(today(), -1),
+        currency: "LKR",
+        amountMinor: 250_000,
+        note: null,
+        potId: null,
+        oneOff: false,
+      },
     ]);
     const ahead = await send("PATCH", `/api/spends/${id}`, { spentOn: addDays(today(), 1) }, cookie);
     expect(ahead.status).toBe(400);

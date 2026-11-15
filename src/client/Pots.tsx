@@ -1,10 +1,20 @@
 import { useState } from "react";
-import { checkPot, formatMoney, NAME_MAX, parseAmount, potView, STARTER_POTS, todayView } from "../money";
+import {
+  checkPot,
+  formatMoney,
+  NAME_MAX,
+  parseAmount,
+  potView,
+  STARTER_POTS,
+  todayView,
+  type Verdict,
+} from "../money";
 import { entriesOf, type Pot, potEntry, type Ready, type Spend, useToday } from "./data";
 import { newId } from "./id";
 import type { PotActions } from "./pot-actions";
 import { toText } from "./SpendSheet";
 import { SpendRow } from "./Spends";
+import { VerdictChip } from "./Verdict";
 
 /** "Rs 12,000 left of Rs 18,000", or "Used up · over by Rs 3,000". */
 function leftLine(p: Pot, spends: Spend[]): { text: string; over: boolean; used: number } {
@@ -25,13 +35,27 @@ function leftLine(p: Pot, spends: Spend[]): { text: string; over: boolean; used:
   };
 }
 
-/** One pot: name, amount left and a bar (spec 4, 10). A link to its page when `href` is given. */
-export function PotRow({ pot, spends, href }: { pot: Pot; spends: Spend[]; href?: string }) {
+/**
+ * One pot: name, amount left and a bar (spec 4, 10), and its verdict when given
+ * (Today; "Used up" already shows in the amount line). A link to its page when `href` is given.
+ */
+export function PotRow({
+  pot,
+  spends,
+  href,
+  verdict,
+}: {
+  pot: Pot;
+  spends: Spend[];
+  href?: string;
+  verdict?: Verdict;
+}) {
   const line = leftLine(pot, spends);
   const body = (
     <>
       <span className="row">
         <span className="grow">{pot.name}</span>
+        {verdict && verdict.kind !== "used_up" && <VerdictChip verdict={verdict} currency={pot.currency} />}
         <span className={`small${line.over ? " bad" : " mute"}`}>{line.text}</span>
       </span>
       <span

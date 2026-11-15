@@ -2,6 +2,7 @@ import { isCurrency, type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
 import { type Day, daysBetween, isDay, isTimeZone } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
+import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
 import type { SpendEntry } from "./spend";
 
 /** Kinds of `income` rows (data-model.md). */
@@ -25,6 +26,10 @@ export interface CycleEntries {
   commitments?: CommitmentEntry[];
   /** The user's pots with this cycle's amounts; their spends come out of the pot first (spec 4). */
   pots?: PotEntry[];
+  /** The cycle's first day; the spending speed counts the finished days from it (spec 7). */
+  startedOn?: Day;
+  /** Last cycle's speed, used in the first 3 days; none on the very first cycle. */
+  lastSpeed?: Speed | null;
 }
 
 /**
@@ -93,6 +98,12 @@ export interface TodayView {
   leftTodayMinor: Minor;
   /** Tomorrow's allowance if nothing more is spent today; null on the last day before salary. */
   tomorrowMinor: Minor | null;
+  /** Spending speed per day; null while it is too early to tell. */
+  speedPerDayMinor: Minor | null;
+  /** The speed is last cycle's (first 3 days of a cycle). */
+  speedFromLastCycle: boolean;
+  /** The run-out verdict, or "Over by" when free money is at zero or below (spec 7). */
+  verdict: Verdict;
 }
 
 /** Everything the Today main card shows (spec 7, 10). */
@@ -104,6 +115,11 @@ export function todayView(entries: CycleEntries, today: Day): TodayView {
   const allowanceMinor = dailyAllowance(startMinor, days, cur);
   // Spends are dated up to today, so the start-of-day free money differs only by today's.
   const spentTodayMinor = startMinor - freeMinor;
+  const speed = speedNow(entries, today);
+  const verdict: Verdict =
+    freeMinor <= 0
+      ? { kind: "over", overMinor: -freeMinor }
+      : runOutVerdict({ speed, startMinor, allowanceMinor, daysLeft: days, today });
   return {
     freeMinor,
     daysLeft: days,
@@ -111,6 +127,9 @@ export function todayView(entries: CycleEntries, today: Day): TodayView {
     spentTodayMinor,
     leftTodayMinor: allowanceMinor - spentTodayMinor,
     tomorrowMinor: days >= 2 ? dailyAllowance(freeMinor, days - 1, cur) : null,
+    speedPerDayMinor: speed ? perDayMinor(speed) : null,
+    speedFromLastCycle: speed?.lastCycle ?? false,
+    verdict,
     currency: cur,
   };
 }

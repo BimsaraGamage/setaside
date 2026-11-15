@@ -12,7 +12,11 @@ export function SpendRow({ spend, pot, onOpen }: { spend: Spend; pot?: string; o
     <button type="button" className="li tap" onClick={onOpen}>
       <span className="grow">
         {spend.note || "Spend"}
-        {pot && <span className="tiny mute block">{pot} pot</span>}
+        {(pot || spend.oneOff) && (
+          <span className="tiny mute block">
+            {[pot && `${pot} pot`, spend.oneOff && "One-off"].filter(Boolean).join(" · ")}
+          </span>
+        )}
       </span>
       <b>{formatMoney(spend.amountMinor, spend.currency)}</b>
     </button>

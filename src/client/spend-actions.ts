@@ -8,6 +8,8 @@ export interface SpendDraft {
   note: string | null;
   /** The pot it comes from; null means free money (item 7). */
   potId: string | null;
+  /** Left out of the spending speed (item 8). */
+  oneOff: boolean;
 }
 
 const add = async (id: string, d: SpendDraft) =>
@@ -22,6 +24,7 @@ const draftOf = (s: Spend): SpendDraft => ({
   amountMinor: s.amountMinor,
   note: s.note,
   potId: s.potId,
+  oneOff: s.oneOff,
 });
 
 /** Add, change and delete spends; each success shows a toast with Undo. */

@@ -21,9 +21,13 @@ const newSpend = z.object({
   amountMinor: z.number().int(),
   note,
   potId,
+  /** Left out of the spending speed (item 8). */
+  oneOff: z.boolean().optional(),
 });
 
-const changeSpend = z.object({ spentOn: z.string(), amountMinor: z.number().int(), note, potId }).partial();
+const changeSpend = z
+  .object({ spentOn: z.string(), amountMinor: z.number().int(), note, potId, oneOff: z.boolean() })
+  .partial();
 
 /** The signed-in user's pot with this id, as `checkSpend` needs it; none when there is no such pot. */
 async function potsFor(c: { var: SignedIn["Variables"] }, id: string | null | undefined) {
@@ -37,9 +41,9 @@ async function potsFor(c: { var: SignedIn["Variables"] }, id: string | null | un
 }
 
 /**
- * Spends (backlog items 4 and 7, spec 4, 7 and 10): add, change and delete, in
+ * Spends (backlog items 4, 7 and 8, spec 4, 7 and 10): add, change and delete, in
  * the current cycle only (ended cycles are locked), from free money or a pot in
- * use. The phone works out every number.
+ * use, marked one-off or not. The phone works out every number.
  */
 export const spends = new Hono<SignedIn>()
   .post("/spends", json(newSpend), async (c) => {
@@ -47,7 +51,12 @@ export const spends = new Hono<SignedIn>()
     const b = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const row = { ...b, potId: b.potId ?? null, currency: now.settings.spendingCurrency };
+    const row = {
+      ...b,
+      potId: b.potId ?? null,
+      oneOff: b.oneOff ?? false,
+      currency: now.settings.spendingCurrency,
+    };
     const problems = checkSpend(row, {
       today: now.today,
       cycleStartedOn: now.cycle.startedOn,
@@ -82,7 +91,13 @@ export const spends = new Hono<SignedIn>()
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
       .update(spend)
-      .set({ spentOn: next.spentOn, amountMinor: next.amountMinor, note: next.note, potId: next.potId })
+      .set({
+        spentOn: next.spentOn,
+        amountMinor: next.amountMinor,
+        note: next.note,
+        potId: next.potId,
+        oneOff: next.oneOff,
+      })
       .where(and(mine(spend), eq(spend.id, id)));
     return c.json({ ok: true as const });
   })

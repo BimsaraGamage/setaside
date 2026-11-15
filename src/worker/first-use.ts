@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkFirstUse, isTimeZone, todayIn } from "../money";
+import { checkFirstUse, cycleSpeeds, isTimeZone, todayIn } from "../money";
 import {
   commitment,
   commitmentPayment,
@@ -32,6 +32,34 @@ const settingsBody = z
   .partial();
 
 /**
+ * Last cycle's spending speeds, free money's and each pot's, over its whole
+ * length (spec 7). Worked out here so the phone gets two numbers per speed, not
+ * last cycle's rows.
+ */
+async function lastCycleSpeeds(
+  c: { var: SignedIn["Variables"] },
+  last: { id: string; startedOn: string },
+  endedBefore: string,
+  spendingCurrency: string,
+) {
+  const { db, mine } = c.var;
+  const spends = await db.query.spend.findMany({
+    where: and(mine(spend), eq(spend.cycleId, last.id)),
+    columns: { spentOn: true, currency: true, amountMinor: true, potId: true, oneOff: true },
+  });
+  const allocations = await db
+    .select({ id: pot.id, currency: pot.currency, amountMinor: potAllocation.amountMinor })
+    .from(potAllocation)
+    .innerJoin(pot, eq(pot.id, potAllocation.potId))
+    .where(and(mine(pot), eq(potAllocation.cycleId, last.id)));
+  return cycleSpeeds(
+    { spendingCurrency, spends, pots: allocations.map((p) => ({ ...p, archived: false })) },
+    last.startedOn,
+    endedBefore,
+  );
+}
+
+/**
  * First use and the Today numbers' entries (backlog item 3, spec 2 and 10).
  * The phone works out every number with the money rules; this only reads and saves.
  */
@@ -40,9 +68,11 @@ export const firstUse = new Hono<SignedIn>()
   .get("/current", async (c) => {
     const { db, mine } = c.var;
     const s = await db.query.settings.findFirst({ where: mine(settings) });
-    const current = await db.query.cycle.findFirst({
+    // The current cycle and the one before it (its speed is used in the first 3 days, item 8).
+    const [current, last] = await db.query.cycle.findMany({
       where: mine(cycle),
       orderBy: [desc(cycle.startedOn), desc(cycle.createdAt)],
+      limit: 2,
     });
     const incomes = current
       ? await db.query.income.findMany({ where: and(mine(income), eq(income.cycleId, current.id)) })
@@ -92,6 +122,8 @@ export const firstUse = new Hono<SignedIn>()
       )
       .where(mine(pot))
       .orderBy(pot.createdAt, pot.id);
+    const lastCycle =
+      current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     return c.json({
       settings: s
         ? {
@@ -119,8 +151,10 @@ export const firstUse = new Hono<SignedIn>()
         amountMinor: s.amountMinor,
         note: s.note,
         potId: s.potId,
+        oneOff: s.oneOff,
       })),
       pots,
+      lastCycle,
       commitments: commitments.map((k) => ({
         id: k.id,
         name: k.name,

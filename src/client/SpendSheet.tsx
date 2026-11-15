@@ -40,7 +40,7 @@ export function toText(minor: number, currency: string): string {
 
 /**
  * The spend sheet (spec 10): date chip, amount on a number pad, the live
- * "left today" (or "from <pot> pot") line, note, Free money or a pot, Save.
+ * "left today" (or "from <pot> pot") line, note, Free money or a pot, One-off, Save.
  * Opened with a spend, it edits it and can delete it.
  */
 export function SpendSheet({
@@ -62,12 +62,14 @@ export function SpendSheet({
   const [note, setNote] = useState(editing?.note ?? "");
   // Spends default to free money; one tap switches to a pot (spec 4).
   const [potId, setPotId] = useState<string | null>(editing?.potId ?? null);
+  // One-off: still uses free money, left out of the spending speed (spec 7).
+  const [oneOff, setOneOff] = useState(editing?.oneOff ?? false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const days = useMemo(() => cycleDays(today, data.cycle.startedOn), [today, data.cycle.startedOn]);
 
   const amountMinor = parseAmount(text, cur) ?? 0;
-  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId };
+  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId, oneOff };
   const problems = checkSpend(draft, {
     today,
     cycleStartedOn: data.cycle.startedOn,
@@ -116,8 +118,8 @@ export function SpendSheet({
   const save = () =>
     run(() =>
       editing
-        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId })
-        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId }),
+        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId, oneOff })
+        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId, oneOff }),
     );
 
   return (
@@ -194,6 +196,14 @@ export function SpendSheet({
             maxLength={NOTE_MAX}
             onChange={(e) => setNote(e.target.value)}
           />
+        </label>
+
+        <label className="row check">
+          <input type="checkbox" checked={oneOff} onChange={(e) => setOneOff(e.target.checked)} />
+          <span className="grow">
+            One-off
+            <span className="tiny mute block">Left out of your spending speed</span>
+          </span>
         </label>
 
         <div className="pad">

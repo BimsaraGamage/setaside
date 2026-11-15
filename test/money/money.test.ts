@@ -169,6 +169,10 @@ describe("Today's numbers (spec 7, 10)", () => {
       spentTodayMinor: 0,
       leftTodayMinor: 500_000,
       tomorrowMinor: 529_400,
+      // No cycle start given, and no speed on a first cycle's first day (item 8).
+      speedPerDayMinor: null,
+      speedFromLastCycle: false,
+      verdict: { kind: "early" },
       currency: "LKR",
     });
   });

@@ -376,7 +376,7 @@ a.btn.add {
   font-weight: 400;
 }
 
-/* Paying a commitment (item 6). */
+/* Paying a commitment (item 6); the one-off toggle (item 8). */
 .check {
   align-items: center;
   min-height: 3rem;
@@ -415,4 +415,20 @@ a.btn.add {
 }
 .li.pot .bar {
   margin: 0;
+}
+
+/* Run-out verdict chip (item 8). */
+.verdict {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--chip);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.verdict.ok {
+  color: var(--ok);
+}
+.verdict.bad {
+  color: var(--bad);
 }
