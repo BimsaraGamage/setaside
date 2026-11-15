@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { authClient } from "./auth";
 import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
+import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FirstUse } from "./FirstUse";
 import { PayPage } from "./Pay";
 import { CommitmentPage, Plan } from "./Plan";
 import { PotPage } from "./Pots";
 import { potActions } from "./pot-actions";
+import { SalaryDayPage, salaryDayActions } from "./SalaryDay";
 import { AddIncomePage, SavingsMovePage, SavingsPage, savingsActions } from "./Savings";
 import { Settings } from "./Settings";
 import { SignIn } from "./SignIn";
@@ -28,6 +30,8 @@ const pages = {
   Pay: "Plan",
   Payment: "Plan",
   Pot: "Plan",
+  EveryCycle: "Plan",
+  SalaryDay: "Plan",
 } as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
@@ -55,6 +59,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const pots = potActions(toaster);
   const dayChoices = dayChoiceActions(toaster);
   const savings = savingsActions(toaster);
+  const salaryDay = salaryDayActions(toaster);
+  const everyCycle = everyCycleActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -146,6 +152,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
               <p className="mute">This pot is no longer here.</p>
             </>
           ))}
+        {tab === "EveryCycle" && <EveryCyclePage data={ready} actions={everyCycle} />}
+        {tab === "SalaryDay" && <SalaryDayPage key={ready.cycle.id} data={ready} actions={salaryDay} />}
         {tab === "Money" && <Money data={ready} />}
         {tab === "Spends" && <SpendsPage data={ready} onOpen={edit} />}
         {tab === "Savings" && <SavingsPage data={ready} />}

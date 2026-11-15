@@ -332,3 +332,29 @@ export const savingsMovement = sqliteTable(
     index("savings_movement_cycle_id_idx").on(t.cycleId),
   ],
 );
+
+/**
+ * The "Every cycle" template (item 11, spec 3): on salary day each active one
+ * fills a `commitment` in the new cycle with its last amount and day. Kept up to
+ * date from the commitment it is switched on for. Paused: `active` off.
+ */
+export const recurringCommitment = sqliteTable(
+  "recurring_commitment",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ["bill", "savings"] })
+      .notNull()
+      .default("bill"),
+    currency: text("currency").notNull(),
+    usualAmountMinor: integer("usual_amount_minor").notNull(),
+    /** Day of the month, 1–31; past the month's end means its last day. */
+    usualDay: integer("usual_day").notNull(),
+    /** A card bill's card (item 18). */
+    cardId: text("card_id"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    ...appTimestamps,
+  },
+  (t) => [index("recurring_commitment_user_id_idx").on(t.userId)],
+);

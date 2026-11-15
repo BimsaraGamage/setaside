@@ -1,5 +1,6 @@
 import { api } from "./api";
 import type { Commitment, Payment } from "./data";
+import { newId } from "./id";
 import type { Toaster } from "./toast";
 
 /** Kinds made on the commitment page: a bill, or a savings set-aside (item 10). */
@@ -10,6 +11,8 @@ export interface CommitmentDraft {
   name: string;
   plannedMinor: number;
   dueOn: string;
+  /** The "Every cycle" switch (item 11). */
+  everyCycle: boolean;
 }
 
 export interface PaymentDraft {
@@ -21,8 +24,14 @@ type State = "open" | "finished";
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
 
-const add = (id: string, d: CommitmentDraft) => ok(api.api.commitments.$post({ json: { id, ...d } }));
-const change = (id: string, d: Partial<CommitmentDraft> & { state?: State }) =>
+/** `recurringId`: the template "Every cycle" makes (a new id, or the old one when putting it back). */
+const add = (id: string, { everyCycle, ...d }: CommitmentDraft, recurringId?: string | null) =>
+  ok(
+    api.api.commitments.$post({
+      json: { id, ...d, recurringId: everyCycle ? (recurringId ?? newId()) : undefined },
+    }),
+  );
+const change = (id: string, d: Partial<CommitmentDraft> & { state?: State; recurringId?: string }) =>
   ok(api.api.commitments[":id"].$patch({ param: { id }, json: d }));
 const remove = (id: string) => ok(api.api.commitments[":id"].$delete({ param: { id } }));
 
@@ -37,7 +46,11 @@ const draftOf = (c: Commitment): CommitmentDraft => ({
   name: c.name,
   plannedMinor: c.plannedMinor,
   dueOn: c.dueOn,
+  everyCycle: c.recurringId !== null,
 });
+/** Puts a commitment's fields and its "Every cycle" switch back (the template keeps its id). */
+const changeBack = (old: Commitment) =>
+  change(old.id, { ...draftOf(old), recurringId: old.recurringId ?? undefined });
 const paymentDraftOf = (p: Payment): PaymentDraft => ({ amountMinor: p.amountMinor, paidOn: p.paidOn });
 
 /** Steps in order; stops at the first that fails. */
@@ -49,7 +62,7 @@ async function all(steps: (() => Promise<boolean>)[]): Promise<boolean> {
 /** Puts a deleted commitment back as it was: the row, its payments, then its state. */
 const restore = (old: Commitment) =>
   all([
-    () => add(old.id, draftOf(old)),
+    () => add(old.id, draftOf(old), old.recurringId),
     ...old.payments.map((p) => () => addPayment(old.id, p.id, paymentDraftOf(p))),
     ...(old.state === "finished" ? [() => change(old.id, { state: "finished" })] : []),
   ]);
@@ -60,8 +73,8 @@ export function commitmentActions({ done }: Toaster) {
     add: (id: string, d: CommitmentDraft) =>
       add(id, d).then((ok) => done(ok, { text: "Commitment saved", undo: () => remove(id) })),
     change: (old: Commitment, d: CommitmentDraft) =>
-      change(old.id, d).then((ok) =>
-        done(ok, { text: "Commitment changed", undo: () => change(old.id, draftOf(old)) }),
+      change(old.id, { ...d, recurringId: d.everyCycle && !old.recurringId ? newId() : undefined }).then(
+        (ok) => done(ok, { text: "Commitment changed", undo: () => changeBack(old) }),
       ),
     remove: (old: Commitment) =>
       remove(old.id).then((ok) => done(ok, { text: "Commitment deleted", undo: () => restore(old) })),

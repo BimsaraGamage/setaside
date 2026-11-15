@@ -1,0 +1,82 @@
+import { expect, test } from "@playwright/test";
+import { signInFreshToToday } from "./helpers";
+
+// Journey: salary-day steps (backlog item 11, spec 6). Salary day changes the
+// whole cycle, so this runs as a fresh demo user of its own; the other journeys
+// share the one demo user and would see their rows move to an ended cycle.
+
+test("salary arrived: steps filled from Every cycle, new pot, summary, Start new cycle", async ({ page }) => {
+  await signInFreshToToday(page);
+  const tabs = page.getByRole("navigation", { name: "Main" });
+
+  // A commitment with "Every cycle" on: Rs 36,000 due today.
+  await tabs.getByRole("link", { name: "Plan" }).click();
+  await page.getByRole("link", { name: "+ Add" }).click();
+  await page.getByLabel("Name").fill("Rent");
+  await page.getByLabel("Amount (LKR)").fill("36000");
+  await page.getByRole("checkbox", { name: /Every cycle/ }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Commitment saved");
+
+  // Every cycle page lists it.
+  await page.getByRole("link", { name: "Every cycle" }).click();
+  await expect(page.getByRole("heading", { name: "Every cycle" })).toBeVisible();
+  await expect(page.getByText("Rs 36,000 on the")).toBeVisible();
+  await page.getByRole("link", { name: "← Back" }).click();
+
+  // Salary arrived (Today header) → step 1: salary.
+  await tabs.getByRole("link", { name: "Today" }).click();
+  await page.getByRole("link", { name: "Salary arrived" }).click();
+  await expect(page.getByRole("heading", { name: "Salary", exact: true })).toBeVisible();
+  await expect(tabs).toBeHidden();
+  await page.getByLabel("Salary (LKR)").fill("250000");
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 4: Rent filled in from Every cycle; change it, add a gym bill.
+  await expect(page.getByRole("heading", { name: "This cycle's commitments" })).toBeVisible();
+  const first = page.getByRole("group", { name: "Commitment 1" });
+  await expect(first.getByLabel("Name")).toHaveValue("Rent");
+  await expect(first.getByLabel("Amount (LKR)")).toHaveValue("36000");
+  await first.getByLabel("Amount (LKR)").fill("37000");
+  await page.getByRole("button", { name: "+ Add" }).click();
+  const second = page.getByRole("group", { name: "Commitment 2" });
+  await second.getByLabel("Name").fill("Gym");
+  await second.getByLabel("Amount (LKR)").fill("5000");
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 5: a new pot.
+  await expect(page.getByRole("heading", { name: "Pots" })).toBeVisible();
+  await page.getByLabel("New pot name").fill("Fuel");
+  await page.getByLabel("New pot amount (LKR)").fill("5000");
+  await page.getByRole("button", { name: "Add pot" }).click();
+  await expect(page.getByLabel("Fuel (LKR)")).toHaveValue("5000");
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 6: the suggested next salary day.
+  await expect(page.getByRole("heading", { name: "Next salary day" })).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 7: summary. 250,000 − 37,000 − 5,000 − 5,000 = 203,000.
+  await expect(page.getByRole("heading", { name: "Summary" })).toBeVisible();
+  await expect(page.getByTestId("salary-day-free")).toHaveText("Rs 203,000");
+  await expect(page.getByTestId("salary-day-gap")).toHaveCount(0);
+  await page.getByRole("button", { name: "Start new cycle" }).click();
+
+  // Today in the new cycle: the commitments set aside, the pot.
+  await expect(page.getByRole("status")).toContainText("New cycle started");
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 203,000");
+  const nextUp = page.getByRole("region", { name: "Next up · already set aside" });
+  await expect(nextUp.getByText("Rent")).toBeVisible();
+  await expect(nextUp.getByText("Gym")).toBeVisible();
+
+  // Every cycle keeps the confirmed amount; pause it.
+  await tabs.getByRole("link", { name: "Plan" }).click();
+  await page.getByRole("link", { name: "Every cycle" }).click();
+  await expect(page.getByText("Rs 37,000 on the")).toBeVisible();
+  // The switch follows the saved state, so it flips once the change is saved.
+  const rentSwitch = page.getByRole("checkbox", { name: "Rent every cycle" });
+  await rentSwitch.click();
+  await expect(page.getByRole("status")).toContainText("Rent paused");
+  await expect(rentSwitch).not.toBeChecked();
+  await expect(page.getByText(/Rs 37,000 on the .* · paused/)).toBeVisible();
+});

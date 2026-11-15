@@ -28,9 +28,25 @@ export const demoSignIn = () =>
     endpoints: {
       demoSignIn: createAuthEndpoint(
         "/demo/sign-in",
-        { method: "POST", body: z.object({ user: z.enum(["demo", "second"]).default("demo") }) },
+        {
+          method: "POST",
+          body: z.object({
+            user: z.enum(["demo", "second"]).default("demo"),
+            /**
+             * A user of its own for one journey (item 11): salary day changes the
+             * whole cycle, which would upset journeys running at the same time.
+             */
+            fresh: z
+              .string()
+              .regex(/^[a-z0-9-]{1,40}$/)
+              .optional(),
+          }),
+        },
         async (ctx) => {
-          const who = demoUsers[ctx.body.user];
+          const { fresh } = ctx.body;
+          const who = fresh
+            ? { email: `fresh-${fresh}@${DEMO_EMAIL_DOMAIN}`, name: "Fresh demo user" }
+            : demoUsers[ctx.body.user];
           const found = await ctx.context.internalAdapter.findUserByEmail(who.email);
           const user =
             found?.user ??

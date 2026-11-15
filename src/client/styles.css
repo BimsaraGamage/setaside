@@ -438,3 +438,18 @@ a.btn.add {
   flex: 1 1 0;
   padding: 0.5rem 0.75rem;
 }
+
+/* Salary day (item 11). */
+header.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+a.btn.link.grow {
+  justify-content: center;
+}
+fieldset.card {
+  margin: 0;
+  min-width: 0;
+}
