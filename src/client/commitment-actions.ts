@@ -2,7 +2,11 @@ import { api } from "./api";
 import type { Commitment, Payment } from "./data";
 import type { Toaster } from "./toast";
 
+/** Kinds made on the commitment page: a bill, or a savings set-aside (item 10). */
+export type CommitmentKind = "bill" | "savings";
+
 export interface CommitmentDraft {
+  kind: CommitmentKind;
   name: string;
   plannedMinor: number;
   dueOn: string;
@@ -29,6 +33,7 @@ const changePayment = (id: string, d: Partial<PaymentDraft>) =>
 const removePayment = (id: string) => ok(api.api.payments[":id"].$delete({ param: { id } }));
 
 const draftOf = (c: Commitment): CommitmentDraft => ({
+  kind: c.kind === "savings" ? "savings" : "bill",
   name: c.name,
   plannedMinor: c.plannedMinor,
   dueOn: c.dueOn,
@@ -64,7 +69,11 @@ export function commitmentActions({ done }: Toaster) {
     pay: (c: Commitment, id: string, d: PaymentDraft, finish: boolean) =>
       addPayment(c.id, id, d, finish).then((ok) =>
         done(ok, {
-          text: finish ? `${c.name} paid · finished` : "Payment saved",
+          text: finish
+            ? `${c.name} ${c.kind === "savings" ? "moved" : "paid"} · finished`
+            : c.kind === "savings"
+              ? "Moved to savings"
+              : "Payment saved",
           undo: () =>
             all([...(finish ? [() => change(c.id, { state: "open" })] : []), () => removePayment(id)]),
         }),

@@ -8,5 +8,6 @@ export * from "./commitment";
 export * from "./cycle";
 export * from "./days";
 export * from "./pot";
+export * from "./savings";
 export * from "./speed";
 export * from "./spend";

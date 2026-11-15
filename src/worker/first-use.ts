@@ -14,6 +14,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
 
 const firstUseBody = z.object({
@@ -130,6 +131,8 @@ export const firstUse = new Hono<SignedIn>()
           orderBy: [dayChoice.dayOn],
         })
       : [];
+    // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
+    const savings = current ? await savingsLines(c) : [];
     const lastCycle =
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     return c.json({
@@ -164,6 +167,7 @@ export const firstUse = new Hono<SignedIn>()
       pots,
       lastCycle,
       dayChoices,
+      savings,
       commitments: commitments.map((k) => ({
         id: k.id,
         name: k.name,

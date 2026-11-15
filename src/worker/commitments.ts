@@ -9,8 +9,12 @@ import type { SignedIn } from "./user-check";
 
 const name = z.string().transform((n) => n.trim());
 
+/** Kinds made on the commitment page (spec 3, 5); card bills, plans and paybacks come with later items. */
+const kind = z.enum(["bill", "savings"]);
+
 const newCommitment = z.object({
   id: z.uuid(),
+  kind: kind.default("bill"),
   name,
   plannedMinor: z.number().int(),
   dueOn: z.string(),
@@ -21,6 +25,7 @@ const changeCommitment = z
     name,
     plannedMinor: z.number().int(),
     dueOn: z.string(),
+    kind,
     /** Mark finished, or reopen (item 6). Carried and dropped come with salary day (item 12). */
     state: z.enum(["open", "finished"]),
   })
@@ -28,7 +33,8 @@ const changeCommitment = z
 
 /**
  * Commitments (backlog items 5 and 6, spec 3 and 10): add, change, mark finished,
- * reopen and delete bills in the current cycle only (ended cycles are locked).
+ * reopen and delete bills and savings set-asides (item 10) in the current cycle
+ * only (ended cycles are locked).
  * Payments are in payments.ts. The phone works out every number.
  * Other kinds and "Every cycle" come with later items.
  */
@@ -45,7 +51,7 @@ export const commitments = new Hono<SignedIn>()
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
-      await db.insert(commitment).values({ ...row, userId, cycleId: now.cycle.id, kind: "bill" });
+      await db.insert(commitment).values({ ...row, userId, cycleId: now.cycle.id });
     } catch {
       // The id is already in use.
       return c.json({ error: "conflict" as const }, 409);
@@ -60,6 +66,10 @@ export const commitments = new Hono<SignedIn>()
     const old = await db.query.commitment.findFirst({ where: and(mine(commitment), eq(commitment.id, id)) });
     if (!now || !old) return c.json({ error: "not_found" as const }, 404);
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
+    // Only a bill and a savings set-aside can be switched into each other.
+    if (b.kind && old.kind !== "bill" && old.kind !== "savings") {
+      return c.json({ error: "invalid" as const, problems: ["kind"] }, 400);
+    }
     const next = { ...old, ...b };
     const problems = checkCommitment(next, {
       cycleStartedOn: now.cycle.startedOn,
@@ -68,7 +78,13 @@ export const commitments = new Hono<SignedIn>()
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
       .update(commitment)
-      .set({ name: next.name, plannedMinor: next.plannedMinor, dueOn: next.dueOn, state: next.state })
+      .set({
+        name: next.name,
+        kind: next.kind,
+        plannedMinor: next.plannedMinor,
+        dueOn: next.dueOn,
+        state: next.state,
+      })
       .where(and(mine(commitment), eq(commitment.id, id)));
     return c.json({ ok: true as const });
   })

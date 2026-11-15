@@ -305,3 +305,30 @@ export const dayChoice = sqliteTable(
     index("day_choice_cycle_id_idx").on(t.cycleId),
   ],
 );
+
+/**
+ * Money moved straight into or out of savings (item 10, spec 5): Put in (+) and
+ * Take out (−). In the cycle it was made in: a take-out raises that cycle's free
+ * money. Set-asides moved and extra income to savings are their own rows
+ * (commitment payments, `income.to_savings_minor`). Prepayments come with item 14.
+ */
+export const savingsMovement = sqliteTable(
+  "savings_movement",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    /** Above zero: into savings; below zero: out of savings. */
+    amountMinor: integer("amount_minor").notNull(),
+    kind: text("kind", { enum: ["put_in", "take_out", "opening", "prepayment", "plan_extra"] }).notNull(),
+    movedOn: text("moved_on").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("savings_movement_user_id_idx").on(t.userId, t.movedOn),
+    index("savings_movement_cycle_id_idx").on(t.cycleId),
+  ],
+);

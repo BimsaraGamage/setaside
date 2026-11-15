@@ -32,6 +32,9 @@ export function PayPage({
   const cur = data.settings.spendingCurrency;
   const today = useToday(data.settings.homeTimeZone);
   const still = stillToPayMinor(c);
+  // A savings set-aside is moved to savings, not paid (item 10).
+  const saving = c.kind === "savings";
+  const paidWord = saving ? "moved" : "paid";
   const [text, setText] = useState(() => {
     if (editing) return toText(editing.amountMinor, cur);
     return still > 0 ? toText(still, cur) : "";
@@ -77,15 +80,21 @@ export function PayPage({
         </a>
       </div>
       <h1>
-        {editing ? "Change payment" : "Pay"} · {c.name}
+        {editing ? (saving ? "Change move" : "Change payment") : saving ? "Move to savings" : "Pay"} ·{" "}
+        {c.name}
       </h1>
       <p className="small mute">
         Planned {formatMoney(c.plannedMinor, cur)} · due {dayLabel(c.dueOn)}
-        {c.payments.length > 0 && <> · paid so far {formatMoney(paidMinor(c, cur), cur)}</>}
+        {c.payments.length > 0 && (
+          <>
+            {" "}
+            · {paidWord} so far {formatMoney(paidMinor(c, cur), cur)}
+          </>
+        )}
       </p>
       <section className="card stack">
         <label className="field">
-          Amount paid ({cur})
+          Amount {paidWord} ({cur})
           <input
             value={text}
             inputMode="decimal"
@@ -97,7 +106,7 @@ export function PayPage({
           />
         </label>
         <label className="field">
-          Paid on
+          {saving ? "Moved on" : "Paid on"}
           <input
             type="date"
             value={paidOn}
@@ -116,7 +125,7 @@ export function PayPage({
         <p className="small" data-testid="pay-note">
           {finish
             ? plannedGap(totalPaid, c.plannedMinor, cur)
-            : `Still to pay after this: ${formatMoney(Math.max(0, c.plannedMinor - totalPaid), cur)}`}
+            : `Still to ${saving ? "move" : "pay"} after this: ${formatMoney(Math.max(0, c.plannedMinor - totalPaid), cur)}`}
         </p>
         <p className="small" data-testid="pay-after">
           You can spend today after this: <b>{formatMoney(view.allowanceMinor, cur)}</b>
@@ -146,7 +155,7 @@ export function PayPage({
             )
           }
         >
-          {editing ? "Save" : "Pay"}
+          {editing ? "Save" : saving ? "Move" : "Pay"}
         </button>
       </div>
     </>
