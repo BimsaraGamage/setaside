@@ -96,8 +96,10 @@ export const commitments = new Hono<SignedIn>()
       return c.json({ error: "invalid" as const, problems: ["kind"] }, 400);
     }
     const next = { ...old, ...b };
+    // A carried one keeps its due day from last cycle (shown as late, item 12) until it is moved.
+    const keptDue = next.dueOn === old.dueOn && old.dueOn < now.cycle.startedOn;
     const problems = checkCommitment(next, {
-      cycleStartedOn: now.cycle.startedOn,
+      cycleStartedOn: keptDue ? old.dueOn : now.cycle.startedOn,
       spendingCurrency: now.settings.spendingCurrency,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);

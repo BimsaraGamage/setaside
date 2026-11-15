@@ -56,7 +56,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - **Expected salary day.** On salary day the app suggests the next one from the usual pay day; the user confirms it and can change it later. The daily allowance counts days up to it.
 - **Salary early:** entering it ends the current cycle early.
 - **Salary late:** when the expected salary day passes with no salary entered, the app says the salary is late and asks for a new expected day. What is left is spread over the extra days.
-- **Set-asides larger than the salary:** if commitments + pots + savings set-aside are more than the salary (compared at the **counting rate** when currencies differ), the app shows the gap before the cycle starts; the user lowers something or takes money from savings. It is a warning: Start new cycle stays allowed.
+- **Set-asides larger than the salary:** if commitments + pots + savings set-aside are more than the salary plus the free money last cycle brings in (steps 2 and 3 of section 6; compared at the **counting rate** when currencies differ), the app shows the gap before the cycle starts; the user lowers something or takes money from savings. It is a warning: Start new cycle stays allowed.
 - **Ended cycles are locked.** Nothing in an ended cycle can be added, changed or deleted. A forgotten spend from last cycle is entered in the current cycle; the leftover correction on salary day (section 6) is the only fix to an ended cycle.
 - **Spends can be dated back** only within the current cycle.
 - **Undo salary day:** allowed until anything new is entered in the new cycle. It removes the new cycle and everything salary day made (its cycle-end choices, generated commitments and pot amounts) and reopens the old cycle as it was. The salary amount itself stays editable during the current cycle.
@@ -87,7 +87,7 @@ A **commitment** is an essential expense with an amount, a currency and a due da
 - **Paid in the other currency:** see section 8.
 - **Due after the expected salary day:** it belongs to the next cycle. This cycle shows it on the timeline as coming up only (after "Salary expected", outside the total, not set aside). One due **on** the expected salary day still belongs to this cycle. On salary day it moves to the new cycle: step 4 lists it (with what is still to pay) as a new commitment that points back, and the old one is marked carried; one made from a recurring commitment stands in for that one (no second row). A fully paid one stays behind.
 - **Late:** an open commitment whose due day has passed stays set aside and shows at the top of Next up as "N days late".
-- **Unpaid at cycle end:** salary day asks, for each one: Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover). A carried commitment is a new commitment in the new cycle that points back to the old one.
+- **Unpaid at cycle end:** salary day asks, for each one (open, due by the old expected salary day, late ones too): Paid it · Carry to the new cycle (its set-aside money goes with it; shown as late) · Drop (its money joins the leftover and goes to the new cycle's free money). Each must be answered. Paid it records a payment of what was still to pay, dated on its due day (kept inside the old cycle), and finishes it. A carried commitment is a new commitment in the new cycle, with what was still to pay and the same due day, that points back to the old one; it can be changed later, and keeps its old due day until moved.
 - Card bills, instalment-plan payments and paybacks are made by their card, plan, person or prepayment (section 9), not from the Every cycle list.
 
 ## 4. Pots
@@ -111,7 +111,7 @@ A **pot** is an essential expense with no single due date, spent bit by bit (gro
 - **taken out** into free money (the new allowance is shown before saving), never more than the savings total in that currency;
 - **put in** directly: money from outside the app, so free money stays the same.
 
-Take out and Put in are dated today, in the current cycle, with a toast and **Undo**. Savings shows every movement, newest first: Put in, Taken out, From extra income, Set aside (with the commitment's name).
+Take out and Put in are dated today, in the current cycle, with a toast and **Undo**. Savings shows every movement, newest first: Put in, Taken out, From extra income, Saved leftover, Set aside (with the commitment's name).
 
 **Extra income** (bonus, refund) is entered in its own currency and split by the user: how much to savings (from zero up to the amount), how much to free money. It is dated today, with a toast and **Undo**. Today's allowance rises with the free part at once. The Add income screen also records loan money received as cash, money borrowed from a person and money paid back to the user (section 9), each split the same way.
 
@@ -125,7 +125,7 @@ Take out and Put in are dated today, in the current cycle, with a toast and **Un
 
 **Overspend** = spending beyond free money at cycle end, in the spending currency.
 
-On salary day the app shows the leftover per currency. The user can correct the amount (for spends never entered), then splits it: savings or the new cycle. Unconverted dollars go to dollar savings or carry over as unconverted dollars; rupees go to rupee savings or the new free money. If there is an overspend instead, the user chooses: take it from the new cycle's free money, or ignore it.
+On salary day the app shows the leftover per currency. The user can correct the amount (for spends never entered), then splits it: savings or the new cycle. Step 2 comes before step 3, so the amount shown, corrected and split in step 2 is free money left + unused pot money; money of commitments dropped in step 3 goes to the new cycle's free money. Everything the old cycle brings in (to the new cycle, to savings, and carried commitments' money) is stored as one income of kind leftover in the new cycle. Unconverted dollars go to dollar savings or carry over as unconverted dollars; rupees go to rupee savings or the new free money. If there is an overspend instead (step 2's amount below zero), the user chooses: take it from the new cycle's free money, or ignore it; there is nothing to correct or save.
 
 ### Salary-day steps
 

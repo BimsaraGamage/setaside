@@ -126,7 +126,8 @@ export function salaryDayDrafts(a: {
 
 /**
  * The gap (spec 2): commitments set aside in the new cycle plus pot amounts, less
- * the salary, when they are more than it; else 0. Savings set-asides are commitments.
+ * the salary and the free money last cycle brings in (item 12), when they are
+ * more; else 0. Savings set-asides are commitments.
  */
 export function salaryDayGapMinor(a: {
   salaryMinor: Minor;
@@ -134,10 +135,12 @@ export function salaryDayGapMinor(a: {
   currency: string;
   commitments: CommitmentEntry[];
   pots: PotEntry[];
+  /** Free money from last cycle: leftover kept plus carried ones' money (less an overspend taken). */
+  broughtInMinor?: Minor;
 }): Minor {
   let total = setAsideMinor(a.commitments, a.expectedSalaryOn, a.currency);
   for (const p of a.pots) if (p.currency === a.currency && !p.archived) total += p.amountMinor;
-  return Math.max(0, total - a.salaryMinor);
+  return Math.max(0, total - a.salaryMinor - (a.broughtInMinor ?? 0));
 }
 
 export interface SalaryDayInput {
@@ -190,23 +193,29 @@ export interface SalaryDayView {
 
 /**
  * Step 7's summary (spec 6): the new cycle's free money, daily allowance and
- * verdict (from the cycle that ends in the first days), and the gap. Last
- * cycle's leftover joins with item 12.
+ * verdict (from the cycle that ends in the first days), and the gap. With what
+ * last cycle brings in (its `leftover` income) and the commitments carried from
+ * step 3, set aside again in the new cycle.
  */
 export function salaryDayView(a: {
   input: SalaryDayInput;
   spendingCurrency: string;
   today: Day;
   lastSpeed: Speed | null;
+  broughtIn?: { amountMinor: Minor; toSavingsMinor: Minor } | null;
+  carried?: CommitmentEntry[];
 }): SalaryDayView {
   const cur = a.spendingCurrency;
   const { input } = a;
-  const commitments: CommitmentEntry[] = input.commitments.map((c) => ({
-    currency: cur,
-    plannedMinor: c.plannedMinor,
-    dueOn: c.dueOn,
-    state: "open",
-  }));
+  const commitments: CommitmentEntry[] = [
+    ...input.commitments.map((c) => ({
+      currency: cur,
+      plannedMinor: c.plannedMinor,
+      dueOn: c.dueOn,
+      state: "open" as const,
+    })),
+    ...(a.carried ?? []),
+  ];
   const pots: PotEntry[] = input.pots.map((p, i) => ({
     id: `new-${i}`,
     currency: cur,
@@ -227,6 +236,9 @@ export function salaryDayView(a: {
           toSavingsMinor: 0,
           receivedOn: startedOn,
         },
+        ...(a.broughtIn
+          ? [{ kind: "leftover" as const, currency: cur, ...a.broughtIn, receivedOn: startedOn }]
+          : []),
       ],
       spends: [],
       commitments,
@@ -241,6 +253,7 @@ export function salaryDayView(a: {
     currency: cur,
     commitments,
     pots,
+    broughtInMinor: a.broughtIn ? a.broughtIn.amountMinor - a.broughtIn.toSavingsMinor : 0,
   });
   return { today, gapMinor };
 }

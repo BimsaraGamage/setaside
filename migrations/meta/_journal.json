@@ -71,6 +71,13 @@
       "when": 1794718366714,
       "tag": "0009_recurring_commitment",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794719713624,
+      "tag": "0010_cycle_close",
+      "breakpoints": true
     }
   ]
 }

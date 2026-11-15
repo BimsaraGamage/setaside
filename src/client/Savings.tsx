@@ -44,6 +44,7 @@ const lineName: Record<SavingsLine["kind"], string> = {
   put_in: "Put in",
   take_out: "Taken out",
   income: "From extra income",
+  leftover: "Saved leftover",
   set_aside: "Set aside",
 };
 

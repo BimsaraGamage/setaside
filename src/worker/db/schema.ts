@@ -148,7 +148,9 @@ export const income = sqliteTable(
     cycleId: text("cycle_id")
       .notNull()
       .references(() => cycle.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["salary", "extra", "opening", "loan", "borrowed", "paid_back"] }).notNull(),
+    kind: text("kind", {
+      enum: ["salary", "extra", "opening", "leftover", "loan", "borrowed", "paid_back"],
+    }).notNull(),
     currency: text("currency").notNull(),
     amountMinor: integer("amount_minor").notNull(),
     receivedOn: text("received_on").notNull(),
@@ -357,4 +359,38 @@ export const recurringCommitment = sqliteTable(
     ...appTimestamps,
   },
   (t) => [index("recurring_commitment_user_id_idx").on(t.userId)],
+);
+
+/**
+ * The salary-day choices about the cycle that ended (item 12, spec 6): one per
+ * ended cycle and currency. The money itself goes into the new cycle as its
+ * `leftover` income (to savings and free money); this keeps the correction and
+ * the overspend choice for Past and Undo salary day.
+ */
+export const cycleClose = sqliteTable(
+  "cycle_close",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    /** The cycle that ended. */
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    /** The new cycle it was closed by (Undo salary day deletes this row with it). */
+    nextCycleId: text("next_cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    /** "Actually have in hand" less the leftover worked out. */
+    leftoverCorrectionMinor: integer("leftover_correction_minor").notNull().default(0),
+    /** Part of the leftover sent to savings. */
+    leftoverToSavingsMinor: integer("leftover_to_savings_minor").notNull().default(0),
+    /** Only when there was an overspend. */
+    overspendChoice: text("overspend_choice", { enum: ["take", "ignore"] }),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("cycle_close_user_id_idx").on(t.userId),
+    uniqueIndex("cycle_close_cycle_currency_idx").on(t.cycleId, t.currency),
+  ],
 );

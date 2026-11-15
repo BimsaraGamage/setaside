@@ -2,9 +2,31 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkSalaryDay, isComingUp, usualDayOf } from "../money";
+import {
+  broughtIn,
+  type ClosingEntries,
+  checkCycleClose,
+  checkSalaryDay,
+  isComingUp,
+  leftoverOf,
+  paidItOn,
+  stillToPayMinor,
+  unpaidAtEnd,
+  usualDayOf,
+} from "../money";
 import { current } from "./current";
-import { commitment, cycle, income, pot, potAllocation, recurringCommitment } from "./db/schema";
+import {
+  commitment,
+  commitmentPayment,
+  cycle,
+  cycleClose,
+  income,
+  pot,
+  potAllocation,
+  recurringCommitment,
+  savingsMovement,
+  spend,
+} from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -46,7 +68,86 @@ const salaryDayBody = z.object({
       }),
     )
     .max(50),
+  /** Steps 2 and 3: last cycle's leftover and unpaid commitments (item 12). */
+  close: z.object({
+    /** The `cycle_close` row and the new cycle's `leftover` income. */
+    closeId: z.uuid(),
+    leftoverIncomeId: z.uuid(),
+    unpaid: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          choice: z.enum(["paid", "carry", "drop"]),
+          /** Carry: the new commitment's id. Paid it: the payment's id. */
+          newId: z.uuid().nullish(),
+        }),
+      )
+      .max(100),
+    inHandMinor: z.number().int().nullable(),
+    toSavingsMinor: z.number().int(),
+    overspend: z.enum(["take", "ignore"]).nullable(),
+  }),
 });
+
+/** The current cycle's entries, as the money rules need them, to work out its leftover. */
+async function entriesOf(
+  c: { var: SignedIn["Variables"] },
+  now: NonNullable<Awaited<ReturnType<typeof current>>>,
+) {
+  const { db, mine } = c.var;
+  const id = now.cycle.id;
+  const incomes = await db.query.income.findMany({
+    where: and(mine(income), eq(income.cycleId, id)),
+    columns: { kind: true, currency: true, amountMinor: true, toSavingsMinor: true, receivedOn: true },
+  });
+  const spends = await db.query.spend.findMany({
+    where: and(mine(spend), eq(spend.cycleId, id)),
+    columns: { spentOn: true, currency: true, amountMinor: true, potId: true, oneOff: true },
+  });
+  const commitments = await db.query.commitment.findMany({
+    where: and(mine(commitment), eq(commitment.cycleId, id)),
+  });
+  // A subquery: D1 caps bound values at 100.
+  const payments = await db.query.commitmentPayment.findMany({
+    where: and(
+      mine(commitmentPayment),
+      inArray(
+        commitmentPayment.commitmentId,
+        db
+          .select({ id: commitment.id })
+          .from(commitment)
+          .where(and(mine(commitment), eq(commitment.cycleId, id))),
+      ),
+    ),
+  });
+  const pots = await db
+    .select({
+      id: pot.id,
+      currency: pot.currency,
+      archived: pot.archived,
+      amountMinor: potAllocation.amountMinor,
+    })
+    .from(potAllocation)
+    .innerJoin(pot, eq(pot.id, potAllocation.potId))
+    .where(and(mine(pot), eq(potAllocation.cycleId, id)));
+  const takeOuts = await db.query.savingsMovement.findMany({
+    where: and(mine(savingsMovement), eq(savingsMovement.cycleId, id), eq(savingsMovement.kind, "take_out")),
+    columns: { currency: true, amountMinor: true, movedOn: true },
+  });
+  return {
+    spendingCurrency: now.settings.spendingCurrency,
+    startedOn: now.cycle.startedOn,
+    expectedSalaryOn: now.cycle.expectedSalaryOn,
+    incomes,
+    spends,
+    commitments: commitments.map((k) => ({
+      ...k,
+      payments: payments.filter((p) => p.commitmentId === k.id),
+    })),
+    pots,
+    takenOut: takeOuts.map((t) => ({ ...t, amountMinor: -t.amountMinor })),
+  } satisfies ClosingEntries;
+}
 
 const changeRecurring = z.object({ active: z.boolean() });
 
@@ -54,8 +155,9 @@ const changeRecurring = z.object({ active: z.boolean() });
  * Salary day (backlog item 11, spec 2, 3, 6): Start new cycle makes the new
  * cycle with its salary, commitments (filled from the recurring ones and last
  * cycle's coming-up ones) and pot amounts in one write; the old cycle ends and
- * is locked. Last cycle's leftover and unpaid commitments come with item 12.
- * Also the Every cycle page's paused switch.
+ * is locked. Steps 2 and 3 (item 12) close the old cycle in the same write:
+ * its unpaid commitments are paid, carried or dropped, and its leftover goes to
+ * savings and the new cycle as the new cycle's `leftover` income. Also the Every cycle page's paused switch.
  */
 export const salaryDay = new Hono<SignedIn>()
   .post("/salary-day", json(salaryDayBody), async (c) => {
@@ -100,6 +202,21 @@ export const salaryDay = new Hono<SignedIn>()
     if (new Set(carriedIds).size !== carriedIds.length || carriedIds.some((id) => !comingUp.has(id))) {
       problems.push("carried_from");
     }
+
+    // Steps 2 and 3: the leftover is worked out here from the ending cycle's rows (spec 6).
+    const entries = await entriesOf(c, now);
+    const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
+    const leftover = leftoverOf(entries, b.close.unpaid);
+    for (const p of checkCycleClose(b.close, { unpaidIds: unpaid.map((k) => k.id), leftover })) {
+      problems.push(`close.${p}`);
+    }
+    const unpaidById = new Map(unpaid.map((k) => [k.id, k]));
+    // A carried one is a new row, a Paid it with money still to pay a new payment: ids made on the phone.
+    const needsId = (u: (typeof b.close.unpaid)[number]) => {
+      const k = unpaidById.get(u.id);
+      return k !== undefined && (u.choice === "carry" || (u.choice === "paid" && stillToPayMinor(k) > 0));
+    };
+    if (b.close.unpaid.some((u) => needsId(u) && !u.newId)) problems.push("close.new_id");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
 
     const recurringIds = b.commitments.flatMap((k) => (k.recurringId ? [k.recurringId] : []));
@@ -181,6 +298,78 @@ export const salaryDay = new Hono<SignedIn>()
             .where(and(mine(commitment), eq(commitment.id, k.carriedFromId))),
         );
       }
+    }
+    // Step 3: last cycle's unpaid commitments. The ended cycle's only writes are these (spec 2).
+    for (const u of b.close.unpaid) {
+      const k = unpaidById.get(u.id);
+      if (!k) continue;
+      const rest = stillToPayMinor(k);
+      const old = and(mine(commitment), eq(commitment.id, k.id));
+      if (u.choice === "paid") {
+        if (rest > 0 && u.newId) {
+          writes.push(
+            db.insert(commitmentPayment).values({
+              id: u.newId,
+              userId,
+              commitmentId: k.id,
+              currency: k.currency,
+              amountMinor: rest,
+              paidOn: paidItOn(k.dueOn, now.cycle.startedOn, b.receivedOn),
+            }),
+          );
+        }
+        writes.push(db.update(commitment).set({ state: "finished" }).where(old));
+      } else if (u.choice === "drop") {
+        writes.push(db.update(commitment).set({ state: "dropped" }).where(old));
+      } else if (u.newId) {
+        // Carried: its still to pay, due as before, so it shows as late (spec 3).
+        writes.push(
+          db.insert(commitment).values({
+            id: u.newId,
+            userId,
+            cycleId: b.cycleId,
+            name: k.name,
+            kind: k.kind,
+            currency: k.currency,
+            plannedMinor: rest,
+            dueOn: k.dueOn,
+            carriedFromId: k.id,
+            cardId: k.cardId,
+            planId: k.planId,
+            personDebtId: k.personDebtId,
+            prepaymentId: k.prepaymentId,
+          }),
+          db.update(commitment).set({ state: "carried" }).where(old),
+        );
+      }
+    }
+    // Step 2: the leftover (or what is in hand) to savings and the new cycle, with carried ones' money.
+    const brought = broughtIn(b.close, leftover);
+    writes.push(
+      db.insert(cycleClose).values({
+        id: b.close.closeId,
+        userId,
+        cycleId: now.cycle.id,
+        nextCycleId: b.cycleId,
+        currency: cur,
+        leftoverCorrectionMinor: brought.correctionMinor,
+        leftoverToSavingsMinor: brought.toSavingsMinor,
+        overspendChoice: b.close.overspend,
+      }),
+    );
+    if (brought.amountMinor !== 0 || brought.toSavingsMinor !== 0) {
+      writes.push(
+        db.insert(income).values({
+          id: b.close.leftoverIncomeId,
+          userId,
+          cycleId: b.cycleId,
+          kind: "leftover",
+          currency: cur,
+          amountMinor: brought.amountMinor,
+          toSavingsMinor: brought.toSavingsMinor,
+          receivedOn: b.receivedOn,
+        }),
+      );
     }
     for (const p of potRows) {
       if (!p.old) {

@@ -166,6 +166,18 @@ const probes: Record<string, Probe> = {
             usualAmountMinor: 1,
           },
         ],
+        // And at the first user's close, income, commitments and payment: must not pay, carry or drop any.
+        close: {
+          closeId: firstRow(o, "cycle_close"),
+          leftoverIncomeId: firstRow(o, "income"),
+          unpaid: [
+            { id: firstRow(o, "commitment"), choice: "carry", newId: firstRow(o, "commitment") },
+            { id: firstRow(o, "commitment"), choice: "paid", newId: firstRow(o, "commitment_payment") },
+          ],
+          inHandMinor: null,
+          toSavingsMinor: 0,
+          overspend: null,
+        },
       }),
     },
   }),
@@ -194,6 +206,7 @@ async function seedOwnerData(ownerId: string) {
   const sm = crypto.randomUUID();
   const ex = crypto.randomUUID();
   const rc = crypto.randomUUID();
+  const cc = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -232,6 +245,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into recurring_commitment (id, user_id, name, kind, currency, usual_amount_minor, usual_day, active, created_at, updated_at) values (?, ?, 'Rent', 'bill', 'LKR', 3600000, 20, 1, ?, ?)",
     ).bind(rc, ownerId, now, now),
+    env.DB.prepare(
+      "insert into cycle_close (id, user_id, cycle_id, next_cycle_id, currency, leftover_correction_minor, leftover_to_savings_minor, created_at, updated_at) values (?, ?, ?, ?, 'LKR', 0, 0, ?, ?)",
+    ).bind(cc, ownerId, c, c, now, now),
   ]);
 }
 
