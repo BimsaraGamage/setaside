@@ -280,8 +280,11 @@ Rows for Spends, Savings, Change dollars, Add income, each card, each instalment
 
 ### Past
 
-- **Past cycles**: list, each with dates, salary, spent, how it ended.
+- **Past cycles**: list, newest first, each with dates, salary, spent, how it ended. Dates run from its first day to the day before the next cycle started. The very first cycle has no salary: it shows what it started with.
 - **One ended cycle**: locked badge, salary, spent, how it ended, average a day, commitments (planned vs paid, carried), pots, spends list. Read only.
+  - **Spent**: its spends (cash, card, pots), per currency. **Average a day**: its spending speed over its whole length (section 7: one-offs left out, pots only past their amount).
+  - **How it ended**, per currency (section 6): the leftover worked out, what was actually in hand when corrected, and how much went to savings and to the next cycle; or the overspend, taken from the next cycle or ignored (dollars below zero carry over: taken).
+  - **Commitments**: paid, finished with less paid, carried (what went to the next cycle), dropped; each with paid of planned.
 
 ### Settings
 

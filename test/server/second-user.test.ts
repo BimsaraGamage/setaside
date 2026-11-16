@@ -248,6 +248,9 @@ const probes: Record<string, Probe> = {
     init: { body: JSON.stringify({ id: firstRow(o, "commitment"), plannedMinor: 1, dueOn: "2999-01-01" }) },
   }),
   // Aimed at the first user's cycle, income, commitment, template and pot: must not take any over.
+  // Past (item 21): must not list or open the first user's cycles.
+  "GET /api/past": () => ({ path: "/api/past" }),
+  "GET /api/past/:id": (o) => ({ path: `/api/past/${firstRow(o, "cycle")}` }),
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
     init: {

@@ -6,6 +6,7 @@ import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FirstUse } from "./FirstUse";
+import { PastCyclePage, PastList } from "./Past";
 import { PayPage } from "./Pay";
 import { LendPage, PeoplePage, PersonPage, peopleActions } from "./People";
 import { CommitmentPage, Plan } from "./Plan";
@@ -43,6 +44,7 @@ const pages = {
   Pot: "Plan",
   EveryCycle: "Plan",
   SalaryDay: "Plan",
+  PastCycle: "Past",
 } as const;
 type Tab = (typeof tabs)[number] | keyof typeof pages;
 
@@ -250,12 +252,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
         {tab === "Settings" && (
           <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
         )}
-        {tab === "Past" && (
-          <>
-            <h1>{tab}</h1>
-            <p className="mute">Comes in a later build step.</p>
-          </>
-        )}
+        {tab === "Past" && <PastList data={ready} />}
+        {tab === "PastCycle" && id && <PastCyclePage key={id} data={ready} id={id} />}
       </main>
       <nav className="tabs" aria-label="Main" hidden={isPage}>
         {tabs.map((t) => (
