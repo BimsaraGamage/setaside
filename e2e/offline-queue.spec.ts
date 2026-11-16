@@ -24,7 +24,9 @@ async function addBill(page: Page, name: string, amount: string): Promise<string
   await page.getByLabel("Name").fill(name);
   await page.getByLabel("Amount (LKR)").fill(amount);
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("status")).toContainText("Commitment saved");
+  // Saved and back on Plan with it listed (an earlier toast may still show "Commitment saved").
+  await expect(page.getByRole("heading", { name: "Plan", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: new RegExp(` ${name} `) })).toBeVisible();
   const res = await page.request.get("/api/current");
   const cur = (await res.json()) as { commitments: { id: string; name: string }[] };
   return cur.commitments.find((c) => c.name === name)?.id as string;
@@ -178,4 +180,53 @@ test("a spend from a cycle that has ended moves into this cycle, with a note", a
   };
   expect(after.spends).toMatchObject([{ note: "Late lunch", spentOn: cur.cycle.startedOn }]);
   await expect(card).toBeVisible();
+});
+
+test.describe("an answer lost on the way back", () => {
+  // page.route sees the page's requests only without a service worker.
+  test.use({ serviceWorkers: "block" });
+
+  test("a spend the server got but the phone didn't hear back about: changed or removed on the phone, then on the server", async ({
+    page,
+    context,
+  }) => {
+    await signInFreshToToday(page);
+    // Each new spend reaches the server, but its answer never comes back.
+    const lose = async (route: import("@playwright/test").Route) => {
+      await route.fetch();
+      await route.abort();
+    };
+    await page.route("**/api/spends", lose);
+    await addSpend(page, "500", "Tea");
+    await expect(page.getByRole("status")).toContainText("Spend saved on this phone");
+    await addSpend(page, "700", "Cake");
+    await expect(page.getByRole("status")).toContainText("Spend saved on this phone");
+    await page.unroute("**/api/spends", lose);
+    const card = page.getByRole("region", { name: "You can spend today" });
+
+    // Change Tea to Rs 600 and remove Cake on the phone, before they are sent again.
+    await context.setOffline(true);
+    await card.getByRole("button", { name: /Tea/ }).click();
+    const change = page.getByRole("dialog", { name: "Change spend" });
+    await change.getByRole("button", { name: "Delete digit" }).click();
+    await change.getByRole("button", { name: "Delete digit" }).click();
+    await change.getByRole("button", { name: "Delete digit" }).click();
+    for (const d of "600") await change.getByRole("button", { name: d, exact: true }).click();
+    await change.getByRole("button", { name: "Save" }).click();
+    await card.getByRole("button", { name: /Cake/ }).click();
+    await change.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(card.getByRole("button", { name: /Cake/ })).toHaveCount(0);
+
+    // Back online: the server ends up as the phone shows it.
+    await context.setOffline(false);
+    await expect(page.getByTestId("offline")).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const cur = (await (await page.request.get("/api/current")).json()) as {
+          spends: { note: string; amountMinor: number }[];
+        };
+        return cur.spends.map((s) => `${s.note} ${s.amountMinor}`);
+      })
+      .toEqual(["Tea 60000"]);
+  });
 });

@@ -29,26 +29,42 @@ export interface PaymentDraft {
   currency?: string;
 }
 
-export type UnsentItem =
-  | {
-      kind: "spend";
-      id: string;
-      /** The spend's currency (its pot's, else the spending currency), to show it before it is sent. */
-      currency: string;
-      draft: SpendDraft;
-      queuedAt: number;
-    }
-  | {
-      kind: "payment";
-      id: string;
-      commitmentId: string;
-      /** For the needs-a-look list, once its commitment may be gone. */
-      commitmentName: string;
-      commitmentCurrency: string;
-      draft: PaymentDraft;
-      finish: boolean;
-      queuedAt: number;
-    };
+/**
+ * What the phone knows about an item's trip to the server. `tried`: sent once with no answer, so the server may
+ * have it (the answer was lost). Changed or removed after that, it is `changed` (a resend the server already
+ * has is followed by a change) or `removed` (sent as a delete, and no longer shown).
+ */
+interface Trip {
+  tried?: boolean;
+  changed?: boolean;
+  removed?: boolean;
+}
+
+export type UnsentItem = Trip &
+  (
+    | {
+        kind: "spend";
+        id: string;
+        /** The spend's currency (its pot's, else the spending currency), to show it before it is sent. */
+        currency: string;
+        draft: SpendDraft;
+        queuedAt: number;
+      }
+    | {
+        kind: "payment";
+        id: string;
+        commitmentId: string;
+        /** For the needs-a-look list, once its commitment may be gone. */
+        commitmentName: string;
+        commitmentCurrency: string;
+        draft: PaymentDraft;
+        finish: boolean;
+        queuedAt: number;
+      }
+  );
+
+/** Items still waiting to be sent and shown as unsent (not the removed ones waiting to be deleted). */
+export const waiting = (s: UnsentState) => s.items.filter((i) => !i.removed);
 
 /** Why an unsent item needs a look: the server's error (`locked`, `not_open`, `not_found`, `invalid`, …). */
 export type LookItem = UnsentItem & { reason: string };
@@ -124,44 +140,82 @@ export function outbox(userId: string) {
   async function sendOne(
     item: UnsentItem,
   ): Promise<{ outcome: UnsentOutcome; body: Record<string, unknown> }> {
-    let res: Response;
-    try {
-      res =
+    const answer = async (send: () => Promise<Response>) => {
+      try {
+        const res = await send();
+        return { res, body: (await res.json().catch(() => ({}))) as Record<string, unknown> };
+      } catch {
+        return null;
+      }
+    };
+    if (item.removed) {
+      // Removed on the phone after a send with no answer: deleted on the server (already gone is fine).
+      const a = await answer(() =>
         item.kind === "spend"
-          ? await api.api.spends.$post({ json: { id: item.id, ...item.draft, queued: true } })
-          : await api.api.commitments[":id"].payments.$post({
-              param: { id: item.commitmentId },
-              json: { id: item.id, ...item.draft, finish: item.finish },
-            });
-    } catch {
-      return { outcome: "retry", body: {} };
+          ? api.api.spends[":id"].$delete({ param: { id: item.id } })
+          : api.api.payments[":id"].$delete({ param: { id: item.id } }),
+      );
+      if (!a) return { outcome: "retry", body: {} };
+      return { outcome: a.res.status === 404 ? "saved" : unsentOutcome(a.res.status), body: a.body };
     }
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    return { outcome: unsentOutcome(res.status), body };
+    const a = await answer(() =>
+      item.kind === "spend"
+        ? api.api.spends.$post({ json: { id: item.id, ...item.draft, queued: true } })
+        : api.api.commitments[":id"].payments.$post({
+            param: { id: item.commitmentId },
+            json: { id: item.id, ...item.draft, finish: item.finish },
+          }),
+    );
+    if (!a) return { outcome: "retry", body: {} };
+    if (a.body.already !== true || !item.changed)
+      return { outcome: unsentOutcome(a.res.status), body: a.body };
+    // The server had it from a send whose answer was lost, and it was changed on the phone since: change it.
+    const c = await answer(() =>
+      item.kind === "spend"
+        ? api.api.spends[":id"].$patch({ param: { id: item.id }, json: item.draft })
+        : api.api.payments[":id"].$patch({
+            param: { id: item.id },
+            json: {
+              amountMinor: item.draft.amountMinor,
+              paidOn: item.draft.paidOn,
+              currency: item.draft.currency,
+            },
+          }),
+    );
+    if (!c) return { outcome: "retry", body: {} };
+    return { outcome: unsentOutcome(c.res.status), body: c.body };
   }
 
-  const has = (id: string) => get().items.some((i) => i.id === id) || get().look.some((i) => i.id === id);
+  const live = (s: UnsentState) => waiting(s);
+  const has = (id: string) => live(get()).some((i) => i.id === id) || get().look.some((i) => i.id === id);
 
   return {
     get,
     /** Is this id unsent (waiting, or in the needs-a-look list)? */
     has,
     find: (id: string): UnsentItem | undefined =>
-      get().items.find((i) => i.id === id) ?? get().look.find((i) => i.id === id),
+      live(get()).find((i) => i.id === id) ?? get().look.find((i) => i.id === id),
     add: (item: UnsentItem) =>
       set((s) => ({ ...strip(s, item.id), items: [...s.items, item].sort(byQueued) })),
     /** Changes an unsent item; one in the needs-a-look list goes back in the queue (it was fixed). */
     change: (id: string, f: (i: UnsentItem) => UnsentItem) =>
       set((s) => {
-        const old = s.items.find((i) => i.id === id) ?? s.look.find((i) => i.id === id);
+        const old = live(s).find((i) => i.id === id) ?? s.look.find((i) => i.id === id);
         if (!old) return s;
         const { reason: _reason, ...item } = f(old) as LookItem;
-        return { ...strip(s, id), items: [...strip(s, id).items, item as UnsentItem].sort(byQueued) };
+        const next = { ...item, changed: old.tried || old.changed } as UnsentItem;
+        return { ...strip(s, id), items: [...strip(s, id).items, next].sort(byQueued) };
       }),
     /** Removes an unsent item; false when it is not unsent (sent already). */
     remove(id: string): boolean {
       if (!has(id)) return false;
-      set((s) => strip(s, id));
+      set((s) => {
+        const old = s.items.find((i) => i.id === id);
+        // The server may have it (a send with no answer): kept, to be deleted there.
+        if (old?.tried)
+          return { ...s, items: s.items.map((i) => (i.id === id ? { ...i, removed: true } : i)) };
+        return strip(s, id);
+      });
       return true;
     },
     dismissNote: (id: string) => set((s) => ({ ...s, notes: s.notes.filter((n) => n.id !== id) })),
@@ -181,16 +235,34 @@ export function outbox(userId: string) {
           if (!now) break;
           const { outcome, body } = await sendOne(now);
           out.set(now.id, outcome);
-          if (outcome === "retry") break;
+          const after = get().items.find((i) => i.id === now.id);
+          if (outcome === "retry") {
+            // No answer: the server may have it now.
+            if (after)
+              set((s) => ({
+                ...s,
+                items: s.items.map((i) => (i.id === now.id ? { ...i, tried: true } : i)),
+              }));
+            break;
+          }
           if (outcome === "sign_in") {
             set((s) => ({ ...s, signIn: true }));
             break;
+          }
+          if (outcome === "saved" && after && after !== now) {
+            // Changed or removed on the phone while it was being sent: the server has it, so the next round
+            // changes or deletes it there.
+            const next = { ...after, tried: true, changed: !after.removed };
+            set((s) => ({ ...s, items: s.items.map((i) => (i.id === now.id ? next : i)) }));
+            continue;
           }
           set((s) => {
             const rest = strip(s, now.id);
             if (outcome === "look") {
               const reason = typeof body.error === "string" ? body.error : "invalid";
-              return { ...rest, look: [...rest.look, { ...now, reason }] };
+              if (now.removed) return rest;
+              // Refused: the server does not have it.
+              return { ...rest, look: [...rest.look, { ...now, tried: false, changed: false, reason }] };
             }
             if (now.kind === "spend" && typeof body.movedFrom === "string") {
               const note = {
@@ -255,7 +327,8 @@ export function useUnsent(userId: string, onSent: () => void) {
  * from the saved copy plus unsent items). Unsent ones are marked; one the server already has is not added
  * twice. A payment whose commitment is not here waits to be sent (it will need a look).
  */
-export function withUnsent(data: Current, items: UnsentItem[]): Current {
+export function withUnsent(data: Current, all: UnsentItem[]): Current {
+  const items = all.filter((i) => !i.removed);
   if (items.length === 0) return data;
   const known = new Set(data.spends.map((s) => s.id));
   const spends = [

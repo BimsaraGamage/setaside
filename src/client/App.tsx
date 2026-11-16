@@ -27,7 +27,7 @@ import { Today } from "./Today";
 import { useToast } from "./toast";
 import { dayChoiceActions } from "./Underspend";
 import { UnsentCards } from "./Unsent";
-import { useUnsent, withUnsent } from "./unsent";
+import { useUnsent, waiting, withUnsent } from "./unsent";
 import { zoneActions } from "./ZoneSwitch";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
@@ -180,8 +180,12 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   return (
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
-        {(offlineSince !== null || unsent.state.items.length > 0) && (
-          <OfflineBar since={offlineSince} unsent={unsent.state.items.length} signIn={unsent.state.signIn} />
+        {(offlineSince !== null || waiting(unsent.state).length > 0) && (
+          <OfflineBar
+            since={offlineSince}
+            unsent={waiting(unsent.state).length}
+            signIn={unsent.state.signIn}
+          />
         )}
         {tab === "Today" && (
           <Today
