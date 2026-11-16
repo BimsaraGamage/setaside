@@ -10,6 +10,7 @@ import {
   type Verdict,
 } from "../money";
 import { api } from "./api";
+import { clearCopy, readCopy, saveCopy } from "./offline-copy";
 
 export interface Current {
   settings: {
@@ -336,24 +337,48 @@ export function inDaysLabel(n: number): string {
   return `in ${n} day${n === 1 ? "" : "s"}`;
 }
 
-/** Settings, current cycle and its entries (GET /api/current). */
-export function useCurrent() {
+/**
+ * Settings, current cycle and its entries (GET /api/current). Each load is saved on the phone; when the server
+ * can't be reached the saved copy is shown and `offlineSince` is when it was saved (item 23, spec 11).
+ */
+export function useCurrent(userId: string) {
   const [data, setData] = useState<Current | null>(null);
   const [error, setError] = useState(false);
+  const [offlineSince, setOfflineSince] = useState<number | null>(null);
   const reload = useCallback(async () => {
+    let res: Response;
     try {
-      const res = await api.api.current.$get();
+      res = await api.api.current.$get();
+    } catch {
+      // No connection: the saved copy, if any.
+      const copy = readCopy(userId);
+      if (copy) {
+        setData(copy.data);
+        setOfflineSince(copy.savedAt);
+        setError(false);
+      } else setError(true);
+      return;
+    }
+    try {
+      // Signed out or cut off on the server: the saved copy is no longer this user's to see.
+      if (res.status === 401 || res.status === 403) clearCopy();
       if (!res.ok) throw new Error(String(res.status));
-      setData((await res.json()) as Current);
+      const fresh = (await res.json()) as Current;
+      saveCopy(userId, fresh);
+      setData(fresh);
+      setOfflineSince(null);
       setError(false);
     } catch {
       setError(true);
     }
-  }, []);
+  }, [userId]);
   useEffect(() => {
     reload();
+    const back = () => reload();
+    window.addEventListener("online", back);
+    return () => window.removeEventListener("online", back);
   }, [reload]);
-  return { data, error, reload };
+  return { data, error, offlineSince, reload };
 }
 
 /** Today's date in the home time zone; moves on at midnight there. */

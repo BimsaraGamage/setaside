@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- The Setaside icon with rounded corners (see icon.svg). -->
+  <rect width="512" height="512" rx="112" fill="#0f766e"/>
+  <circle cx="256" cy="206" r="62" fill="#fff"/>
+  <circle cx="256" cy="206" r="40" fill="#0f766e"/>
+  <circle cx="256" cy="206" r="28" fill="#fff"/>
+  <rect x="120" y="228" width="272" height="20" rx="10" fill="#0f766e"/>
+  <rect x="120" y="248" width="272" height="132" rx="30" fill="#fff"/>
+</svg>
