@@ -58,6 +58,11 @@ export function cardActions({ done }: Toaster) {
 
 export type CardActions = ReturnType<typeof cardActions>;
 
+/** A card balance as shown (spec 9): below zero the card is in credit ("In credit Rs 500"). */
+export function balanceLabel(balance: number, currency: string): string {
+  return balance < 0 ? `In credit ${formatMoney(-balance, currency)}` : formatMoney(balance, currency);
+}
+
 /** Money's card rows (spec 10): each card with its balance, and + Add a card. */
 export function MoneyCards({ data }: { data: Ready }) {
   return (
@@ -75,7 +80,7 @@ export function MoneyCards({ data }: { data: Ready }) {
             {k.archived && <span className="tiny mute block">Not in use</span>}
           </span>
           <span className="small mute" data-testid={`card-balance-${k.name}`}>
-            {formatMoney(cardBalance(data, k), k.currency)} ›
+            {balanceLabel(cardBalance(data, k), k.currency)} ›
           </span>
         </a>
       ))}
@@ -182,7 +187,7 @@ export function CardPage({
       <section className="card">
         <h3>Balance</h3>
         <p className="big" data-testid="card-balance">
-          {money(balance)}
+          {balanceLabel(balance, k.currency)}
         </p>
         <p className="tiny mute">
           {balance < 0
