@@ -623,6 +623,8 @@ export const salaryDay = new Hono<SignedIn>()
         cycleId: now.cycle.id,
         nextCycleId: b.cycleId,
         currency: cur,
+        // Kept for Past's "how it ended" (item 21).
+        leftoverMinor: leftover.leftoverMinor,
         leftoverCorrectionMinor: brought.correctionMinor,
         leftoverToSavingsMinor: brought.toSavingsMinor,
         overspendChoice: b.close.overspend,
@@ -656,6 +658,7 @@ export const salaryDay = new Hono<SignedIn>()
           cycleId: now.cycle.id,
           nextCycleId: b.cycleId,
           currency: salaryCur,
+          leftoverMinor: salaryLeftover,
           leftoverCorrectionMinor: salaryBrought.correctionMinor,
           leftoverToSavingsMinor: salaryBrought.toSavingsMinor,
         }),

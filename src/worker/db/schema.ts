@@ -586,6 +586,11 @@ export const cycleClose = sqliteTable(
       .notNull()
       .references(() => cycle.id, { onDelete: "cascade" }),
     currency: text("currency").notNull(),
+    /**
+     * The leftover worked out on salary day, below zero an overspend (item 21:
+     * Past shows how the cycle ended). Null on cycles closed before item 21.
+     */
+    leftoverMinor: integer("leftover_minor"),
     /** "Actually have in hand" less the leftover worked out. */
     leftoverCorrectionMinor: integer("leftover_correction_minor").notNull().default(0),
     /** Part of the leftover sent to savings. */
