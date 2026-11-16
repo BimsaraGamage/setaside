@@ -235,6 +235,8 @@ export interface Payment {
   /** Paid in the other currency (item 17): what it covers of the commitment; null in its own. */
   coversMinor: number | null;
   paidOn: string;
+  /** Made on this phone and not sent yet (item 24). */
+  unsent?: boolean;
 }
 
 export interface Spend {
@@ -249,6 +251,8 @@ export interface Spend {
   oneOff: boolean;
   /** The card it was paid with; null means cash (item 18). */
   cardId: string | null;
+  /** Made on this phone and not sent yet (item 24). */
+  unsent?: boolean;
 }
 
 /** The current cycle's settings and cycle, once first use is done. */

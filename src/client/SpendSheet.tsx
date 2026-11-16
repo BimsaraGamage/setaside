@@ -50,17 +50,25 @@ export function SpendSheet({
   today,
   editing,
   actions,
+  offline = false,
   onClose,
 }: {
   data: Ready;
   today: string;
   editing?: Spend;
   actions: SpendActions;
+  /** The server can't be reached: a saved spend waits for a connection (spec 11). */
+  offline?: boolean;
   onClose: () => void;
 }) {
   const spendCur = data.settings.spendingCurrency;
   const [text, setText] = useState(editing ? toText(editing.amountMinor, editing.currency) : "");
-  const [spentOn, setSpentOn] = useState(editing?.spentOn ?? today);
+  // A spend that needs a look may have a day before this cycle: it starts on today then (item 24).
+  const [spentOn, setSpentOn] = useState(
+    editing && editing.spentOn >= data.cycle.startedOn && editing.spentOn <= today ? editing.spentOn : today,
+  );
+  // Only unsent spends can be changed offline (spec 11).
+  const waits = offline && editing !== undefined && !editing.unsent;
   const [note, setNote] = useState(editing?.note ?? "");
   // Spends default to free money; one tap switches to a pot (spec 4).
   const [potId, setPotId] = useState<string | null>(editing?.potId ?? null);
@@ -128,8 +136,8 @@ export function SpendSheet({
   const save = () =>
     run(() =>
       editing
-        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff })
-        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff }),
+        ? actions.change(editing, cur, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff })
+        : actions.add(newId(), cur, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff }),
     );
 
   return (
@@ -263,13 +271,18 @@ export function SpendSheet({
         </div>
 
         {failed && <p className="error">Not saved. Check the connection and try again.</p>}
+        {waits && (
+          <p className="small mute" data-testid="waits">
+            Offline: saved spends can be changed when you're back online.
+          </p>
+        )}
 
         <div className="row">
           {editing && (
             <button
               type="button"
               className="btn"
-              disabled={busy}
+              disabled={busy || waits}
               onClick={() => run(() => actions.remove(editing))}
             >
               Delete
@@ -278,7 +291,7 @@ export function SpendSheet({
           <button
             type="button"
             className="btn pri grow"
-            disabled={busy || problems.length > 0}
+            disabled={busy || waits || problems.length > 0}
             onClick={save}
           >
             Save

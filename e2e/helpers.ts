@@ -45,3 +45,23 @@ async function firstUseToToday(page: Page) {
   }
   await expect(allowance).toBeVisible();
 }
+
+/**
+ * Waits until the service worker is active, then loads the page once more: that load runs through it, so its
+ * files are kept. (Waiting for this page to be taken over is not enough: a worker that turns active while the
+ * page is reloading never takes that page over.)
+ */
+export async function keepForOffline(page: Page) {
+  // e2e is type-checked without the DOM types: the little of navigator.serviceWorker used here.
+  type Sw = { serviceWorker: { ready: Promise<unknown>; controller: unknown } };
+  await page.evaluate(async () => {
+    await (navigator as unknown as Sw).serviceWorker.ready;
+  });
+  await page.reload();
+  await expect(
+    page.getByTestId("allowance").or(page.getByRole("button", { name: /sign in/i })),
+  ).toBeVisible();
+  expect(await page.evaluate(() => Boolean((navigator as unknown as Sw).serviceWorker.controller))).toBe(
+    true,
+  );
+}

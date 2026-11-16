@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   countedMinor,
   formatMoney,
@@ -10,6 +11,7 @@ import {
   todayView,
 } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
+import { agoLabel } from "./offline-copy";
 import { commitmentNote } from "./Plan";
 import { PotRow } from "./Pots";
 import { cardName, potName, SpendRow } from "./Spends";
@@ -74,8 +76,14 @@ export function Today({
   dayChoices,
   cycle: cycleActions,
   zone,
+  offlineSince = null,
+  children,
 }: {
   data: Ready;
+  /** The saved copy is shown: when it was saved (spec 11). */
+  offlineSince?: number | null;
+  /** Cards about unsent items (item 24): needs a look, spends moved. */
+  children?: ReactNode;
   onAdd: (today: string) => void;
   onEdit: (spend: Spend, today: string) => void;
   dayChoices: DayChoiceActions;
@@ -114,6 +122,8 @@ export function Today({
 
       <ZoneSwitchCard home={settings.homeTimeZone} asked={settings.askedTimeZone} actions={zone} />
 
+      {children}
+
       {isSalaryLate(today, cycle.expectedSalaryOn) && (
         <LateSalaryCard data={data} today={today} actions={cycleActions} />
       )}
@@ -132,6 +142,11 @@ export function Today({
         <p className="big" data-testid="allowance">
           {money(view.allowanceMinor)}
         </p>
+        {offlineSince !== null && (
+          <p className="tiny mute" data-testid="last-updated">
+            Last updated {agoLabel(offlineSince)}
+          </p>
+        )}
         <VerdictChip verdict={view.verdict} currency={view.currency} />
         <div
           className={`bar${over ? " over" : ""}`}

@@ -1,4 +1,5 @@
 import { useEffect, useReducer, useState } from "react";
+import { todayIn } from "../money";
 import { authClient } from "./auth";
 import { CardPage, cardActions } from "./Cards";
 import { ChangeDollarsPage, conversionActions } from "./ChangeDollars";
@@ -25,6 +26,8 @@ import { cycleActions } from "./ThisCycle";
 import { Today } from "./Today";
 import { useToast } from "./toast";
 import { dayChoiceActions } from "./Underspend";
+import { UnsentCards } from "./Unsent";
+import { useUnsent, waiting, withUnsent } from "./unsent";
 import { zoneActions } from "./ZoneSwitch";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
@@ -81,8 +84,11 @@ export function App() {
   return <SignedIn userId={session.data.user.id} onSignedOut={signedOut} />;
 }
 
-/** "Offline · last updated 5 min ago" while the saved copy is shown (spec 11). */
-function OfflineBar({ since }: { since: number }) {
+/**
+ * "Offline · 2 not sent · last updated 5 min ago" while the saved copy is shown (spec 11); online with items
+ * still waiting, "2 not sent · sending" (or waiting for sign-in).
+ */
+function OfflineBar({ since, unsent, signIn }: { since: number | null; unsent: number; signIn: boolean }) {
   const [, tick] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
     const t = setInterval(tick, 30_000);
@@ -90,17 +96,26 @@ function OfflineBar({ since }: { since: number }) {
   }, []);
   return (
     <p className="offline-bar small" data-testid="offline">
-      Offline · last updated {agoLabel(since)}
+      {[
+        since !== null && "Offline",
+        unsent > 0 && `${unsent} not sent`,
+        since === null && (signIn ? "sign in to send" : "sending"),
+        since !== null && `last updated ${agoLabel(since)}`,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     </p>
   );
 }
 
 function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => void }) {
-  const { data, error, offlineSince, reload } = useCurrent(userId);
+  const { data: served, error, offlineSince, reload } = useCurrent(userId);
+  const unsent = useUnsent(userId, reload);
+  const data = served && withUnsent(served, unsent.state.items);
   const [route, setRoute] = useState(routeFromHash);
   const toaster = useToast(reload);
-  const spends = spendActions(toaster);
-  const commitments = commitmentActions(toaster);
+  const spends = spendActions(toaster, unsent.box);
+  const commitments = commitmentActions(toaster, unsent.box);
   const pots = potActions(toaster);
   const dayChoices = dayChoiceActions(toaster);
   const savings = savingsActions(toaster);
@@ -165,7 +180,13 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   return (
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
-        {offlineSince !== null && <OfflineBar since={offlineSince} />}
+        {(offlineSince !== null || waiting(unsent.state).length > 0) && (
+          <OfflineBar
+            since={offlineSince}
+            unsent={waiting(unsent.state).length}
+            signIn={unsent.state.signIn}
+          />
+        )}
         {tab === "Today" && (
           <Today
             data={ready}
@@ -174,7 +195,17 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
             dayChoices={dayChoices}
             cycle={thisCycle}
             zone={zone}
-          />
+            offlineSince={offlineSince}
+          >
+            <UnsentCards
+              data={ready}
+              state={unsent.state}
+              today={todayIn(ready.settings.homeTimeZone, Date.now())}
+              box={unsent.box}
+              actions={commitments}
+              onFixSpend={(s) => edit(s, todayIn(ready.settings.homeTimeZone, Date.now()))}
+            />
+          </Today>
         )}
         {tab === "Plan" && <Plan data={ready} actions={thisCycle} />}
         {tab === "Commitment" &&
@@ -190,7 +221,14 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
           ))}
         {(tab === "Pay" || tab === "Payment") &&
           (payFor ? (
-            <PayPage key={id} data={ready} commitment={payFor} editing={payment} actions={commitments} />
+            <PayPage
+              key={id}
+              data={ready}
+              commitment={payFor}
+              editing={payment}
+              actions={commitments}
+              offline={offlineSince !== null}
+            />
           ) : (
             <>
               <a className="btn ghost link" href="#Plan">
@@ -303,6 +341,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
           today={sheet.today}
           editing={sheet.editing}
           actions={spends}
+          offline={offlineSince !== null}
           onClose={() => setSheet(null)}
         />
       )}

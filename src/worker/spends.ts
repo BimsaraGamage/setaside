@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkSpend } from "../money";
+import { checkSpend, moveIntoCycle } from "../money";
 import { current } from "./current";
 import { card, pot, spend } from "./db/schema";
 import { json } from "./json";
@@ -27,6 +27,8 @@ const newSpend = z.object({
   cardId,
   /** Left out of the spending speed (item 8). */
   oneOff: z.boolean().optional(),
+  /** Sent from the phone's unsent queue (item 24): a spend from an ended cycle moves into this one. */
+  queued: z.boolean().optional(),
 });
 
 const changeSpend = z
@@ -62,13 +64,23 @@ async function cardsFor(c: { var: SignedIn["Variables"] }, id: string | null | u
  */
 export const spends = new Hono<SignedIn>()
   .post("/spends", json(newSpend), async (c) => {
-    const { db, userId } = c.var;
-    const b = c.req.valid("json");
+    const { db, mine, userId } = c.var;
+    const { queued, ...b } = c.req.valid("json");
+    // Saved once (item 24, spec 11): a resend of this user's spend is answered as saved, whatever its cycle now.
+    const saved = await db.query.spend.findFirst({
+      where: and(mine(spend), eq(spend.id, b.id)),
+      columns: { cycleId: true },
+    });
+    if (saved) return c.json({ ok: true as const, cycleId: saved.cycleId, already: true as const }, 200);
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const inPot = await potsFor(c, b.potId);
+    const moved = queued
+      ? moveIntoCycle(b.spentOn, now.cycle.startedOn)
+      : { spentOn: b.spentOn, movedFrom: null };
     const row = {
       ...b,
+      spentOn: moved.spentOn,
       potId: b.potId ?? null,
       cardId: b.cardId ?? null,
       oneOff: b.oneOff ?? false,
@@ -89,7 +101,14 @@ export const spends = new Hono<SignedIn>()
       // The id is already in use.
       return c.json({ error: "conflict" as const }, 409);
     }
-    return c.json({ ok: true as const, cycleId: now.cycle.id }, 201);
+    return c.json(
+      {
+        ok: true as const,
+        cycleId: now.cycle.id,
+        ...(moved.movedFrom ? { movedFrom: moved.movedFrom } : {}),
+      },
+      201,
+    );
   })
   .patch("/spends/:id", json(changeSpend), async (c) => {
     const { db, mine } = c.var;

@@ -176,7 +176,10 @@ function Payments({ c, actions }: { c: Commitment; actions: CommitmentActions })
       )}
       {c.payments.map((p) => (
         <a key={p.id} className="li tap link" href={`#Payment/${p.id}`}>
-          <span className="grow">{dayLabel(p.paidOn)}</span>
+          <span className="grow">
+            {dayLabel(p.paidOn)}
+            {p.unsent && <span className="tiny mute block unsent">Not sent</span>}
+          </span>
           <b className="small">
             {formatMoney(p.amountMinor, p.currency)}
             {p.currency !== cur && (
