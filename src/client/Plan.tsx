@@ -14,6 +14,7 @@ import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
 import { type Commitment, cardBalance, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
 import { plannedGap } from "./Pay";
+import { planPaymentNote } from "./Plans";
 import { PlanPots } from "./Pots";
 import { toText } from "./SpendSheet";
 import { type CycleActions, ThisCycleCard } from "./ThisCycle";
@@ -40,6 +41,9 @@ export function paidNote(c: Commitment): string | undefined {
   return `Paid ${of}`;
 }
 
+/** A plan payment (item 19): made by its instalment plan, never Every cycle, not deleted. */
+export const isPlanPayment = (c: Pick<Commitment, "kind">) => c.kind === "plan_payment";
+
 /** A card bill (item 18): its money is held from card spends, not set aside. */
 export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill";
 
@@ -47,7 +51,15 @@ export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill
  * A commitment's note on Plan and Next up: a card bill's card balance (spec 10)
  * before what is paid; otherwise `paidNote`.
  */
-export function commitmentNote(data: Pick<Ready, "cards" | "spends" | "commitments">, c: Commitment) {
+export function commitmentNote(
+  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans">,
+  c: Commitment,
+) {
+  if (isPlanPayment(c)) {
+    const of = planPaymentNote(data, c);
+    const paid = paidNote(c);
+    return [of, paid].filter(Boolean).join(" · ") || undefined;
+  }
   const card = isCardBill(c) ? data.cards.find((k) => k.id === c.cardId) : undefined;
   if (!card) return paidNote(c);
   const balance = `${card.name} balance ${formatMoney(cardBalance(data, card), card.currency)}`;
@@ -225,7 +237,10 @@ export function CommitmentPage({
   const today = useToday(data.settings.homeTimeZone);
   const [kind, setKind] = useState<CommitmentKind>(editing?.kind === "savings" ? "savings" : "bill");
   // A payback keeps its kind and never repeats: salary day makes the next one (item 14).
-  const payback = editing !== undefined && isPayback(editing);
+  // A plan payment the same way (item 19): its plan makes the next one.
+  const planPayment = editing !== undefined && isPlanPayment(editing);
+  const plan = planPayment ? data.plans.find((p) => p.id === editing?.planId) : undefined;
+  const payback = (editing !== undefined && isPayback(editing)) || planPayment;
   // A card bill keeps its kind and card (item 18); its money is held, so the allowance stays.
   const card = editing && isCardBill(editing) ? data.cards.find((k) => k.id === editing.cardId) : undefined;
   const cardBill = editing !== undefined && isCardBill(editing);
@@ -282,7 +297,14 @@ export function CommitmentPage({
       </div>
       <h1>{editing ? "Change commitment" : "New commitment"}</h1>
       <section className="card stack">
-        {payback && (
+        {planPayment && (
+          <p className="tiny mute" data-testid="plan-payment-note">
+            {planPaymentNote(data, editing as Commitment) ?? "Payment"} on{" "}
+            {plan?.name ?? "an instalment plan"}. Salary day sets aside the next one.{" "}
+            {plan && <a href={`#Instalments/${plan.id}`}>Open the plan</a>}
+          </p>
+        )}
+        {payback && !planPayment && (
           <p className="tiny mute">
             Pays your savings back for a prepayment. Move it to savings when you put the money back. Salary
             day sets aside the next one.

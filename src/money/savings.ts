@@ -29,8 +29,8 @@ export interface TakeOutEntry {
   movedOn: Day;
 }
 
-/** Kinds of Add income (spec 5). Loan money, borrowed and paid back to me come with items 19 and 20. */
-export const ADD_INCOME_KINDS = ["extra"] as const;
+/** Kinds of Add income (spec 5): extra income and loan money received as cash (item 19). Borrowed and paid back to me come with item 20. */
+export const ADD_INCOME_KINDS = ["extra", "loan"] as const;
 
 export interface IncomeInput {
   kind: string;

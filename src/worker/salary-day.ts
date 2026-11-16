@@ -30,6 +30,8 @@ import {
   cycleClose,
   dayChoice,
   income,
+  instalmentPlan,
+  planExtraPayment,
   pot,
   potAllocation,
   prepayment,
@@ -57,7 +59,9 @@ const salaryDayBody = z.object({
     .array(
       z.object({
         id: z.uuid(),
-        kind: z.enum(["bill", "savings", "savings_payback", "card_bill"]).default("bill"),
+        kind: z.enum(["bill", "savings", "savings_payback", "card_bill", "plan_payment"]).default("bill"),
+        /** A plan payment: its instalment plan (item 19); a carried one keeps the plan of the one it carries on. */
+        planId: z.uuid().nullish(),
         /** A card bill: its card (item 18); a carried one keeps the card of the one it carries on. */
         cardId: z.uuid().nullish(),
         /** A payback to savings: the prepayment it pays back (item 14). */
@@ -167,6 +171,15 @@ export async function entriesOf(
     where: and(mine(conversion), eq(conversion.cycleId, id)),
     columns: { givenMinor: true, receivedMinor: true, gainMinor: true },
   });
+  // Pay extra from free money (item 19) comes out of this cycle's free money.
+  const planExtras = await db.query.planExtraPayment.findMany({
+    where: and(
+      mine(planExtraPayment),
+      eq(planExtraPayment.cycleId, id),
+      eq(planExtraPayment.paidFrom, "free"),
+    ),
+    columns: { currency: true, amountMinor: true },
+  });
   return {
     spendingCurrency: now.settings.spendingCurrency,
     salaryCurrency: now.settings.salaryCurrency,
@@ -183,6 +196,7 @@ export async function entriesOf(
     })),
     pots,
     takenOut: takeOuts.map((t) => ({ ...t, amountMinor: -t.amountMinor })),
+    planExtras,
   } satisfies ClosingEntries;
 }
 
@@ -201,6 +215,8 @@ type Stamped =
   | typeof recurringCommitment
   | typeof conversion
   | typeof card
+  | typeof instalmentPlan
+  | typeof planExtraPayment
   | typeof income;
 
 /**
@@ -241,6 +257,8 @@ export async function undoRecord(
     any(recurringCommitment),
     any(conversion),
     any(card),
+    any(instalmentPlan),
+    any(planExtraPayment),
     // The salary amount stays editable during the current cycle (spec 2).
     any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
   ]);
@@ -342,6 +360,29 @@ export const salaryDay = new Hono<SignedIn>()
       }
     });
 
+    // Plan payments (item 19): one of the user's plans not paid off, never Every cycle; a carried
+    // one keeps the plan of the commitment it carries on.
+    const planOf = (k: (typeof b.commitments)[number]) =>
+      k.carriedFromId ? (carriedById.get(k.carriedFromId)?.planId ?? null) : (k.planId ?? null);
+    const wantedPlans = [...new Set(b.commitments.flatMap((k) => (k.planId ? [k.planId] : [])))];
+    const myPlans = wantedPlans.length
+      ? await db.query.instalmentPlan.findMany({
+          where: and(mine(instalmentPlan), inArray(instalmentPlan.id, wantedPlans)),
+          columns: { id: true, currency: true, paidOffOn: true },
+        })
+      : [];
+    b.commitments.forEach((k, i) => {
+      const linked = planOf(k);
+      const payment = k.kind === "plan_payment";
+      if (payment !== (linked !== null) || (payment && k.everyCycle)) problems.push(`commitment.${i}.plan`);
+      else if (payment && !k.carriedFromId) {
+        const found = myPlans.find((x) => x.id === linked);
+        if (!found || found.paidOffOn || found.currency !== (k.currency ?? cur)) {
+          problems.push(`commitment.${i}.plan`);
+        }
+      }
+    });
+
     // Steps 2 and 3: the leftover is worked out here from the ending cycle's rows (spec 6).
     const entries = await entriesOf(c, now);
     const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
@@ -425,7 +466,7 @@ export const salaryDay = new Hono<SignedIn>()
     for (const k of b.commitments) {
       const template = {
         name: k.name,
-        // A payback is never Every cycle (checked above).
+        // A payback or plan payment is never Every cycle (checked above).
         kind: k.kind as "bill" | "savings" | "card_bill",
         usualAmountMinor: k.plannedMinor,
         usualDay: usualDayOf(k.dueOn),
@@ -476,6 +517,7 @@ export const salaryDay = new Hono<SignedIn>()
           carriedFromId: k.carriedFromId ?? null,
           prepaymentId: prepaymentOf(k),
           cardId: cardOf(k),
+          planId: planOf(k),
         }),
       );
       if (k.carriedFromId) {

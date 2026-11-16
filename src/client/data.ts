@@ -41,6 +41,8 @@ export interface Current {
   pots: Pot[];
   /** Every card, in use or not, with what it owed before this cycle (item 18). */
   cards: Card[];
+  /** Every instalment plan, oldest first, with what is paid so far (item 19). */
+  plans: Plan[];
   /** This cycle's conversions, newest first (item 16). */
   conversions: Conversion[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
@@ -82,6 +84,39 @@ export interface Card {
   earlierMinor: number;
 }
 
+/** An instalment plan (item 19, spec 9) with what is paid so far, all cycles. */
+export interface Plan {
+  id: string;
+  name: string;
+  currency: string;
+  priceMinor: number;
+  paymentCount: number;
+  paymentMinor: number;
+  firstPaymentOn: string;
+  /** The card it is on; null for a bank loan. */
+  cardId: string | null;
+  normalMonthlyMinor: number | null;
+  /** Pay it all off was done on this day. */
+  paidOffOn: string | null;
+  /** What payments on its plan payments cover, all cycles. */
+  paidMinor: number;
+  /** Its plan payments finished with money paid. */
+  paymentsMade: number;
+  /** Pay extra and Pay it all off, all cycles. */
+  extraMinor: number;
+  extras: PlanExtra[];
+}
+
+/** One Pay extra or Pay it all off (item 19). */
+export interface PlanExtra {
+  id: string;
+  cycleId: string;
+  amountMinor: number;
+  paidFrom: "free" | "savings";
+  paysOff: boolean;
+  paidOn: string;
+}
+
 export interface Recurring {
   id: string;
   name: string;
@@ -113,8 +148,17 @@ export interface Prepayment {
 
 export interface SavingsLine {
   id: string;
-  /** Put in, Take out, extra income to savings, a savings set-aside moved, a prepayment and its paybacks. */
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback" | "rate_gain";
+  /** Put in, Take out, extra income to savings, a savings set-aside moved, a prepayment and its paybacks, Pay extra on a plan. */
+  kind:
+    | "put_in"
+    | "take_out"
+    | "income"
+    | "leftover"
+    | "set_aside"
+    | "prepayment"
+    | "payback"
+    | "rate_gain"
+    | "plan_extra";
   cycleId: string;
   currency: string;
   /** Below zero: money out of savings. */
@@ -152,6 +196,8 @@ export interface Commitment {
   prepaymentId: string | null;
   /** A card bill's card (item 18). */
   cardId: string | null;
+  /** A plan payment's instalment plan (item 19). */
+  planId: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }
@@ -202,7 +248,17 @@ export function entriesOf(data: Ready) {
     commitments: data.commitments,
     pots: data.pots.map(potEntry),
     takenOut: takenOut(data),
+    planExtras: planExtras(data),
   };
+}
+
+/** This cycle's Pay extra from free money (item 19): out of free money at once. */
+export function planExtras(data: Pick<Ready, "plans" | "cycle">) {
+  return data.plans.flatMap((p) =>
+    p.extras
+      .filter((x) => x.paidFrom === "free" && x.cycleId === data.cycle.id)
+      .map((x) => ({ currency: p.currency, amountMinor: x.amountMinor })),
+  );
 }
 
 /** This cycle's take-outs from savings, as the money rules need them (they are free money). */

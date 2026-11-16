@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  type ADD_INCOME_KINDS,
   checkIncome,
   checkPrepayment,
   checkSavingsMove,
@@ -25,8 +26,16 @@ const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(
 const addMove = (id: string, kind: "put_in" | "take_out", amountMinor: number, currency: string) =>
   ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor, currency } }));
 const removeMove = (id: string) => ok(api.api["savings-movements"][":id"].$delete({ param: { id } }));
-const addIncome = (id: string, amountMinor: number, toSavingsMinor: number, currency: string) =>
-  ok(api.api.incomes.$post({ json: { id, kind: "extra", amountMinor, toSavingsMinor, currency } }));
+const addIncome = (
+  id: string,
+  kind: IncomeKindAdded,
+  amountMinor: number,
+  toSavingsMinor: number,
+  currency: string,
+) => ok(api.api.incomes.$post({ json: { id, kind, amountMinor, toSavingsMinor, currency } }));
+
+/** What Add income records (spec 5): extra income, or loan money received as cash (item 19). */
+type IncomeKindAdded = (typeof ADD_INCOME_KINDS)[number];
 const removeIncome = (id: string) => ok(api.api.incomes[":id"].$delete({ param: { id } }));
 const addPrepayment = (json: {
   id: string;
@@ -78,10 +87,13 @@ export function savingsActions({ done }: Toaster) {
         done(ok, { text: `${name} prepayment saved`, undo: () => removePrepayment(id) }),
       );
     },
-    addIncome: (amountMinor: number, toSavingsMinor: number, currency: string) => {
+    addIncome: (kind: IncomeKindAdded, amountMinor: number, toSavingsMinor: number, currency: string) => {
       const id = newId();
-      return addIncome(id, amountMinor, toSavingsMinor, currency).then((ok) =>
-        done(ok, { text: "Income added", undo: () => removeIncome(id) }),
+      return addIncome(id, kind, amountMinor, toSavingsMinor, currency).then((ok) =>
+        done(ok, {
+          text: kind === "loan" ? "Loan money added" : "Income added",
+          undo: () => removeIncome(id),
+        }),
       );
     },
   };
@@ -98,6 +110,7 @@ const lineName: Record<SavingsLine["kind"], string> = {
   prepayment: "Prepayment",
   payback: "Paid back",
   rate_gain: "Rate gain",
+  plan_extra: "Paid off a plan",
 };
 
 /** One amount field: digits only, in the spending currency. */
@@ -457,12 +470,13 @@ export function SavingsMovePage({
 
 /**
  * Add income (spec 5, 10): amount, how much of it to savings, the rest to free
- * money, and the new allowance before saving. Only extra income for now: loan
- * money, borrowed and paid back to me come with items 19 and 20.
+ * money, and the new allowance before saving. Kinds: extra income and loan
+ * money received as cash (item 19); borrowed and paid back to me come with item 20.
  */
 export function AddIncomePage({ data, actions }: { data: Ready; actions: SavingsActions }) {
   const spendCur = data.settings.spendingCurrency;
   const [cur, setCur] = useState(spendCur);
+  const [kind, setKind] = useState<IncomeKindAdded>("extra");
   const today = useToday(data.settings.homeTimeZone);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -470,10 +484,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
   const [failed, setFailed] = useState(false);
   const amountMinor = parseAmount(text, cur) ?? 0;
   const toSavingsMinor = parseAmount(savedText, cur) ?? 0;
-  const problems = checkIncome(
-    { kind: "extra", currency: cur, amountMinor, toSavingsMinor },
-    currencyContext(data),
-  );
+  const problems = checkIncome({ kind, currency: cur, amountMinor, toSavingsMinor }, currencyContext(data));
   const entries = entriesOf(data);
   const after = todayView(
     problems.length === 0
@@ -481,7 +492,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
           ...entries,
           incomes: [
             ...entries.incomes,
-            { kind: "extra" as const, currency: cur, amountMinor, toSavingsMinor, receivedOn: today },
+            { kind, currency: cur, amountMinor, toSavingsMinor, receivedOn: today },
           ],
         }
       : entries,
@@ -491,7 +502,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
   async function save() {
     setBusy(true);
     setFailed(false);
-    const ok = await actions.addIncome(amountMinor, toSavingsMinor, cur);
+    const ok = await actions.addIncome(kind, amountMinor, toSavingsMinor, cur);
     setBusy(false);
     if (ok) window.location.hash = "Money";
     else setFailed(true);
@@ -501,8 +512,27 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
     <>
       <Back to="Money" />
       <h1>Add income</h1>
-      <p className="small mute">Extra income: a bonus, a refund. Dated today.</p>
       <section className="card stack">
+        <fieldset className="stack" aria-label="Kind">
+          <div className="row">
+            {(
+              [
+                ["extra", "Extra income"],
+                ["loan", "Loan money"],
+              ] as const
+            ).map(([k, label]) => (
+              <label key={k} className="row check grow">
+                <input type="radio" name="income-kind" checked={kind === k} onChange={() => setKind(k)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+          <span className="tiny mute">
+            {kind === "loan"
+              ? "A loan paid to you as cash. Add the loan itself under Money › New loan or instalments."
+              : "A bonus, a refund. Dated today."}
+          </span>
+        </fieldset>
         <CurrencyChoice
           currencies={currenciesOf(data.settings)}
           value={cur}

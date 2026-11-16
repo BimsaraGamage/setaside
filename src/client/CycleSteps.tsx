@@ -16,12 +16,17 @@ export interface Row {
   /** Last cycle's coming-up commitment it carries on (salary day only). */
   carriedFromId: string | null;
   name: string;
-  /** A payback to savings is filled by its prepayment (salary day, item 14); a card bill by its card (item 18). */
-  kind: "bill" | "savings" | "savings_payback" | "card_bill";
+  /**
+   * A payback to savings is filled by its prepayment (salary day, item 14); a card
+   * bill by its card (item 18); a plan payment by its instalment plan (item 19).
+   */
+  kind: "bill" | "savings" | "savings_payback" | "card_bill" | "plan_payment";
   /** The prepayment a payback pays back. */
   prepaymentId?: string;
   /** A card bill's card. */
   cardId?: string;
+  /** A plan payment's plan. */
+  planId?: string;
   /** Either of the user's currencies (spec 8); chosen on a new row only. */
   currency: string;
   text: string;
@@ -89,6 +94,11 @@ export function CommitmentsStep({
           {r.kind === "savings_payback" && (
             <p className="tiny mute">Pays your savings back for a prepayment. It goes back into savings.</p>
           )}
+          {r.kind === "plan_payment" && (
+            <p className="tiny mute">
+              This cycle's payment on an instalment plan; the last one is only what is left.
+            </p>
+          )}
           {r.kind === "card_bill" && (
             <p className="tiny mute">
               Card bill, filled from the card balance. Its money is already held from your card spends.
@@ -102,7 +112,7 @@ export function CommitmentsStep({
               onChange={(e) => change(i, { name: e.target.value })}
             />
           </label>
-          {!r.recurringId && !r.carriedFromId && r.kind !== "savings_payback" && r.kind !== "card_bill" && (
+          {!r.recurringId && !r.carriedFromId && (r.kind === "bill" || r.kind === "savings") && (
             <CurrencyChoice
               currencies={currencies}
               value={r.currency}
@@ -131,7 +141,7 @@ export function CommitmentsStep({
               <span className="tiny mute">After the next salary day: coming up only, not set aside.</span>
             )}
           </label>
-          {r.kind !== "savings_payback" && (
+          {r.kind !== "savings_payback" && r.kind !== "plan_payment" && (
             <label className="row check">
               <input
                 type="checkbox"

@@ -64,9 +64,10 @@ export interface ComingUpEntry extends CommitmentEntry {
   id: string;
   recurringId: string | null;
   name: string;
-  kind: RecurringKind | "savings_payback";
+  kind: RecurringKind | "savings_payback" | "plan_payment";
   prepaymentId?: string | null;
   cardId?: string | null;
+  planId?: string | null;
   payments?: PaymentEntry[];
 }
 
@@ -77,8 +78,8 @@ export interface SalaryDayDraft {
   /** Last cycle's coming-up commitment it carries on (that one is marked carried). */
   carriedFromId: string | null;
   name: string;
-  /** A payback to savings is filled by its prepayment (item 14), never Every cycle. */
-  kind: RecurringKind | "savings_payback";
+  /** A payback to savings is filled by its prepayment (item 14), a plan payment by its plan (item 19); never Every cycle. */
+  kind: RecurringKind | "savings_payback" | "plan_payment";
   /** Its currency (spec 8): the template's or the coming-up commitment's. */
   currency: string;
   plannedMinor: Minor;
@@ -88,6 +89,8 @@ export interface SalaryDayDraft {
   prepaymentId?: string;
   /** A card bill's card (item 18). */
   cardId?: string;
+  /** A plan payment's instalment plan (item 19). */
+  planId?: string;
 }
 
 /**
@@ -123,6 +126,7 @@ export function salaryDayDrafts(a: {
       everyCycle: template !== undefined,
       ...(c.prepaymentId ? { prepaymentId: c.prepaymentId } : {}),
       ...(c.cardId ? { cardId: c.cardId } : {}),
+      ...(c.planId ? { planId: c.planId } : {}),
     });
   }
   for (const r of a.recurring) {

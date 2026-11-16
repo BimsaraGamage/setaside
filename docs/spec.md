@@ -214,13 +214,13 @@ Amounts are whole minor units. Rounding happens only where a rate is applied (co
 
 Bank loans and card instalment plans are one kind.
 
-- Entered once: name, currency, total price, number of payments, payment amount, first payment date; optionally the card it is on and the normal monthly price.
-- Each cycle gets a commitment for the next payment, so free money only feels the payment.
-- **Progress page**: payments made of total (with a bar), amount paid and still to pay, interest so far and total, last payment date.
-- **Interest** = all payments − price. No interest rate is entered.
-- **Pay extra / pay it all off**: the money comes from free money or savings (user picks); the payments left drop.
+- Entered once: name, currency, total price, number of payments, payment amount, first payment date; optionally the card it is on and the normal monthly price. All payments together are at least the price. The first payment is in the current cycle or later (a loan already running is entered with what is left of it). The card is shown only: the payment is set aside like a bill, not added to the card balance.
+- Each cycle gets a commitment for the next payment, so free money only feels the payment: due on the first payment's day of the month, the usual payment, the last one only what is left. The first one is set aside when the plan is made if it falls by the expected salary day; salary day fills the next ones in step 4. Like a payback, a plan payment is never Every cycle and can't be deleted, only changed or marked finished; one skipped (finished short, dropped or carried) leaves more to pay, so later payments make it up. A plan is deleted only while nothing is paid on it.
+- **Progress page**: payments made of total (with a bar), amount paid and still to pay, interest so far and total, last payment date. Payments made = plan payments finished with money paid; payments left = still to pay ÷ the payment, rounded up. Last payment date = the next payment plus a month for each one left after it.
+- **Interest** = all payments − price. No interest rate is entered. Interest so far is its share of what is paid (rounded down).
+- **Pay extra / pay it all off**: the money comes from free money or savings (user picks; savings never past what is saved in that currency); the payments left drop, the payment stays the same. Pay extra is at most what is left past this cycle's open payment. Pay it all off is filled with everything still to pay and can be changed (the bank may take some interest off); it ends the plan and finishes this cycle's open payment, and interest becomes what was paid − price. From free money it comes out of free money at once; from savings it is listed in Savings. Dated today with a toast and **Undo** while the cycle hasn't ended.
 - A loan that pays for something directly needs nothing else entered. Loan money received as cash is added on Add income.
-- **Prepayment saving:** if the normal monthly price is typed, the plan shows what paying up front saved, after interest (for example "saved 8,400 vs paying monthly, after 1,200 interest").
+- **Prepayment saving:** if the normal monthly price is typed, the plan shows what paying up front saved, after interest (for example "saved 8,400 vs paying monthly, after 1,200 interest"): the monthly price × the number of payments − all payments.
 
 ### People (lent and borrowed)
 
