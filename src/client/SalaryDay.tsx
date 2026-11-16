@@ -232,7 +232,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             c.kind === "savings" ||
             c.kind === "savings_payback" ||
             c.kind === "card_bill" ||
-            c.kind === "plan_payment"),
+            c.kind === "plan_payment" ||
+            c.kind === "person_payback"),
       )
       .map((c) => ({ ...c, kind: c.kind as ComingUpEntry["kind"] }));
     const drafts = salaryDayDrafts({

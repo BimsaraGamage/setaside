@@ -7,6 +7,7 @@ import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FirstUse } from "./FirstUse";
 import { PayPage } from "./Pay";
+import { LendPage, PeoplePage, PersonPage, peopleActions } from "./People";
 import { CommitmentPage, Plan } from "./Plan";
 import { PlanPage, planActions } from "./Plans";
 import { PotPage } from "./Pots";
@@ -33,6 +34,9 @@ const pages = {
   ChangeDollars: "Money",
   Card: "Money",
   Instalments: "Money",
+  People: "Money",
+  Lend: "Money",
+  Person: "Money",
   Commitment: "Plan",
   Pay: "Plan",
   Payment: "Plan",
@@ -69,6 +73,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const conversions = conversionActions(toaster);
   const cards = cardActions(toaster);
   const plans = planActions(toaster);
+  const people = peopleActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
@@ -119,6 +124,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const card = tab === "Card" && id ? ready.cards.find((k) => k.id === id) : undefined;
   // "#Instalments" makes a plan; "#Instalments/<id>" opens one (item 19).
   const plan = tab === "Instalments" && id ? ready.plans.find((p) => p.id === id) : undefined;
+  // "#Person/<id>" opens one person entry (item 20).
+  const person = tab === "Person" && id ? ready.people.find((p) => p.id === id) : undefined;
   const toast = toaster.toast;
   return (
     <>
@@ -186,7 +193,30 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
             actions={savings}
           />
         )}
-        {tab === "AddIncome" && <AddIncomePage data={ready} actions={savings} />}
+        {tab === "AddIncome" && (
+          // "#AddIncome/borrowed", "#AddIncome/paid_back/<person id>" (item 20).
+          <AddIncomePage
+            key={`${id ?? ""}/${extra ?? ""}`}
+            data={ready}
+            actions={savings}
+            people={people}
+            kind={id}
+            personId={extra}
+          />
+        )}
+        {tab === "People" && <PeoplePage data={ready} />}
+        {tab === "Lend" && <LendPage data={ready} actions={people} />}
+        {tab === "Person" &&
+          (person ? (
+            <PersonPage key={person.id} data={ready} person={person} actions={people} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#People">
+                ← Back
+              </a>
+              <p className="mute">This entry is no longer here.</p>
+            </>
+          ))}
         {tab === "Card" &&
           (!id || card ? (
             <CardPage

@@ -220,6 +220,33 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/plans/extra/:id": (o) => ({ path: `/api/plans/extra/${firstRow(o, "plan_extra_payment")}` }),
+  // Aimed at the first user's person entry, income and commitment: must not take any over, settle or delete them.
+  "POST /api/people": (o) => ({
+    path: "/api/people",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "person_debt"),
+        direction: "borrowed",
+        personName: "x",
+        amountMinor: 1,
+        incomeId: firstRow(o, "income"),
+        payback: { id: firstRow(o, "commitment"), plannedMinor: 1, dueOn: "2999-01-01" },
+      }),
+    },
+  }),
+  "DELETE /api/people/:id": (o) => ({ path: `/api/people/${firstRow(o, "person_debt")}` }),
+  "PATCH /api/people/:id": (o) => ({
+    path: `/api/people/${firstRow(o, "person_debt")}`,
+    init: { body: JSON.stringify({ settled: true }) },
+  }),
+  "POST /api/people/:id/back": (o) => ({
+    path: `/api/people/${firstRow(o, "person_debt")}/back`,
+    init: { body: JSON.stringify({ id: firstRow(o, "income"), amountMinor: 1, toSavingsMinor: 0 }) },
+  }),
+  "POST /api/people/:id/payback": (o) => ({
+    path: `/api/people/${firstRow(o, "person_debt")}/payback`,
+    init: { body: JSON.stringify({ id: firstRow(o, "commitment"), plannedMinor: 1, dueOn: "2999-01-01" }) },
+  }),
   // Aimed at the first user's cycle, income, commitment, template and pot: must not take any over.
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
@@ -315,6 +342,7 @@ async function seedOwnerData(ownerId: string) {
   const cd = crypto.randomUUID();
   const pl = crypto.randomUUID();
   const px = crypto.randomUUID();
+  const pd = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -374,6 +402,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into plan_extra_payment (id, user_id, cycle_id, plan_id, currency, amount_minor, paid_from, pays_off, paid_on, created_at, updated_at) values (?, ?, ?, ?, 'LKR', 100000, 'free', 0, '2026-11-12', ?, ?)",
     ).bind(px, ownerId, c, pl, now, now),
+    env.DB.prepare(
+      "insert into person_debt (id, user_id, cycle_id, person_name, direction, currency, amount_minor, made_on, created_at, updated_at) values (?, ?, ?, 'Nimal', 'lent', 'LKR', 500000, '2026-11-12', ?, ?)",
+    ).bind(pd, ownerId, c, now, now),
   ]);
 }
 

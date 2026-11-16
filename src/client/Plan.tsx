@@ -14,6 +14,7 @@ import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
 import { type Commitment, cardBalance, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
 import { plannedGap } from "./Pay";
+import { paybackNote } from "./People";
 import { planPaymentNote } from "./Plans";
 import { PlanPots } from "./Pots";
 import { toText } from "./SpendSheet";
@@ -52,9 +53,12 @@ export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill
  * before what is paid; otherwise `paidNote`.
  */
 export function commitmentNote(
-  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans">,
+  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans" | "people">,
   c: Commitment,
 ) {
+  if (c.kind === "person_payback") {
+    return [paybackNote(data, c), paidNote(c)].filter(Boolean).join(" · ") || undefined;
+  }
   if (isPlanPayment(c)) {
     const of = planPaymentNote(data, c);
     const paid = paidNote(c);
@@ -244,6 +248,8 @@ export function CommitmentPage({
   // A card bill keeps its kind and card (item 18); its money is held, so the allowance stays.
   const card = editing && isCardBill(editing) ? data.cards.find((k) => k.id === editing.cardId) : undefined;
   const cardBill = editing !== undefined && isCardBill(editing);
+  // A payback to a person (item 20) keeps its kind and never repeats; it can be deleted.
+  const personPayback = editing?.kind === "person_payback";
   const [name, setName] = useState(editing?.name ?? "");
   const [text, setText] = useState(editing ? toText(editing.plannedMinor, cur) : "");
   const [dueOn, setDueOn] = useState(editing?.dueOn ?? today);
@@ -253,11 +259,12 @@ export function CommitmentPage({
 
   const plannedMinor = parseAmount(text, cur) ?? 0;
   const draft = { kind, name: name.trim(), plannedMinor, dueOn, everyCycle };
-  const changed = payback
-    ? { name: draft.name, plannedMinor, dueOn }
-    : cardBill
-      ? { name: draft.name, plannedMinor, dueOn, everyCycle }
-      : draft;
+  const changed =
+    payback || personPayback
+      ? { name: draft.name, plannedMinor, dueOn }
+      : cardBill
+        ? { name: draft.name, plannedMinor, dueOn, everyCycle }
+        : draft;
   const problems = checkCommitment(
     { ...draft, currency: cur },
     { cycleStartedOn: data.cycle.startedOn, ...currencyContext(data) },
@@ -304,6 +311,12 @@ export function CommitmentPage({
             {plan && <a href={`#Instalments/${plan.id}`}>Open the plan</a>}
           </p>
         )}
+        {editing?.kind === "person_payback" && (
+          <p className="tiny mute" data-testid="person-payback-note">
+            {paybackNote(data, editing) ?? "Pays back money borrowed"}.{" "}
+            {editing.personDebtId && <a href={`#Person/${editing.personDebtId}`}>Open the entry</a>}
+          </p>
+        )}
         {payback && !planPayment && (
           <p className="tiny mute">
             Pays your savings back for a prepayment. Move it to savings when you put the money back. Salary
@@ -318,7 +331,7 @@ export function CommitmentPage({
             {card && <a href={`#Card/${card.id}`}>Open the card</a>}
           </p>
         )}
-        {!payback && !cardBill && (
+        {!payback && !cardBill && !personPayback && (
           <fieldset className="chips" aria-label="Kind">
             <button
               type="button"
@@ -389,7 +402,7 @@ export function CommitmentPage({
               : `From ${dayLabel(data.cycle.startedOn)}. Due after ${dayLabel(data.cycle.expectedSalaryOn)} means next cycle.`}
           </span>
         </label>
-        {!payback && (
+        {!payback && !personPayback && (
           <label className="row check">
             <input type="checkbox" checked={everyCycle} onChange={(e) => setEveryCycle(e.target.checked)} />
             <span className="grow">

@@ -54,6 +54,8 @@ export interface CycleEntries {
   takenOut?: TakeOutEntry[];
   /** Pay extra and Pay it all off from free money in this cycle (spec 9): out of free money at once. */
   planExtras?: { currency: string; amountMinor: Minor }[];
+  /** Money lent to people in this cycle (spec 9): out of free money at once. */
+  lent?: { currency: string; amountMinor: Minor }[];
 }
 
 /** The morning underspend answer (spec 7): Spread over the days left, or Add to today. */
@@ -85,6 +87,7 @@ export type FreeEntries = Pick<CycleEntries, "spendingCurrency" | "incomes"> &
       | "pots"
       | "takenOut"
       | "planExtras"
+      | "lent"
       | "salaryCurrency"
       | "countingRate"
       | "reserveRate"
@@ -169,6 +172,8 @@ export function freeIn(entries: FreeEntries, cur: string, startOf?: Day): Minor 
   }
   // Plan extra payments count at once, like a commitment payment (spec 9).
   for (const x of entries.planExtras ?? []) if (x.currency === cur) total -= x.amountMinor;
+  // Money lent to a person lowers free money now (spec 9), like a payment.
+  for (const x of entries.lent ?? []) if (x.currency === cur) total -= x.amountMinor;
   // Conversions count at once, like a new counting rate (spec 7): they are not spends.
   const other = otherCurrency(entries);
   for (const v of entries.conversions ?? []) {

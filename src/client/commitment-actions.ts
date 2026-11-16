@@ -71,7 +71,7 @@ export type CommitmentChange = Pick<CommitmentDraft, "name" | "plannedMinor" | "
   Partial<{ kind: CommitmentKind; everyCycle: boolean }>;
 const changeOf = (c: Commitment): CommitmentChange => {
   const base = { name: c.name, plannedMinor: c.plannedMinor, dueOn: c.dueOn };
-  if (c.kind === "savings_payback" || c.kind === "plan_payment") return base;
+  if (c.kind === "savings_payback" || c.kind === "plan_payment" || c.kind === "person_payback") return base;
   if (c.kind === "card_bill") return { ...base, everyCycle: c.recurringId !== null };
   return { ...base, kind: c.kind === "savings" ? "savings" : "bill", everyCycle: c.recurringId !== null };
 };

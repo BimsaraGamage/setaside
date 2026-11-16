@@ -494,6 +494,33 @@ export const planExtraPayment = sqliteTable(
 );
 
 /**
+ * Money lent to or borrowed from a person (item 20, spec 9), in its own currency,
+ * made in a cycle. Lent: comes out of that cycle's free money at once; Got it back
+ * is an `income` of kind `paid_back` (linked by `income.person_debt_id`).
+ * Borrowed: an `income` of kind `borrowed` brings it in; `person_payback`
+ * commitments (linked by `commitment.person_debt_id`) pay it back. `settled_on`:
+ * Settled, closed whatever is still owed; the one field changed after its cycle.
+ */
+export const personDebt = sqliteTable(
+  "person_debt",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    personName: text("person_name").notNull(),
+    direction: text("direction", { enum: ["lent", "borrowed"] }).notNull(),
+    currency: text("currency").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    madeOn: text("made_on").notNull(),
+    settledOn: text("settled_on"),
+    ...appTimestamps,
+  },
+  (t) => [index("person_debt_user_id_idx").on(t.userId), index("person_debt_cycle_id_idx").on(t.cycleId)],
+);
+
+/**
  * The "Every cycle" template (item 11, spec 3): on salary day each active one
  * fills a `commitment` in the new cycle with its last amount and day. Kept up to
  * date from the commitment it is switched on for. Paused: `active` off.

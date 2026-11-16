@@ -43,6 +43,8 @@ export interface Current {
   cards: Card[];
   /** Every instalment plan, oldest first, with what is paid so far (item 19). */
   plans: Plan[];
+  /** Money lent to and borrowed from people, oldest first, with what is back so far (item 20). */
+  people: Person[];
   /** This cycle's conversions, newest first (item 16). */
   conversions: Conversion[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
@@ -105,6 +107,25 @@ export interface Plan {
   /** Pay extra and Pay it all off, all cycles. */
   extraMinor: number;
   extras: PlanExtra[];
+}
+
+/** Money lent to or borrowed from a person (item 20, spec 9), in its own currency. */
+export interface Person {
+  id: string;
+  cycleId: string;
+  personName: string;
+  direction: "lent" | "borrowed";
+  currency: string;
+  amountMinor: number;
+  madeOn: string;
+  /** Settled on this day: closed, whatever is still owed. */
+  settledOn: string | null;
+  /** Lent: got back so far. Borrowed: what payments on its paybacks cover. All cycles. */
+  backMinor: number;
+  /** Lent: each Got it back (a `paid_back` income), oldest first. */
+  gotBack: { id: string; cycleId: string; amountMinor: number; toSavingsMinor: number; on: string }[];
+  /** Borrowed: the income it came in as. */
+  incomeId: string | null;
 }
 
 /** One Pay extra or Pay it all off (item 19). */
@@ -198,6 +219,8 @@ export interface Commitment {
   cardId: string | null;
   /** A plan payment's instalment plan (item 19). */
   planId: string | null;
+  /** A payback to a person: the money borrowed (item 20). */
+  personDebtId: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }
@@ -249,7 +272,15 @@ export function entriesOf(data: Ready) {
     pots: data.pots.map(potEntry),
     takenOut: takenOut(data),
     planExtras: planExtras(data),
+    lent: lentNow(data),
   };
+}
+
+/** Money lent to people this cycle (item 20): out of free money at once. */
+export function lentNow(data: Pick<Ready, "people" | "cycle">) {
+  return data.people
+    .filter((p) => p.direction === "lent" && p.cycleId === data.cycle.id)
+    .map((p) => ({ currency: p.currency, amountMinor: p.amountMinor }));
 }
 
 /** This cycle's Pay extra from free money (item 19): out of free money at once. */

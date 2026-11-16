@@ -212,7 +212,9 @@ export const savings = new Hono<SignedIn>()
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
-    const problems = checkIncome(row, now.currencies);
+    const problems: string[] = checkIncome(row, now.currencies);
+    // Borrowed money and money paid back go with their person entry (item 20, /api/people).
+    if (row.kind === "borrowed" || row.kind === "paid_back") problems.push("kind");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(income).values({
@@ -237,8 +239,9 @@ export const savings = new Hono<SignedIn>()
       where: and(mine(income), eq(income.id, id)),
       columns: { cycleId: true, kind: true },
     });
-    // Salary and opening money are changed on salary day and first use, not here.
-    if (!now || !old || (old.kind !== "extra" && old.kind !== "loan")) {
+    // Salary and opening money are changed on salary day and first use, not here; borrowed
+    // money goes with its person entry (item 20). Got it back (`paid_back`) is undone here.
+    if (!now || !old || (old.kind !== "extra" && old.kind !== "loan" && old.kind !== "paid_back")) {
       return c.json({ error: "not_found" as const }, 404);
     }
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
