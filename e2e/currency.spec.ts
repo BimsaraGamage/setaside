@@ -80,3 +80,41 @@ test("change dollars: the rate got becomes the counting rate, and this cycle's c
   await tabs.getByRole("link", { name: "Today" }).click();
   await expect(page.getByTestId("free-money")).toHaveText("Rs 42,000");
 });
+
+test("salary day step 6: a new counting rate counts in the summary and becomes the counting rate", async ({
+  page,
+}) => {
+  await signInFresh(page);
+  await page.getByLabel("Spending currency").selectOption("LKR");
+  await page.getByLabel("Salary currency").selectOption("USD");
+  await page.getByLabel("Usual pay day").selectOption("25");
+  await page.getByRole("button", { name: "Next" }).click();
+  // Rs 10,000 and $100 held, Rs 300 a dollar; no bills, no pots.
+  await page.getByLabel("Amount (LKR)").fill("10000");
+  await page.getByLabel("Amount (USD)").fill("100");
+  await page.getByLabel(/Counting rate/).fill("300");
+  for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 40,000");
+
+  // Salary day: $1,000; nothing unpaid; the Rs 10,000 and $100 carry over whole.
+  await page.getByRole("link", { name: "Salary arrived" }).click();
+  await page.getByLabel("Salary (USD)").fill("1000");
+  for (let i = 0; i < 5; i++) await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 6: the last counting rate by default; a bad one can't go on.
+  await expect(page.getByRole("heading", { name: "Next salary day and rate" })).toBeVisible();
+  const rate = page.getByLabel(/Counting rate/);
+  await expect(rate).toHaveValue("300");
+  await rate.fill("0");
+  await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+  await rate.fill("310");
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Rs 10,000 + ($100 + $1,000) × 310 = Rs 351,000.
+  await expect(page.getByTestId("salary-day-free")).toHaveText("Rs 351,000");
+  await page.getByRole("button", { name: "Start new cycle" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 351,000");
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByLabel(/Counting rate/)).toHaveValue("310");
+});
