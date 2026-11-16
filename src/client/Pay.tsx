@@ -34,12 +34,17 @@ export function PayPage({
   commitment: c,
   editing,
   actions,
+  offline = false,
 }: {
   data: Ready;
   commitment: Commitment;
   editing?: Payment;
   actions: CommitmentActions;
+  /** The server can't be reached: a saved payment waits for a connection (spec 11). */
+  offline?: boolean;
 }) {
+  // Only unsent payments can be changed offline (spec 11).
+  const waits = offline && editing !== undefined && !editing.unsent;
   const cur = c.currency;
   const spendCur = data.settings.spendingCurrency;
   const countingRate = data.settings.countingRate;
@@ -179,13 +184,18 @@ export function PayPage({
       </section>
 
       {failed && <p className="error">Not saved. Check the connection and try again.</p>}
+      {waits && (
+        <p className="small mute" data-testid="waits">
+          Offline: saved payments can be changed when you're back online.
+        </p>
+      )}
 
       <div className="row">
         {editing && (
           <button
             type="button"
             className="btn"
-            disabled={busy}
+            disabled={busy || waits}
             onClick={() => run(() => actions.removePayment(c, editing))}
           >
             Delete
@@ -194,7 +204,7 @@ export function PayPage({
         <button
           type="button"
           className="btn pri grow"
-          disabled={busy || problems.length > 0}
+          disabled={busy || waits || problems.length > 0}
           onClick={() =>
             run(() =>
               editing ? actions.changePayment(editing, draft) : actions.pay(c, newId(), draft, finish),

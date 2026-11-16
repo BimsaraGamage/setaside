@@ -2,6 +2,9 @@ import { api } from "./api";
 import type { Commitment, Payment } from "./data";
 import { newId } from "./id";
 import type { Toaster } from "./toast";
+import type { Outbox, PaymentDraft, UnsentItem } from "./unsent";
+
+export type { PaymentDraft } from "./unsent";
 
 /** Kinds made on the commitment page: a bill, or a savings set-aside (item 10). */
 export type CommitmentKind = "bill" | "savings";
@@ -17,13 +20,6 @@ export interface CommitmentDraft {
   /** The "Every cycle" switch (item 11). */
   everyCycle: boolean;
   /** Either currency (spec 8), only when it is made; none: the spending currency. */
-  currency?: string;
-}
-
-export interface PaymentDraft {
-  amountMinor: number;
-  paidOn: string;
-  /** Either currency (item 17); none: the commitment's own. */
   currency?: string;
 }
 
@@ -98,8 +94,23 @@ const restore = (old: Commitment) =>
     ...(old.state === "finished" ? [() => change(old.id, { state: "finished" })] : []),
   ]);
 
-/** Add, change, pay, finish and delete commitments; each success shows a toast with Undo. */
-export function commitmentActions({ done }: Toaster) {
+type UnsentPayment = Extract<UnsentItem, { kind: "payment" }>;
+
+/**
+ * Add, change, pay, finish and delete commitments; each success shows a toast with Undo. A payment goes
+ * through the unsent queue (item 24, spec 11): saved on the phone, then sent; with no connection it waits
+ * there. An unsent payment is changed or removed on the phone; a saved one only with a connection.
+ */
+export function commitmentActions({ done }: Toaster, box: Outbox) {
+  const queue = async (item: UnsentPayment) => {
+    box.add(item);
+    await box.flush();
+    return !box.has(item.id);
+  };
+  const unsentPayment = (id: string) => {
+    const i = box.find(id);
+    return i?.kind === "payment" ? i : undefined;
+  };
   return {
     add: (id: string, d: CommitmentDraft) =>
       add(id, d).then((ok) => done(ok, { text: "Commitment saved", undo: () => remove(id) })),
@@ -110,36 +121,85 @@ export function commitmentActions({ done }: Toaster) {
     remove: (old: Commitment) =>
       remove(old.id).then((ok) => done(ok, { text: "Commitment deleted", undo: () => restore(old) })),
     /** A payment, in full or in part; `finish` also marks the commitment finished. */
-    pay: (c: Commitment, id: string, d: PaymentDraft, finish: boolean) =>
-      addPayment(c.id, id, d, finish).then((ok) =>
-        done(ok, {
-          text: finish
-            ? `${c.name} ${c.kind === "savings" || c.kind === "savings_payback" ? "moved" : "paid"} · finished`
-            : c.kind === "savings" || c.kind === "savings_payback"
-              ? "Moved to savings"
-              : "Payment saved",
-          undo: () =>
-            all([...(finish ? [() => change(c.id, { state: "open" })] : []), () => removePayment(id)]),
-        }),
-      ),
-    changePayment: (old: Payment, d: PaymentDraft) =>
-      changePayment(old.id, d).then((ok) =>
-        done(ok, { text: "Payment changed", undo: () => changePayment(old.id, paymentDraftOf(old)) }),
-      ),
-    removePayment: (c: Commitment, old: Payment) =>
-      removePayment(old.id).then((ok) =>
-        done(ok, {
-          text: "Payment deleted",
-          // A finished one takes no payments: reopen, add it back, finish again.
-          undo: () =>
-            c.state === "finished"
-              ? all([
-                  () => change(c.id, { state: "open" }),
-                  () => addPayment(c.id, old.id, paymentDraftOf(old), true),
-                ])
-              : addPayment(c.id, old.id, paymentDraftOf(old)),
-        }),
-      ),
+    pay: async (c: Commitment, id: string, d: PaymentDraft, finish: boolean) => {
+      const sent = await queue({
+        kind: "payment",
+        id,
+        commitmentId: c.id,
+        commitmentName: c.name,
+        commitmentCurrency: c.currency,
+        draft: d,
+        finish,
+        queuedAt: Date.now(),
+      });
+      const saving = c.kind === "savings" || c.kind === "savings_payback";
+      const look = box.get().look.some((i) => i.id === id);
+      const text = !sent
+        ? look
+          ? "Payment not saved · needs a look"
+          : "Payment saved on this phone · sends when back online"
+        : finish
+          ? `${c.name} ${saving ? "moved" : "paid"} · finished`
+          : saving
+            ? "Moved to savings"
+            : "Payment saved";
+      return done(true, {
+        text,
+        undo: async () =>
+          box.remove(id) ||
+          all([...(finish ? [() => change(c.id, { state: "open" })] : []), () => removePayment(id)]),
+      });
+    },
+    changePayment: async (old: Payment, d: PaymentDraft) => {
+      const unsent = unsentPayment(old.id);
+      if (unsent) {
+        box.change(old.id, () => ({ ...unsent, draft: d }));
+        await box.flush();
+        return done(true, {
+          text: "Payment changed",
+          undo: async () => {
+            if (box.has(old.id)) box.change(old.id, () => unsent);
+            else await changePayment(old.id, paymentDraftOf(old));
+            return true;
+          },
+        });
+      }
+      const ok = await changePayment(old.id, d);
+      return done(ok, { text: "Payment changed", undo: () => changePayment(old.id, paymentDraftOf(old)) });
+    },
+    removePayment: async (c: Commitment, old: Payment) => {
+      const unsent = unsentPayment(old.id);
+      if (unsent) {
+        box.remove(old.id);
+        return done(true, { text: "Payment deleted", undo: () => queue(unsent).then(() => true) });
+      }
+      const ok = await removePayment(old.id);
+      return done(ok, {
+        text: "Payment deleted",
+        // A finished one takes no payments: reopen, add it back, finish again.
+        undo: () =>
+          c.state === "finished"
+            ? all([
+                () => change(c.id, { state: "open" }),
+                () => addPayment(c.id, old.id, paymentDraftOf(old), true),
+              ])
+            : addPayment(c.id, old.id, paymentDraftOf(old)),
+      });
+    },
+    /** Sends a payment that needs a look to an open commitment instead (item 24). */
+    payInstead: async (item: UnsentPayment, c: Commitment, paidOn: string) => {
+      box.remove(item.id);
+      const moved = {
+        ...item,
+        commitmentId: c.id,
+        commitmentName: c.name,
+        commitmentCurrency: c.currency,
+        draft: { ...item.draft, paidOn, currency: item.draft.currency ?? item.commitmentCurrency },
+        finish: false,
+      };
+      const sent = await queue(moved);
+      return done(true, { text: sent ? `Payment saved to ${c.name}` : "Payment saved on this phone" });
+    },
     finish: (c: Commitment) =>
       change(c.id, { state: "finished" }).then((ok) =>
         done(ok, { text: `${c.name} finished`, undo: () => change(c.id, { state: "open" }) }),

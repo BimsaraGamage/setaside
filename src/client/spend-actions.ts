@@ -1,21 +1,10 @@
 import { api } from "./api";
 import type { Spend } from "./data";
 import type { Toaster } from "./toast";
+import type { Outbox, SpendDraft } from "./unsent";
 
-export interface SpendDraft {
-  spentOn: string;
-  amountMinor: number;
-  note: string | null;
-  /** The pot it comes from; null means free money (item 7). */
-  potId: string | null;
-  /** The card it was paid with; null means cash (item 18). */
-  cardId: string | null;
-  /** Left out of the spending speed (item 8). */
-  oneOff: boolean;
-}
+export type { SpendDraft } from "./unsent";
 
-const add = async (id: string, d: SpendDraft) =>
-  (await api.api.spends.$post({ json: { id, ...d } }).catch(() => null))?.ok ?? false;
 const change = async (id: string, d: Partial<SpendDraft>) =>
   (await api.api.spends[":id"].$patch({ param: { id }, json: d }).catch(() => null))?.ok ?? false;
 const remove = async (id: string) =>
@@ -30,17 +19,63 @@ const draftOf = (s: Spend): SpendDraft => ({
   oneOff: s.oneOff,
 });
 
-/** Add, change and delete spends; each success shows a toast with Undo. */
-export function spendActions({ done }: Toaster) {
+/** What the toast says after a new spend was put in the queue and sent (or not yet). */
+const NOT_SENT = "Spend saved on this phone · sends when back online";
+
+/**
+ * Add, change and delete spends; each success shows a toast with Undo. A new spend goes through the unsent
+ * queue (item 24, spec 11): saved on the phone first, then sent; with no connection it waits there. An unsent
+ * spend is changed or removed on the phone; a saved one only with a connection.
+ */
+export function spendActions({ done }: Toaster, box: Outbox) {
+  /** Removes a spend wherever it is now: still unsent, or already on the server. */
+  const undoAdd = async (id: string) => box.remove(id) || remove(id);
+  const queue = async (id: string, currency: string, d: SpendDraft, queuedAt = Date.now()) => {
+    box.add({ kind: "spend", id, currency, draft: d, queuedAt });
+    await box.flush();
+    return !box.has(id);
+  };
   return {
-    add: (id: string, d: SpendDraft) =>
-      add(id, d).then((ok) => done(ok, { text: "Spend saved", undo: () => remove(id) })),
-    change: (old: Spend, d: SpendDraft) =>
-      change(old.id, d).then((ok) =>
-        done(ok, { text: "Spend changed", undo: () => change(old.id, draftOf(old)) }),
-      ),
-    remove: (old: Spend) =>
-      remove(old.id).then((ok) => done(ok, { text: "Spend deleted", undo: () => add(old.id, draftOf(old)) })),
+    add: async (id: string, currency: string, d: SpendDraft) => {
+      const sent = await queue(id, currency, d);
+      const look = box.get().look.some((i) => i.id === id);
+      return done(true, {
+        text: sent ? "Spend saved" : look ? "Spend not saved · needs a look" : NOT_SENT,
+        undo: () => undoAdd(id),
+      });
+    },
+    change: async (old: Spend, currency: string, d: SpendDraft) => {
+      const unsent = box.find(old.id);
+      if (unsent?.kind === "spend") {
+        box.change(old.id, () => ({ ...unsent, currency, draft: d }));
+        await box.flush();
+        return done(true, {
+          text: "Spend changed",
+          undo: async () => {
+            if (box.has(old.id)) box.change(old.id, () => unsent);
+            else await change(old.id, draftOf(old));
+            return true;
+          },
+        });
+      }
+      const ok = await change(old.id, d);
+      return done(ok, { text: "Spend changed", undo: () => change(old.id, draftOf(old)) });
+    },
+    remove: async (old: Spend) => {
+      const unsent = box.find(old.id);
+      if (unsent?.kind === "spend") {
+        box.remove(old.id);
+        return done(true, {
+          text: "Spend deleted",
+          undo: () => queue(unsent.id, unsent.currency, unsent.draft, unsent.queuedAt).then(() => true),
+        });
+      }
+      const ok = await remove(old.id);
+      return done(ok, {
+        text: "Spend deleted",
+        undo: () => queue(old.id, old.currency, draftOf(old)).then(() => true),
+      });
+    },
   };
 }
 
