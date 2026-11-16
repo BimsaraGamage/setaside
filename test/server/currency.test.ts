@@ -250,6 +250,87 @@ describe("two currencies (item 15, spec 8)", () => {
     expect(row).toEqual({ reserve_rate: "300" });
   });
 
+  it("salary day step 6: a new counting rate is kept, is the new cycle's reserve rate, and Undo removes it", async () => {
+    const { cookie, cycleId } = await setUp({ commitments: [], pots: [] });
+    await env.DB.prepare("update cycle set started_on = ? where id = ?")
+      .bind(addDays(today(), -20), cycleId)
+      .run();
+    const newCycle = id();
+    const rateId = id();
+    const res = await send(
+      "POST",
+      "/api/salary-day",
+      {
+        cycleId: newCycle,
+        incomeId: id(),
+        salaryMinor: 200_000,
+        receivedOn: today(),
+        expectedSalaryOn: addDays(today(), 30),
+        countingRate: { id: rateId, rate: "310.25" },
+        commitments: [],
+        pots: [],
+        close: {
+          closeId: id(),
+          leftoverIncomeId: id(),
+          salaryLeftoverIncomeId: id(),
+          salaryCloseId: id(),
+          unpaid: [],
+          inHandMinor: null,
+          toSavingsMinor: 0,
+          overspend: null,
+        },
+      },
+      cookie,
+    );
+    expect(res.status).toBe(201);
+    const now = await currentOf(cookie);
+    expect(now.settings.countingRate).toBe("310.25");
+    const row = await env.DB.prepare("select reserve_rate from cycle where id = ?").bind(newCycle).first();
+    expect(row).toEqual({ reserve_rate: "310.25" });
+
+    const undone = await send("POST", "/api/salary-day/undo", { cycleId: newCycle }, cookie);
+    expect(undone.status).toBe(200);
+    const after = await currentOf(cookie);
+    expect(after.cycle.id).toBe(cycleId);
+    expect(after.settings.countingRate).toBe("300");
+    const left = await env.DB.prepare("select id from counting_rate where id = ?").bind(rateId).first();
+    expect(left).toBeNull();
+  });
+
+  it("salary day refuses a counting rate that is not a plain number above zero", async () => {
+    const { cookie, cycleId } = await setUp({ commitments: [], pots: [] });
+    await env.DB.prepare("update cycle set started_on = ? where id = ?")
+      .bind(addDays(today(), -20), cycleId)
+      .run();
+    const res = await send(
+      "POST",
+      "/api/salary-day",
+      {
+        cycleId: id(),
+        incomeId: id(),
+        salaryMinor: 200_000,
+        receivedOn: today(),
+        expectedSalaryOn: addDays(today(), 30),
+        countingRate: { id: id(), rate: "0" },
+        commitments: [],
+        pots: [],
+        close: {
+          closeId: id(),
+          leftoverIncomeId: id(),
+          salaryLeftoverIncomeId: id(),
+          salaryCloseId: id(),
+          unpaid: [],
+          inHandMinor: null,
+          toSavingsMinor: 0,
+          overspend: null,
+        },
+      },
+      cookie,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid", problems: ["counting_rate"] });
+  });
+
   it("salary day needs the row for the dollar leftover when there is one", async () => {
     const { cookie, cycleId } = await setUp({ commitments: [], pots: [] });
     await env.DB.prepare("update cycle set started_on = ? where id = ?")

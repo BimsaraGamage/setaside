@@ -10,7 +10,7 @@ import {
 import { countedMinor, otherCurrency, type TodayView, todayView } from "./cycle";
 import { type Day, daysBetween, isDay } from "./days";
 import { checkPot, type PotEntry } from "./pot";
-import type { Rate } from "./rate";
+import { isRate, type Rate } from "./rate";
 import type { Speed } from "./speed";
 
 /** Kinds a recurring ("Every cycle") commitment can be until cards, plans and people (items 18–20). */
@@ -180,6 +180,8 @@ export interface SalaryDayInput {
   /** Each in either currency (spec 8); none: the spending currency. */
   commitments: { name: string; plannedMinor: number; dueOn: string; currency?: string }[];
   pots: { name: string; usualAmountMinor: number; amountMinor: number; currency?: string }[];
+  /** Step 6, two currencies (spec 6, 8): a new counting rate; none keeps the current one. */
+  countingRate?: Rate | null;
 }
 
 export interface SalaryDayContext {
@@ -190,7 +192,7 @@ export interface SalaryDayContext {
   salaryCurrency?: string;
 }
 
-/** "salary", "received_on", "expected_salary_on", "commitment.<i>.<problem>", "pot.<i>.<problem>". */
+/** "salary", "received_on", "expected_salary_on", "counting_rate", "commitment.<i>.<problem>", "pot.<i>.<problem>". */
 export type SalaryDayProblem = string;
 
 /** Checks Start new cycle (spec 2, 6). The phone shows the problems; the server refuses them. */
@@ -201,6 +203,9 @@ export function checkSalaryDay(input: SalaryDayInput, ctx: SalaryDayContext): Sa
     isDay(input.receivedOn) && input.receivedOn >= ctx.cycleStartedOn && input.receivedOn <= ctx.today;
   if (!receivedOk) out.push("received_on");
   out.push(...checkExpectedSalaryDay(input.expectedSalaryOn, ctx.today));
+  // A one-currency user has no counting rate (spec 8).
+  const rate = input.countingRate;
+  if (rate != null && (!ctx.salaryCurrency || !isRate(rate))) out.push("counting_rate");
   const startedOn = receivedOk ? input.receivedOn : ctx.today;
   const currencies = ctx.salaryCurrency
     ? { spendingCurrency: ctx.spendingCurrency, salaryCurrency: ctx.salaryCurrency }

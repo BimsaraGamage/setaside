@@ -458,6 +458,8 @@ export interface SalaryDayUndo {
   reopened: { id: string; state: "open" | "finished" | "carried" | "dropped" }[];
   /** Payments Paid it made on last cycle's commitments. */
   payments: string[];
+  /** The counting rate typed in step 6 (spec 6), if any: deleted on undo. */
+  countingRateId?: string;
 }
 
 /**
