@@ -8,7 +8,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL: `http://localhost:${port}`, trace: "on-first-retry" },
+  // The service worker (item 23) only in the journeys about it (offline.spec.ts): elsewhere it would keep
+  // files between steps that the journeys don't expect.
+  use: { baseURL: `http://localhost:${port}`, trace: "on-first-retry", serviceWorkers: "block" },
   projects: [
     { name: "chromium", use: { ...devices["Pixel 7"] } },
     { name: "webkit", use: { ...devices["iPhone 15"] } },

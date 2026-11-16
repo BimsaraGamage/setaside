@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { authClient } from "./auth";
 import { CardPage, cardActions } from "./Cards";
 import { ChangeDollarsPage, conversionActions } from "./ChangeDollars";
@@ -6,6 +6,7 @@ import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FirstUse } from "./FirstUse";
+import { agoLabel, clearCopy, readCopy } from "./offline-copy";
 import { PastCyclePage, PastList } from "./Past";
 import { PayPage } from "./Pay";
 import { LendPage, PeoplePage, PersonPage, peopleActions } from "./People";
@@ -59,13 +60,37 @@ function routeFromHash(): { tab: Tab; id?: string; extra?: string } {
 export function App() {
   const session = authClient.useSession();
 
+  const signedOut = () => {
+    clearCopy();
+    session.refetch();
+  };
+
   if (session.isPending) return <main className="loading mute">Loading…</main>;
-  if (!session.data) return <SignIn onSignedIn={() => session.refetch()} />;
-  return <SignedIn onSignedOut={() => session.refetch()} />;
+  if (!session.data) {
+    // The sign-in couldn't be checked (no connection): the phone's saved copy, if any (item 23, spec 11).
+    const copy = session.error ? readCopy() : null;
+    if (copy) return <SignedIn userId={copy.userId} onSignedOut={signedOut} />;
+    return <SignIn onSignedIn={() => session.refetch()} />;
+  }
+  return <SignedIn userId={session.data.user.id} onSignedOut={signedOut} />;
 }
 
-function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
-  const { data, error, reload } = useCurrent();
+/** "Offline · last updated 5 min ago" while the saved copy is shown (spec 11). */
+function OfflineBar({ since }: { since: number }) {
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const t = setInterval(tick, 30_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <p className="offline-bar small" data-testid="offline">
+      Offline · last updated {agoLabel(since)}
+    </p>
+  );
+}
+
+function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => void }) {
+  const { data, error, offlineSince, reload } = useCurrent(userId);
   const [route, setRoute] = useState(routeFromHash);
   const toaster = useToast(reload);
   const spends = spendActions(toaster);
@@ -134,6 +159,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   return (
     <>
       <main className={isPage ? "with-tabs page" : "with-tabs"}>
+        {offlineSince !== null && <OfflineBar since={offlineSince} />}
         {tab === "Today" && (
           <Today
             data={ready}
