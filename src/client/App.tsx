@@ -65,6 +65,12 @@ export function App() {
     session.refetch();
   };
 
+  const noSession = !session.isPending && !session.data && !session.error;
+  useEffect(() => {
+    // The server says nobody is signed in (session ended or revoked): the saved copy goes too.
+    if (noSession) clearCopy();
+  }, [noSession]);
+
   if (session.isPending) return <main className="loading mute">Loading…</main>;
   if (!session.data) {
     // The sign-in couldn't be checked (no connection): the phone's saved copy, if any (item 23, spec 11).

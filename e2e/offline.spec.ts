@@ -79,3 +79,17 @@ test("sign out removes the copy: offline it asks to sign in", async ({ page, con
   await expect(page.getByTestId("allowance")).toHaveCount(0);
   await expect(page.getByTestId("offline")).toHaveCount(0);
 });
+
+test("a session ended on the server removes the copy too", async ({ page, context }) => {
+  await signInFreshToToday(page);
+  await keepForOffline(page);
+  // Signed out elsewhere (Sign out everywhere, or the session ran out): the server no longer knows this phone.
+  await context.clearCookies();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Setaside" })).toBeVisible();
+
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Setaside" })).toBeVisible();
+  await expect(page.getByTestId("allowance")).toHaveCount(0);
+});

@@ -10,7 +10,7 @@ import {
   type Verdict,
 } from "../money";
 import { api } from "./api";
-import { readCopy, saveCopy } from "./offline-copy";
+import { clearCopy, readCopy, saveCopy } from "./offline-copy";
 
 export interface Current {
   settings: {
@@ -360,6 +360,8 @@ export function useCurrent(userId: string) {
       return;
     }
     try {
+      // Signed out or cut off on the server: the saved copy is no longer this user's to see.
+      if (res.status === 401 || res.status === 403) clearCopy();
       if (!res.ok) throw new Error(String(res.status));
       const fresh = (await res.json()) as Current;
       saveCopy(userId, fresh);
