@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import * as z from "zod";
 import { checkSpend } from "../money";
 import { current } from "./current";
-import { pot, spend } from "./db/schema";
+import { card, pot, spend } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -15,18 +15,22 @@ const note = z
 /** The pot it comes from (item 7); null means free money. */
 const potId = z.uuid().nullish();
 
+/** The card it was paid with (item 18); null means cash. */
+const cardId = z.uuid().nullish();
+
 const newSpend = z.object({
   id: z.uuid(),
   spentOn: z.string(),
   amountMinor: z.number().int(),
   note,
   potId,
+  cardId,
   /** Left out of the spending speed (item 8). */
   oneOff: z.boolean().optional(),
 });
 
 const changeSpend = z
-  .object({ spentOn: z.string(), amountMinor: z.number().int(), note, potId, oneOff: z.boolean() })
+  .object({ spentOn: z.string(), amountMinor: z.number().int(), note, potId, cardId, oneOff: z.boolean() })
   .partial();
 
 /** The signed-in user's pot with this id, as `checkSpend` needs it; none when there is no such pot. */
@@ -35,6 +39,17 @@ async function potsFor(c: { var: SignedIn["Variables"] }, id: string | null | un
   const { db, mine } = c.var;
   const found = await db.query.pot.findFirst({
     where: and(mine(pot), eq(pot.id, id)),
+    columns: { id: true, currency: true, archived: true },
+  });
+  return found ? [found] : [];
+}
+
+/** The signed-in user's card with this id, as `checkSpend` needs it; none when there is no such card. */
+async function cardsFor(c: { var: SignedIn["Variables"] }, id: string | null | undefined) {
+  if (!id) return [];
+  const { db, mine } = c.var;
+  const found = await db.query.card.findFirst({
+    where: and(mine(card), eq(card.id, id)),
     columns: { id: true, currency: true, archived: true },
   });
   return found ? [found] : [];
@@ -55,6 +70,7 @@ export const spends = new Hono<SignedIn>()
     const row = {
       ...b,
       potId: b.potId ?? null,
+      cardId: b.cardId ?? null,
       oneOff: b.oneOff ?? false,
       // A spend is in its pot's currency (a salary-currency pot's, spec 8), else the spending currency.
       currency: inPot[0]?.currency ?? now.settings.spendingCurrency,
@@ -64,6 +80,7 @@ export const spends = new Hono<SignedIn>()
       cycleStartedOn: now.cycle.startedOn,
       ...now.currencies,
       pots: inPot,
+      cards: await cardsFor(c, row.cardId),
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
@@ -84,10 +101,12 @@ export const spends = new Hono<SignedIn>()
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     const nextPotId = b.potId === undefined ? old.potId : b.potId;
     const inPot = await potsFor(c, nextPotId);
+    const nextCardId = b.cardId === undefined ? old.cardId : b.cardId;
     const next = {
       ...old,
       ...b,
       potId: nextPotId,
+      cardId: nextCardId,
       currency: inPot[0]?.currency ?? now.settings.spendingCurrency,
     };
     const problems = checkSpend(next, {
@@ -96,6 +115,8 @@ export const spends = new Hono<SignedIn>()
       ...now.currencies,
       pots: inPot,
       keepPotId: old.potId,
+      cards: await cardsFor(c, nextCardId),
+      keepCardId: old.cardId,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
@@ -106,6 +127,7 @@ export const spends = new Hono<SignedIn>()
         currency: next.currency,
         note: next.note,
         potId: next.potId,
+        cardId: next.cardId,
         oneOff: next.oneOff,
       })
       .where(and(mine(spend), eq(spend.id, id)));

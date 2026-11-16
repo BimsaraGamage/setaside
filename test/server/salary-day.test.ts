@@ -439,6 +439,7 @@ describe("Every cycle (spec 3, 10)", () => {
         usualAmountMinor: 3_600_000,
         usualDay: Number(dueOn.slice(8)),
         active: true,
+        cardId: null,
       },
     ]);
 

@@ -82,6 +82,8 @@ function heldIn(entries: ClosingEntries, choices: { id: string; choice: UnpaidCh
   let carriedMinor = 0;
   for (const c of entries.commitments ?? []) {
     if (c.currency !== cur || c.state !== "open" || !inThisCycle(c.dueOn, entries.expectedSalaryOn)) continue;
+    // A card bill's money is held for the card, not set aside: it is neither leftover nor carried (spec 6, 9).
+    if (c.kind === "card_bill") continue;
     const choice = byId.get(c.id);
     if (choice === "drop") droppedMinor += stillToPayMinor(c);
     if (choice === "carry") carriedMinor += stillToPayMinor(c);

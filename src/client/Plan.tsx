@@ -11,7 +11,7 @@ import {
 } from "../money";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
-import { type Commitment, dayLabel, entriesOf, type Ready, useToday } from "./data";
+import { type Commitment, cardBalance, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
 import { plannedGap } from "./Pay";
 import { PlanPots } from "./Pots";
@@ -40,6 +40,21 @@ export function paidNote(c: Commitment): string | undefined {
   return `Paid ${of}`;
 }
 
+/** A card bill (item 18): its money is held from card spends, not set aside. */
+export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill";
+
+/**
+ * A commitment's note on Plan and Next up: a card bill's card balance (spec 10)
+ * before what is paid; otherwise `paidNote`.
+ */
+export function commitmentNote(data: Pick<Ready, "cards" | "spends" | "commitments">, c: Commitment) {
+  const card = isCardBill(c) ? data.cards.find((k) => k.id === c.cardId) : undefined;
+  if (!card) return paidNote(c);
+  const balance = `${card.name} balance ${formatMoney(cardBalance(data, card), card.currency)}`;
+  const paid = paidNote(c);
+  return paid ? `${balance} · ${paid}` : balance;
+}
+
 /**
  * Plan (spec 10): this cycle's commitments and + Add, pots and + New pot, the Every
  * cycle link, Salary arrived; the salary, expected day and Undo salary day (item 13).
@@ -53,7 +68,11 @@ export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) 
   const finished = data.commitments.filter((c) => c.state === "finished");
   const row = (c: Commitment) => {
     const done = c.state === "finished";
-    const note = done ? (isSavings(c) ? "Moved to savings · finished" : "Paid · finished") : paidNote(c);
+    const note = done
+      ? isSavings(c)
+        ? "Moved to savings · finished"
+        : "Paid · finished"
+      : commitmentNote(data, c);
     return (
       <a key={c.id} className={`li tap link${done ? " done" : ""}`} href={`#Commitment/${c.id}`}>
         <span className="date">
@@ -207,6 +226,9 @@ export function CommitmentPage({
   const [kind, setKind] = useState<CommitmentKind>(editing?.kind === "savings" ? "savings" : "bill");
   // A payback keeps its kind and never repeats: salary day makes the next one (item 14).
   const payback = editing !== undefined && isPayback(editing);
+  // A card bill keeps its kind and card (item 18); its money is held, so the allowance stays.
+  const card = editing && isCardBill(editing) ? data.cards.find((k) => k.id === editing.cardId) : undefined;
+  const cardBill = editing !== undefined && isCardBill(editing);
   const [name, setName] = useState(editing?.name ?? "");
   const [text, setText] = useState(editing ? toText(editing.plannedMinor, cur) : "");
   const [dueOn, setDueOn] = useState(editing?.dueOn ?? today);
@@ -216,7 +238,11 @@ export function CommitmentPage({
 
   const plannedMinor = parseAmount(text, cur) ?? 0;
   const draft = { kind, name: name.trim(), plannedMinor, dueOn, everyCycle };
-  const changed = payback ? { name: draft.name, plannedMinor, dueOn } : draft;
+  const changed = payback
+    ? { name: draft.name, plannedMinor, dueOn }
+    : cardBill
+      ? { name: draft.name, plannedMinor, dueOn, everyCycle }
+      : draft;
   const problems = checkCommitment(
     { ...draft, currency: cur },
     { cycleStartedOn: data.cycle.startedOn, ...currencyContext(data) },
@@ -224,6 +250,7 @@ export function CommitmentPage({
   const others = data.commitments.filter((c) => c.id !== editing?.id);
   const mine = {
     ...draft,
+    kind: editing?.kind ?? draft.kind,
     currency: cur,
     state: editing?.state ?? ("open" as const),
     payments: editing?.payments ?? [],
@@ -261,7 +288,15 @@ export function CommitmentPage({
             day sets aside the next one.
           </p>
         )}
-        {!payback && (
+        {cardBill && (
+          <p className="tiny mute" data-testid="card-bill-note">
+            Card bill{card ? ` for ${card.name}` : ""}
+            {card ? ` · balance ${formatMoney(cardBalance(data, card), card.currency)}` : ""}. Its money is
+            already held from your card spends: paying it takes nothing more from free money.{" "}
+            {card && <a href={`#Card/${card.id}`}>Open the card</a>}
+          </p>
+        )}
+        {!payback && !cardBill && (
           <fieldset className="chips" aria-label="Kind">
             <button
               type="button"

@@ -123,7 +123,7 @@ Take out and Put in are dated today, in the current cycle, with a toast and **Un
 
 ## 6. Cycle end and salary day
 
-**Leftover** = unspent free money + unused pot money + money of dropped commitments. Money held for a card balance is not leftover; it carries over until paid.
+**Leftover** = unspent free money + unused pot money + money of dropped commitments. Money held for a card balance is not leftover; it carries over until paid. Step 3 says how much is held for cards, to leave out of "actually have in hand".
 
 **Overspend** = spending beyond free money at cycle end, in the spending currency.
 
@@ -205,9 +205,9 @@ Amounts are whole minor units. Rounding happens only where a rate is applied (co
 
 ### Card spends and card balance
 
-- A **card spend** is a spend with the Card toggle on. It lowers free money (or a pot) the day it is made, like cash; its money is then held for the card bill. Card spends beyond free money count as overspend.
-- Each card has a currency and a running **card balance**: card spends add to it, payments take it down. No statement dates, card limit or minimum-payment tracking.
-- **Card bill**: a commitment with the due date the user enters, amount filled from the card balance. Paid in full or in part; the rest stays owed and its money stays held. Paying it does not lower free money again.
+- A **card spend** is a spend with the Card toggle on. It lowers free money (or a pot) the day it is made, like cash; its money is then held for the card bill. Card spends beyond free money count as overspend. The Card toggle offers the cards in use in the spend's currency (a dollar card only for a spend in a dollar pot).
+- Each card has a name, a currency (fixed once made) and a running **card balance**: card spends add to it, payments on its card bills take it down, across cycles. Below zero (a spend deleted after its bill was paid) the card is in credit and holds nothing. No statement dates, card limit or minimum-payment tracking. A card can be renamed; **Stop using this card** takes it off the spend sheet (its balance stays); it can be deleted only while it has no spends and no bills.
+- **Card bill**: a commitment with the due date the user enters, amount filled from the card balance (changeable), made from the card's page. Paid in full or in part, in the card's currency only; the rest stays owed and its money stays held. Paying it does not lower free money again. Its money is held, not set aside: it is left out of Next up's total and the salary-day gap, and dropping or carrying it on salary day gives nothing to the leftover. It can be Every cycle: salary day fills the next one from the card balance (after step 2's Paid it), less what that card's carried or coming-up bills still owe, and leaves it out when nothing is owed.
 - Interest and late fees are entered as a spend from free money.
 
 ### Instalment plans
@@ -273,7 +273,7 @@ Rows for Spends, Savings, Change dollars, Add income, each card, each instalment
 - **Take out of savings**: currency, amount, new allowance shown; "For a prepayment? No · Yes, pay back"; Yes asks what for and the payback each cycle, and shows the cycles it takes.
 - **Change dollars**: dollars given, rupees received, date; live rate; how much covers rupee bills and how much goes to free money; rate gain (→ savings) or loss (← free money). Counting rate field with Set. This cycle's conversions.
 - **Add income**: kind (extra income, loan money, borrowed, paid back to me), currency and amount, split to savings and free money, new allowance shown.
-- **Card**: balance, bill date with Pay the bill (opens the bill commitment), card spends, payments; + Add another card.
+- **Card**: balance (and what came from earlier cycles), the open bill with Pay the bill (opens the bill commitment), or a due date, amount filled from the balance and Every cycle with Add the bill; this cycle's card spends and payments; name, Stop using this card (or Use this card again), Delete while nothing uses it. Money lists each card with its balance and + Add a card.
 - **Instalment plan**: N of M with bar and last payment date, paid and still to pay, interest so far and total, Pay extra, Pay it all off (from free money or savings); + New loan or instalments.
 - **People**: list with lent or borrowed, date, payback date; Got it back / Settled; I lent money, I borrowed.
 

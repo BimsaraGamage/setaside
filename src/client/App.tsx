@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { authClient } from "./auth";
+import { CardPage, cardActions } from "./Cards";
 import { ChangeDollarsPage, conversionActions } from "./ChangeDollars";
 import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
@@ -29,6 +30,7 @@ const pages = {
   SavingsMove: "Money",
   AddIncome: "Money",
   ChangeDollars: "Money",
+  Card: "Money",
   Commitment: "Plan",
   Pay: "Plan",
   Payment: "Plan",
@@ -63,6 +65,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const dayChoices = dayChoiceActions(toaster);
   const savings = savingsActions(toaster);
   const conversions = conversionActions(toaster);
+  const cards = cardActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
@@ -109,6 +112,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   // "#Pot" and "#Pot/new/<starter name>" make a pot; "#Pot/<id>" opens one.
   const newPot = tab === "Pot" && (!id || id === "new");
   const pot = tab === "Pot" && !newPot ? ready.pots.find((p) => p.id === id) : undefined;
+  // "#Card" adds a card; "#Card/<id>" opens one (item 18).
+  const card = tab === "Card" && id ? ready.cards.find((k) => k.id === id) : undefined;
   const toast = toaster.toast;
   return (
     <>
@@ -177,6 +182,24 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
           />
         )}
         {tab === "AddIncome" && <AddIncomePage data={ready} actions={savings} />}
+        {tab === "Card" &&
+          (!id || card ? (
+            <CardPage
+              key={id ?? "new"}
+              data={ready}
+              editing={card}
+              actions={cards}
+              bills={commitments}
+              onOpenSpend={edit}
+            />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Money">
+                ← Back
+              </a>
+              <p className="mute">This card is no longer here.</p>
+            </>
+          ))}
         {tab === "ChangeDollars" && <ChangeDollarsPage data={ready} actions={conversions} onRate={reload} />}
         {tab === "Settings" && (
           <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />

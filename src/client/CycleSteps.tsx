@@ -16,10 +16,12 @@ export interface Row {
   /** Last cycle's coming-up commitment it carries on (salary day only). */
   carriedFromId: string | null;
   name: string;
-  /** A payback to savings is filled by its prepayment (salary day, item 14). */
-  kind: "bill" | "savings" | "savings_payback";
+  /** A payback to savings is filled by its prepayment (salary day, item 14); a card bill by its card (item 18). */
+  kind: "bill" | "savings" | "savings_payback" | "card_bill";
   /** The prepayment a payback pays back. */
   prepaymentId?: string;
+  /** A card bill's card. */
+  cardId?: string;
   /** Either of the user's currencies (spec 8); chosen on a new row only. */
   currency: string;
   text: string;
@@ -87,6 +89,11 @@ export function CommitmentsStep({
           {r.kind === "savings_payback" && (
             <p className="tiny mute">Pays your savings back for a prepayment. It goes back into savings.</p>
           )}
+          {r.kind === "card_bill" && (
+            <p className="tiny mute">
+              Card bill, filled from the card balance. Its money is already held from your card spends.
+            </p>
+          )}
           <label className="field">
             Name
             <input
@@ -95,7 +102,7 @@ export function CommitmentsStep({
               onChange={(e) => change(i, { name: e.target.value })}
             />
           </label>
-          {!r.recurringId && !r.carriedFromId && r.kind !== "savings_payback" && (
+          {!r.recurringId && !r.carriedFromId && r.kind !== "savings_payback" && r.kind !== "card_bill" && (
             <CurrencyChoice
               currencies={currencies}
               value={r.currency}

@@ -10,9 +10,9 @@ import {
   todayView,
 } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
-import { paidNote } from "./Plan";
+import { commitmentNote } from "./Plan";
 import { PotRow } from "./Pots";
-import { potName, SpendRow } from "./Spends";
+import { cardName, potName, SpendRow } from "./Spends";
 import { type CycleActions, LateSalaryCard } from "./ThisCycle";
 import { type DayChoiceActions, UnderspendCard } from "./Underspend";
 import { VerdictChip } from "./Verdict";
@@ -146,7 +146,13 @@ export function Today({
         {data.spends
           .filter((s) => s.spentOn === today)
           .map((s) => (
-            <SpendRow key={s.id} spend={s} pot={potName(data, s)} onOpen={() => onEdit(s, today)} />
+            <SpendRow
+              key={s.id}
+              spend={s}
+              pot={potName(data, s)}
+              card={cardName(data, s)}
+              onOpen={() => onEdit(s, today)}
+            />
           ))}
         <div className="li">
           <span className="grow mute">Free money</span>
@@ -184,7 +190,7 @@ export function Today({
             day={c.dueOn}
             inDays={inDays}
             amount={formatMoney(stillToPayMinor(c), c.currency)}
-            note={paidNote(c)}
+            note={commitmentNote(data, c)}
           />
         ))}
         <NextUpRow name="Salary expected" day={cycle.expectedSalaryOn} inDays={up.salaryInDays} />

@@ -71,7 +71,7 @@ const probes: Record<string, Probe> = {
   }),
   "PATCH /api/spends/:id": (o) => ({
     path: `/api/spends/${firstRow(o, "spend")}`,
-    init: { body: JSON.stringify({ amountMinor: 1 }) },
+    init: { body: JSON.stringify({ amountMinor: 1, cardId: firstRow(o, "card") }) },
   }),
   "DELETE /api/spends/:id": (o) => ({ path: `/api/spends/${firstRow(o, "spend")}` }),
   // Aimed at the first user's commitment: must not take over, change or delete it.
@@ -166,6 +166,16 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/conversions/:id": (o) => ({ path: `/api/conversions/${firstRow(o, "conversion")}` }),
+  // Aimed at the first user's card: must not take it over, rename, stop or delete it.
+  "POST /api/cards": (o) => ({
+    path: "/api/cards",
+    init: { body: JSON.stringify({ id: firstRow(o, "card"), name: "x" }) },
+  }),
+  "PATCH /api/cards/:id": (o) => ({
+    path: `/api/cards/${firstRow(o, "card")}`,
+    init: { body: JSON.stringify({ name: "x", archived: true }) },
+  }),
+  "DELETE /api/cards/:id": (o) => ({ path: `/api/cards/${firstRow(o, "card")}` }),
   // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
   "POST /api/prepayments": (o) => ({
     path: "/api/prepayments",
@@ -273,6 +283,7 @@ async function seedOwnerData(ownerId: string) {
   const cc = crypto.randomUUID();
   const pp = crypto.randomUUID();
   const cv = crypto.randomUUID();
+  const cd = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -323,6 +334,9 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into counting_rate (id, user_id, rate, set_at, created_at, updated_at) values (?, ?, '300', ?, ?, ?)",
     ).bind(cv, ownerId, now, now, now),
+    env.DB.prepare(
+      "insert into card (id, user_id, name, currency, archived, created_at, updated_at) values (?, ?, 'Visa', 'LKR', 0, ?, ?)",
+    ).bind(cd, ownerId, now, now),
   ]);
 }
 

@@ -21,6 +21,7 @@ import {
 } from "../money";
 import { countingRateOf, current } from "./current";
 import {
+  card,
   commitment,
   commitmentPayment,
   conversion,
@@ -56,7 +57,9 @@ const salaryDayBody = z.object({
     .array(
       z.object({
         id: z.uuid(),
-        kind: z.enum(["bill", "savings", "savings_payback"]).default("bill"),
+        kind: z.enum(["bill", "savings", "savings_payback", "card_bill"]).default("bill"),
+        /** A card bill: its card (item 18); a carried one keeps the card of the one it carries on. */
+        cardId: z.uuid().nullish(),
         /** A payback to savings: the prepayment it pays back (item 14). */
         prepaymentId: z.uuid().nullish(),
         name,
@@ -197,6 +200,7 @@ type Stamped =
   | typeof prepayment
   | typeof recurringCommitment
   | typeof conversion
+  | typeof card
   | typeof income;
 
 /**
@@ -236,6 +240,7 @@ export async function undoRecord(
     any(prepayment),
     any(recurringCommitment),
     any(conversion),
+    any(card),
     // The salary amount stays editable during the current cycle (spec 2).
     any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
   ]);
@@ -314,6 +319,26 @@ export const salaryDay = new Hono<SignedIn>()
       if (payback !== (linked !== null) || (payback && k.everyCycle)) problems.push(`commitment.${i}.kind`);
       else if (payback && !k.carriedFromId && !prepaymentIds.has(linked as string)) {
         problems.push(`commitment.${i}.prepayment`);
+      }
+    });
+
+    // Card bills (item 18): one of the user's cards, in its currency; a carried one keeps its card.
+    const cardOf = (k: (typeof b.commitments)[number]) =>
+      k.carriedFromId ? (carriedById.get(k.carriedFromId)?.cardId ?? null) : (k.cardId ?? null);
+    const wantedCards = [...new Set(b.commitments.flatMap((k) => (k.cardId ? [k.cardId] : [])))];
+    const myCards = wantedCards.length
+      ? await db.query.card.findMany({
+          where: and(mine(card), inArray(card.id, wantedCards)),
+          columns: { id: true, currency: true },
+        })
+      : [];
+    b.commitments.forEach((k, i) => {
+      const linked = cardOf(k);
+      const bill = k.kind === "card_bill";
+      if (bill !== (linked !== null)) problems.push(`commitment.${i}.card`);
+      else if (bill && !k.carriedFromId) {
+        const found = myCards.find((x) => x.id === linked);
+        if (!found || found.currency !== (k.currency ?? cur)) problems.push(`commitment.${i}.card`);
       }
     });
 
@@ -401,9 +426,10 @@ export const salaryDay = new Hono<SignedIn>()
       const template = {
         name: k.name,
         // A payback is never Every cycle (checked above).
-        kind: k.kind as "bill" | "savings",
+        kind: k.kind as "bill" | "savings" | "card_bill",
         usualAmountMinor: k.plannedMinor,
         usualDay: usualDayOf(k.dueOn),
+        cardId: cardOf(k),
       };
       let recurringId: string | null = null;
       if (k.recurringId && k.everyCycle) {
@@ -449,6 +475,7 @@ export const salaryDay = new Hono<SignedIn>()
           dueOn: k.dueOn,
           carriedFromId: k.carriedFromId ?? null,
           prepaymentId: prepaymentOf(k),
+          cardId: cardOf(k),
         }),
       );
       if (k.carriedFromId) {

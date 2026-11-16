@@ -26,10 +26,10 @@ type Now = NonNullable<Awaited<ReturnType<typeof current>>>;
 /**
  * The currency a commitment may also be paid in (spec 8): the user's other one,
  * except for a savings set-aside or payback, which moves money within one
- * savings total.
+ * savings total, and a card bill, which pays its card in the card's currency (item 18).
  */
 function otherCurrencyFor(now: Now, owner: { currency: string; kind: string }): string | null {
-  if (owner.kind === "savings" || owner.kind === "savings_payback") return null;
+  if (owner.kind === "savings" || owner.kind === "savings_payback" || owner.kind === "card_bill") return null;
   const { spendingCurrency, salaryCurrency } = now.currencies;
   if (!salaryCurrency) return null;
   return owner.currency === spendingCurrency ? salaryCurrency : spendingCurrency;

@@ -46,6 +46,7 @@ describe("first use (item 3, spec 2)", () => {
       commitments: [],
       pots: [],
       conversions: [],
+      cards: [],
       lastCycle: null,
       dayChoices: [],
       savings: [],
@@ -85,6 +86,7 @@ describe("first use (item 3, spec 2)", () => {
       commitments: [],
       pots: [],
       conversions: [],
+      cards: [],
       lastCycle: null,
       dayChoices: [],
       savings: [],
@@ -184,6 +186,7 @@ describe("first use: bills and pots (ticket 37, spec 2 step 4)", () => {
         usualAmountMinor: 4_000_000,
         usualDay: Number(today().slice(8, 10)),
         active: true,
+        cardId: null,
       },
     ]);
     expect(cur.pots).toEqual([

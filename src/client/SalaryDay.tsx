@@ -5,11 +5,14 @@ import {
   broughtInSalary,
   type CloseInput,
   type ComingUpEntry,
+  cardBalanceMinor,
+  cardBillFillMinor,
   checkCycleClose,
   checkSalaryDay,
   countedMinor,
   cycleSpeeds,
   formatMoney,
+  heldForCardsMinor,
   isComingUp,
   leftoverOf,
   type OverspendChoice,
@@ -141,6 +144,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     expectedSalaryOn: expected,
     commitments: (rows ?? []).map((r) => ({
       name: r.name,
+      kind: r.kind,
       currency: r.currency,
       plannedMinor: amount(r.text, r.currency),
       dueOn: r.dueOn,
@@ -197,16 +201,44 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     .map((k) => ({ ...k, plannedMinor: stillToPayMinor(k), payments: [] }));
   const has = (prefix: string) => problems.some((p) => p.startsWith(prefix));
 
+  /** Card bills Paid it in step 2: paid from the money held for the card (item 18). */
+  const paidCardBills = unpaid.filter((k) => k.kind === "card_bill" && choices[k.id]?.choice === "paid");
+  const heldMinor =
+    heldForCardsMinor(data.cards, data.spends, data.commitments, cur) -
+    paidCardBills.filter((k) => k.currency === cur).reduce((n, k) => n + stillToPayMinor(k), 0);
+
+  /**
+   * A card bill's amount in step 4 (item 18): the card balance after step 2's
+   * Paid it, less what its bills going to the new cycle (carried, coming up) still owe.
+   */
+  const cardFill = (comingUp: ComingUpEntry[]) => (cardId: string) => {
+    const card = data.cards.find((k) => k.id === cardId);
+    if (!card) return 0;
+    const ofCard = (k: { kind?: string; cardId?: string | null }) =>
+      k.kind === "card_bill" && k.cardId === cardId;
+    const paidNow = paidCardBills.filter(ofCard).reduce((n, k) => n + stillToPayMinor(k), 0);
+    const going = [...carried.filter(ofCard), ...comingUp.filter(ofCard)];
+    return cardBillFillMinor(cardBalanceMinor(card, data.spends, data.commitments) - paidNow, going);
+  };
+
   /** Step 4's rows, filled once the day received is known. */
   function fill(): Row[] {
     const comingUp: ComingUpEntry[] = data.commitments
       .filter(
         (c) =>
           isComingUp(c, data.cycle.expectedSalaryOn) &&
-          (c.kind === "bill" || c.kind === "savings" || c.kind === "savings_payback"),
+          (c.kind === "bill" ||
+            c.kind === "savings" ||
+            c.kind === "savings_payback" ||
+            c.kind === "card_bill"),
       )
-      .map((c) => ({ ...c, kind: c.kind as "bill" | "savings" | "savings_payback" }));
-    const drafts = salaryDayDrafts({ recurring: data.recurring, comingUp, startedOn: receivedOn });
+      .map((c) => ({ ...c, kind: c.kind as ComingUpEntry["kind"] }));
+    const drafts = salaryDayDrafts({
+      recurring: data.recurring,
+      comingUp,
+      startedOn: receivedOn,
+      cardFill: cardFill(comingUp),
+    });
     // Paybacks (item 14): what step 2 paid or carried, and coming-up ones carried, count first.
     const paid: Record<string, number> = {};
     const planned: Record<string, number> = {};
@@ -283,6 +315,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         id: r.id,
         kind: r.kind,
         prepaymentId: r.prepaymentId ?? null,
+        cardId: r.cardId ?? null,
         name: r.name,
         currency: r.currency,
         plannedMinor: amount(r.text, r.currency),
@@ -315,7 +348,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
 
   const setAside = inSpending(
     [...input.commitments, ...carried]
-      .filter((c) => c.dueOn <= expected)
+      // A card bill's money is held from card spends, not set aside (item 18).
+      .filter((c) => c.dueOn <= expected && c.kind !== "card_bill")
       .map((c) => ({ currency: c.currency, minor: Math.max(0, c.plannedMinor) })),
   );
   const fromLast = brought.amountMinor - brought.toSavingsMinor;
@@ -403,6 +437,11 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               onChange={(e) => typed(e.target.value) && setInHandText(e.target.value)}
             />
             <span className="tiny mute">Change it if some spends were never entered.</span>
+            {heldMinor > 0 && (
+              <span className="tiny mute block" data-testid="held-for-cards">
+                Leave out {money(heldMinor)} held for card bills: it is not leftover.
+              </span>
+            )}
           </label>
           {has("close.in_hand") && <p className="tiny bad">Type a plain amount.</p>}
           <label className="field">

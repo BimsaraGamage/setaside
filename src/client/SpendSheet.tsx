@@ -41,7 +41,8 @@ export function toText(minor: number, currency: string): string {
 
 /**
  * The spend sheet (spec 10): date chip, amount on a number pad, the live
- * "left today" (or "from <pot> pot") line, note, Free money or a pot, One-off, Save.
+ * "left today" (or "from <pot> pot") line, note, Free money or a pot, Card
+ * (with the card choice when there are several, item 18), One-off, Save.
  * Opened with a spend, it edits it and can delete it.
  */
 export function SpendSheet({
@@ -75,13 +76,19 @@ export function SpendSheet({
   // A spend is in its pot's currency (a salary-currency pot's, spec 8), else the spending currency.
   const cur = pot?.currency ?? spendCur;
   const amountMinor = parseAmount(text, cur) ?? 0;
-  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId, oneOff };
+  // Card toggle (spec 9): cards in use in the spend's currency, and a stopped one it is already on.
+  const cards = data.cards.filter((k) => k.currency === cur && (!k.archived || k.id === editing?.cardId));
+  const [cardChoice, setCardChoice] = useState<string | null>(editing?.cardId ?? null);
+  const cardId = cards.some((k) => k.id === cardChoice) ? cardChoice : null;
+  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId, cardId, oneOff };
   const problems = checkSpend(draft, {
     today,
     cycleStartedOn: data.cycle.startedOn,
     ...currencyContext(data),
     pots: data.pots,
     keepPotId: editing?.potId,
+    cards: data.cards,
+    keepCardId: editing?.cardId,
   });
 
   // The live line: today's numbers as they will be after this spend is saved.
@@ -121,8 +128,8 @@ export function SpendSheet({
   const save = () =>
     run(() =>
       editing
-        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId, oneOff })
-        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId, oneOff }),
+        ? actions.change(editing, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff })
+        : actions.add(newId(), { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff }),
     );
 
   return (
@@ -200,6 +207,37 @@ export function SpendSheet({
             onChange={(e) => setNote(e.target.value)}
           />
         </label>
+
+        {cards.length > 0 && (
+          <label className="row check">
+            <input
+              type="checkbox"
+              checked={cardId !== null}
+              onChange={(e) => setCardChoice(e.target.checked ? (cards[0]?.id ?? null) : null)}
+            />
+            <span className="grow">
+              Card
+              <span className="tiny mute block">
+                Held for the card bill; paying the bill takes nothing more
+              </span>
+            </span>
+          </label>
+        )}
+        {cardId !== null && cards.length > 1 && (
+          <fieldset className="chips" aria-label="Card">
+            {cards.map((k) => (
+              <button
+                key={k.id}
+                type="button"
+                className="btn"
+                aria-pressed={cardId === k.id}
+                onClick={() => setCardChoice(k.id)}
+              >
+                {k.name}
+              </button>
+            ))}
+          </fieldset>
+        )}
 
         <label className="row check">
           <input type="checkbox" checked={oneOff} onChange={(e) => setOneOff(e.target.checked)} />

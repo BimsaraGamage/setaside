@@ -49,7 +49,9 @@ export function PayPage({
   const saving = c.kind === "savings" || c.kind === "savings_payback";
   const paidWord = saving ? "moved" : "paid";
   const two = otherCurrency(data.settings);
-  const other = two === null || saving ? null : cur === spendCur ? two : spendCur;
+  // A card bill pays its card in the card's currency (item 18): its money is held from card spends.
+  const cardBill = c.kind === "card_bill";
+  const other = two === null || saving || cardBill ? null : cur === spendCur ? two : spendCur;
   const [payCur, setPayCur] = useState(editing?.currency ?? cur);
   const [text, setText] = useState(() => {
     if (editing) return toText(editing.amountMinor, editing.currency);
@@ -166,6 +168,11 @@ export function PayPage({
             ? plannedGap(totalPaid, c.plannedMinor, cur)
             : `Still to ${saving ? "move" : "pay"} after this: ${formatMoney(Math.max(0, c.plannedMinor - totalPaid), cur)}`}
         </p>
+        {cardBill && (
+          <p className="tiny mute" data-testid="pay-held">
+            Paid from the money held for the card: free money stays the same. The rest stays owed on the card.
+          </p>
+        )}
         <p className="small" data-testid="pay-after">
           You can spend today after this: <b>{formatMoney(view.allowanceMinor, spendCur)}</b>
         </p>

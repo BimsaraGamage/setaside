@@ -3,6 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkFirstUse, cycleSpeeds, isRate, isTimeZone, todayIn, usualDayOf } from "../money";
+import { cardLines } from "./cards";
 import { conversionLines } from "./conversions";
 import { countingRateOf } from "./current";
 import {
@@ -190,6 +191,7 @@ export const firstUse = new Hono<SignedIn>()
         usualAmountMinor: true,
         usualDay: true,
         active: true,
+        cardId: true,
       },
       orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
     });
@@ -199,6 +201,8 @@ export const firstUse = new Hono<SignedIn>()
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
     // This cycle's conversions (item 16): free money and Change dollars' list.
     const conversions = current ? await conversionLines(c, current.id) : [];
+    // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
+    const cards = current ? await cardLines(c, current.id) : [];
     return c.json({
       settings: s
         ? {
@@ -233,9 +237,11 @@ export const firstUse = new Hono<SignedIn>()
         amountMinor: s.amountMinor,
         note: s.note,
         potId: s.potId,
+        cardId: s.cardId,
         oneOff: s.oneOff,
       })),
       pots,
+      cards,
       conversions,
       lastCycle,
       undoSalaryDay,
@@ -254,6 +260,7 @@ export const firstUse = new Hono<SignedIn>()
         recurringId: k.recurringId,
         carriedFromId: k.carriedFromId,
         prepaymentId: k.prepaymentId,
+        cardId: k.cardId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
           .map((p) => ({

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { getAuth, googleConfigured } from "./auth";
+import { cards } from "./cards";
 import { commitments } from "./commitments";
 import { conversions } from "./conversions";
 import { dayChoices } from "./day-choices";
@@ -32,6 +33,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", savings)
   .route("/", prepayments)
   .route("/", conversions)
+  .route("/", cards)
   .route("/", salaryDay);
 
 const app = new Hono<{ Bindings: Bindings }>()
