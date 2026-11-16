@@ -1,31 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
-import { signInFreshToToday } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { keepForOffline, signInFreshToToday } from "./helpers";
 
 // Journey: Installable app (item 23, spec 11). The manifest makes it installable, the service worker keeps
 // the app's files and the phone keeps a copy of the current cycle, so the app opens with no connection.
 // Fresh demo users: sign out is part of it.
 
 test.use({ serviceWorkers: "allow" });
-
-/**
- * Waits until the service worker is active, then loads the page once more: that load runs through it, so its
- * files are kept. (Waiting for this page to be taken over is not enough: a worker that turns active while the
- * page is reloading never takes that page over.)
- */
-async function keepForOffline(page: Page) {
-  // e2e is type-checked without the DOM types: the little of navigator.serviceWorker used here.
-  type Sw = { serviceWorker: { ready: Promise<unknown>; controller: unknown } };
-  await page.evaluate(async () => {
-    await (navigator as unknown as Sw).serviceWorker.ready;
-  });
-  await page.reload();
-  await expect(
-    page.getByTestId("allowance").or(page.getByRole("button", { name: /sign in/i })),
-  ).toBeVisible();
-  expect(await page.evaluate(() => Boolean((navigator as unknown as Sw).serviceWorker.controller))).toBe(
-    true,
-  );
-}
 
 test("installable: manifest with standalone display and icons", async ({ page }) => {
   await page.goto("/");
