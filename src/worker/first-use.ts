@@ -3,6 +3,7 @@ import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkFirstUse, cycleSpeeds, isRate, isTimeZone, todayIn, usualDayOf } from "../money";
+import { conversionLines } from "./conversions";
 import { countingRateOf } from "./current";
 import {
   commitment,
@@ -196,6 +197,8 @@ export const firstUse = new Hono<SignedIn>()
     const undoSalaryDay = current ? (await undoRecord(c, current)) !== null : false;
     const lastCycle =
       current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
+    // This cycle's conversions (item 16): free money and Change dollars' list.
+    const conversions = current ? await conversionLines(c, current.id) : [];
     return c.json({
       settings: s
         ? {
@@ -208,7 +211,12 @@ export const firstUse = new Hono<SignedIn>()
           }
         : null,
       cycle: current
-        ? { id: current.id, startedOn: current.startedOn, expectedSalaryOn: current.expectedSalaryOn }
+        ? {
+            id: current.id,
+            startedOn: current.startedOn,
+            expectedSalaryOn: current.expectedSalaryOn,
+            reserveRate: current.reserveRate,
+          }
         : null,
       incomes: incomes.map((i) => ({
         id: i.id,
@@ -228,6 +236,7 @@ export const firstUse = new Hono<SignedIn>()
         oneOff: s.oneOff,
       })),
       pots,
+      conversions,
       lastCycle,
       undoSalaryDay,
       dayChoices,
@@ -282,6 +291,8 @@ export const firstUse = new Hono<SignedIn>()
         userId,
         startedOn: today,
         expectedSalaryOn: b.expectedSalaryOn,
+        // Two currencies (spec 8): rupee set-asides past the rupees are reserved at the first counting rate.
+        reserveRate: two && b.countingRate ? b.countingRate : null,
       }),
       db.insert(income).values({
         id: b.incomeId,

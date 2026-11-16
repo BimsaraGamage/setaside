@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { Hono } from "hono";
 import { getAuth, googleConfigured } from "./auth";
 import { commitments } from "./commitments";
+import { conversions } from "./conversions";
 import { dayChoices } from "./day-choices";
 import { firstUse } from "./first-use";
 import { payments } from "./payments";
@@ -30,6 +31,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", dayChoices)
   .route("/", savings)
   .route("/", prepayments)
+  .route("/", conversions)
   .route("/", salaryDay);
 
 const app = new Hono<{ Bindings: Bindings }>()

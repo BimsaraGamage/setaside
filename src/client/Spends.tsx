@@ -24,7 +24,7 @@ export function SpendRow({ spend, pot, onOpen }: { spend: Spend; pot?: string; o
   );
 }
 
-/** Money (spec 10): Spends, Savings, Add income. Change dollars, cards, plans and people come with later items. */
+/** Money (spec 10): Spends, Savings, Change dollars (two currencies), Add income. Cards, plans and people come later. */
 export function Money({ data }: { data: Ready }) {
   const n = data.spends.length;
   const cur = data.settings.spendingCurrency;
@@ -49,6 +49,14 @@ export function Money({ data }: { data: Ready }) {
             ›
           </span>
         </a>
+        {data.settings.salaryCurrency !== cur && (
+          <a className="li tap link" href="#ChangeDollars">
+            <span className="grow">Change {data.settings.salaryCurrency}</span>
+            <span className="small mute">
+              {data.conversions.length ? `${data.conversions.length} this cycle ` : ""}›
+            </span>
+          </a>
+        )}
         <a className="li tap link" href="#AddIncome">
           <span className="grow">Add income</span>
           <span className="small mute">›</span>

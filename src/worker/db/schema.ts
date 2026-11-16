@@ -364,8 +364,10 @@ export const prepayment = sqliteTable(
 
 /**
  * A counting rate the user typed (item 15, spec 8): spending-currency units for
- * one salary-currency unit, as typed. The newest one counts (a conversion's rate
- * joins with item 16).
+ * one salary-currency unit, as typed. The newest one counts. A conversion
+ * (item 16) writes one too, with the conversion's id and rate, so the last
+ * conversion's rate counts until another is typed; deleting the conversion
+ * deletes it.
  */
 export const countingRate = sqliteTable(
   "counting_rate",
@@ -377,6 +379,36 @@ export const countingRate = sqliteTable(
     ...appTimestamps,
   },
   (t) => [index("counting_rate_user_id_idx").on(t.userId, t.setAt)],
+);
+
+/**
+ * Dollars changed into rupees ("Change dollars", item 16, spec 8): given in the
+ * salary currency, received in the spending currency, on a day of the cycle.
+ * `rate` is the one actually got (rounded down to 6 decimals). What its rupees
+ * did is worked out when saved and kept: `covered_minor` covered rupee
+ * set-asides not yet covered (bills first), `gain_minor` the rate gain (to
+ * rupee savings) or, below zero, the loss (out of free money).
+ */
+export const conversion = sqliteTable(
+  "conversion",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    givenMinor: integer("given_minor").notNull(),
+    receivedMinor: integer("received_minor").notNull(),
+    rate: text("rate").notNull(),
+    coveredMinor: integer("covered_minor").notNull().default(0),
+    gainMinor: integer("gain_minor").notNull().default(0),
+    doneOn: text("done_on").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("conversion_user_id_idx").on(t.userId, t.doneOn),
+    index("conversion_cycle_id_idx").on(t.cycleId),
+  ],
 );
 
 /**

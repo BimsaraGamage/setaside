@@ -1,9 +1,10 @@
-import { and, eq, gt, inArray, ne, or, type SQL } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, ne, or, type SQL } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
 import {
   broughtIn,
+  broughtInSalary,
   type ClosingEntries,
   checkCycleClose,
   checkExpectedSalaryDay,
@@ -12,6 +13,7 @@ import {
   isComingUp,
   leftoverOf,
   paidItOn,
+  salaryCarriedOf,
   salaryLeftoverOf,
   stillToPayMinor,
   unpaidAtEnd,
@@ -21,6 +23,7 @@ import { countingRateOf, current } from "./current";
 import {
   commitment,
   commitmentPayment,
+  conversion,
   cycle,
   cycleClose,
   dayChoice,
@@ -83,8 +86,13 @@ const salaryDayBody = z.object({
     .max(50),
   /** Steps 2 and 3: last cycle's leftover and unpaid commitments (item 12). */
   close: z.object({
-    /** Two currencies: the income row for the salary currency's leftover, carried whole (item 15). */
+    /** Two currencies: the income row for the salary currency's leftover (item 15). */
     salaryLeftoverIncomeId: z.uuid().optional(),
+    /** Two currencies: the `cycle_close` row for the salary currency's leftover (item 16). */
+    salaryCloseId: z.uuid().optional(),
+    /** Two currencies: dollars actually in hand (null keeps the dollar leftover) and sent to dollar savings. */
+    salaryInHandMinor: z.number().int().nullable().default(null),
+    salaryToSavingsMinor: z.number().int().default(0),
     /** The `cycle_close` row and the new cycle's `leftover` income. */
     closeId: z.uuid(),
     leftoverIncomeId: z.uuid(),
@@ -104,8 +112,8 @@ const salaryDayBody = z.object({
   }),
 });
 
-/** The current cycle's entries, as the money rules need them, to work out its leftover. */
-async function entriesOf(
+/** The current cycle's entries, as the money rules need them: its leftover, a conversion's split. */
+export async function entriesOf(
   c: { var: SignedIn["Variables"] },
   now: NonNullable<Awaited<ReturnType<typeof current>>>,
 ) {
@@ -149,10 +157,16 @@ async function entriesOf(
     where: and(mine(savingsMovement), eq(savingsMovement.cycleId, id), eq(savingsMovement.kind, "take_out")),
     columns: { currency: true, amountMinor: true, movedOn: true },
   });
+  const conversions = await db.query.conversion.findMany({
+    where: and(mine(conversion), eq(conversion.cycleId, id)),
+    columns: { givenMinor: true, receivedMinor: true, gainMinor: true },
+  });
   return {
     spendingCurrency: now.settings.spendingCurrency,
     salaryCurrency: now.settings.salaryCurrency,
     countingRate: await countingRateOf(c),
+    reserveRate: now.cycle.reserveRate,
+    conversions,
     startedOn: now.cycle.startedOn,
     expectedSalaryOn: now.cycle.expectedSalaryOn,
     incomes,
@@ -179,6 +193,7 @@ type Stamped =
   | typeof savingsMovement
   | typeof prepayment
   | typeof recurringCommitment
+  | typeof conversion
   | typeof income;
 
 /**
@@ -195,7 +210,8 @@ export async function undoRecord(
 ): Promise<SalaryDayUndo | null> {
   const { db, mine } = c.var;
   const close = await db.query.cycleClose.findFirst({
-    where: and(mine(cycleClose), eq(cycleClose.nextCycleId, cur.id)),
+    // The spending currency's row holds it; a second currency's row has none (item 16).
+    where: and(mine(cycleClose), eq(cycleClose.nextCycleId, cur.id), isNotNull(cycleClose.undo)),
     columns: { undo: true },
   });
   if (!close?.undo) return null;
@@ -216,6 +232,7 @@ export async function undoRecord(
     any(savingsMovement),
     any(prepayment),
     any(recurringCommitment),
+    any(conversion),
     // The salary amount stays editable during the current cycle (spec 2).
     any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
   ]);
@@ -302,8 +319,18 @@ export const salaryDay = new Hono<SignedIn>()
     const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
     const leftover = leftoverOf(entries, b.close.unpaid);
     const salaryLeftover = salaryLeftoverOf(entries, b.close.unpaid);
-    if (salaryLeftover && !b.close.salaryLeftoverIncomeId) problems.push("close.new_id");
-    for (const p of checkCycleClose(b.close, { unpaidIds: unpaid.map((k) => k.id), leftover })) {
+    const salaryBrought =
+      salaryLeftover === null
+        ? null
+        : broughtInSalary(b.close, salaryLeftover, salaryCarriedOf(entries, b.close.unpaid));
+    const salaryIncome =
+      salaryBrought !== null && (salaryBrought.amountMinor !== 0 || salaryBrought.toSavingsMinor !== 0);
+    const salaryIdsMissing =
+      (salaryIncome && !b.close.salaryLeftoverIncomeId) ||
+      (salaryLeftover !== null && !b.close.salaryCloseId);
+    if (salaryIdsMissing) problems.push("close.new_id");
+    const closeCtx = { unpaidIds: unpaid.map((k) => k.id), leftover, salaryLeftoverMinor: salaryLeftover };
+    for (const p of checkCycleClose(b.close, closeCtx)) {
       problems.push(`close.${p}`);
     }
     const unpaidById = new Map(unpaid.map((k) => [k.id, k]));
@@ -344,7 +371,7 @@ export const salaryDay = new Hono<SignedIn>()
         userId,
         startedOn: b.receivedOn,
         expectedSalaryOn: b.expectedSalaryOn,
-        // The counting rate when salary day was confirmed (spec 8); item 16 reserves at it.
+        // The counting rate when salary day was confirmed (spec 8): rupee set-asides are reserved at it.
         reserveRate: entries.countingRate ?? null,
       }),
       db.insert(income).values({
@@ -515,8 +542,23 @@ export const salaryDay = new Hono<SignedIn>()
         }),
       );
     }
-    // Two currencies: the salary currency's leftover goes to the new cycle as unconverted money.
-    if (salaryLeftover && b.close.salaryLeftoverIncomeId && now.currencies.salaryCurrency) {
+    // Two currencies: the salary currency's leftover to dollar savings and the new cycle (item 16).
+    const salaryCur = now.currencies.salaryCurrency;
+    if (salaryBrought && salaryCur && b.close.salaryCloseId) {
+      writes.push(
+        db.insert(cycleClose).values({
+          ...stamp,
+          id: b.close.salaryCloseId,
+          userId,
+          cycleId: now.cycle.id,
+          nextCycleId: b.cycleId,
+          currency: salaryCur,
+          leftoverCorrectionMinor: salaryBrought.correctionMinor,
+          leftoverToSavingsMinor: salaryBrought.toSavingsMinor,
+        }),
+      );
+    }
+    if (salaryBrought && salaryIncome && salaryCur && b.close.salaryLeftoverIncomeId) {
       writes.push(
         db.insert(income).values({
           ...stamp,
@@ -524,9 +566,9 @@ export const salaryDay = new Hono<SignedIn>()
           userId,
           cycleId: b.cycleId,
           kind: "leftover",
-          currency: now.currencies.salaryCurrency,
-          amountMinor: salaryLeftover,
-          toSavingsMinor: 0,
+          currency: salaryCur,
+          amountMinor: salaryBrought.amountMinor,
+          toSavingsMinor: salaryBrought.toSavingsMinor,
           receivedOn: b.receivedOn,
         }),
       );

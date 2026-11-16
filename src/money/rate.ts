@@ -36,3 +36,32 @@ export function atRate(minor: Minor, rate: Rate, from: string, to: string): Mino
   if (num % den !== 0n && num < 0n) q -= 1n;
   return Number(q);
 }
+
+/**
+ * The least money in `from` that counts as at least `target` in `to` at `rate`
+ * (rounded up): the dollars reserved for rupee set-asides (spec 8), so free
+ * money is never overstated.
+ */
+export function minorAtLeast(target: Minor, rate: Rate, from: string, to: string): Minor {
+  if (target <= 0) return 0;
+  const [whole = "0", frac = ""] = rate.split(".");
+  const num = BigInt(target) * 10n ** BigInt(frac.length + minorDigits(from));
+  const den = BigInt(`${whole}${frac}`) * 10n ** BigInt(minorDigits(to));
+  return Number((num + den - 1n) / den);
+}
+
+/**
+ * The rate a conversion actually got (spec 8): `to` units for one `from` unit,
+ * rounded down to 6 decimals, trailing zeros left out; null when either amount
+ * is not above zero, or the rate rounds to nothing or is past what a rate holds.
+ */
+export function rateOf(givenMinor: Minor, receivedMinor: Minor, from: string, to: string): Rate | null {
+  if (!Number.isSafeInteger(givenMinor) || !Number.isSafeInteger(receivedMinor)) return null;
+  if (givenMinor <= 0 || receivedMinor <= 0) return null;
+  const scaled =
+    (BigInt(receivedMinor) * 10n ** BigInt(minorDigits(from) + 6)) /
+    (BigInt(givenMinor) * 10n ** BigInt(minorDigits(to)));
+  const whole = scaled / 1_000_000n;
+  const frac = (scaled % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return parseRate(frac ? `${whole}.${frac}` : `${whole}`);
+}

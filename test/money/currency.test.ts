@@ -12,6 +12,7 @@ import {
   freeMoney,
   isRate,
   parseRate,
+  salaryCarriedOf,
   salaryDayGapMinor,
   salaryLeftoverOf,
   todayView,
@@ -206,7 +207,7 @@ describe("first use and salary day with two currencies (spec 2, 6, 8)", () => {
     expect(gap(39_000)).toBe(300_000);
   });
 
-  it("the salary currency's leftover is carried to the new cycle whole (item 15)", () => {
+  it("the salary currency's leftover leaves out the carried ones' money (item 16)", () => {
     const entries = {
       ...base,
       commitments: [
@@ -214,13 +215,13 @@ describe("first use and salary day with two currencies (spec 2, 6, 8)", () => {
         { id: "k2", currency: "USD", plannedMinor: 2_000, dueOn: "2026-12-02", state: "open" as const },
       ],
     };
-    // Free $880, dropped $100 joins it, carried $20 goes with its commitment's money.
-    expect(
-      salaryLeftoverOf(entries, [
-        { id: "k1", choice: "drop" },
-        { id: "k2", choice: "carry" },
-      ]),
-    ).toBe(88_000 + 10_000 + 2_000);
+    // Free $880, dropped $100 joins it; carried $20 goes with its commitment, not leftover.
+    const choices = [
+      { id: "k1", choice: "drop" as const },
+      { id: "k2", choice: "carry" as const },
+    ];
+    expect(salaryLeftoverOf(entries, choices)).toBe(88_000 + 10_000);
+    expect(salaryCarriedOf(entries, choices)).toBe(2_000);
     expect(salaryLeftoverOf({ ...entries, salaryCurrency: "LKR" }, [])).toBeNull();
   });
 });

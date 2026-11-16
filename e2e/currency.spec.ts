@@ -44,3 +44,39 @@ test("two currencies: money held in each, a dollar bill, and a new counting rate
   await tabs.getByRole("link", { name: "Today" }).click();
   await expect(page.getByTestId("free-money")).toHaveText("Rs 37,900");
 });
+
+test("change dollars: the rate got becomes the counting rate, and this cycle's conversions", async ({
+  page,
+}) => {
+  await signInFresh(page);
+  await page.getByLabel("Spending currency").selectOption("LKR");
+  await page.getByLabel("Salary currency").selectOption("USD");
+  await page.getByLabel("Usual pay day").selectOption("25");
+  await page.getByRole("button", { name: "Next" }).click();
+  // Rs 10,000 and $100 held, Rs 300 a dollar; no bills, no pots.
+  await page.getByLabel("Amount (LKR)").fill("10000");
+  await page.getByLabel("Amount (USD)").fill("100");
+  await page.getByLabel(/Counting rate/).fill("300");
+  for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 40,000");
+
+  // $50 changed into Rs 16,000: no rupee bills to cover, all of it is free money.
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  await tabs.getByRole("link", { name: "Money" }).click();
+  await page.getByRole("link", { name: /Change USD/ }).click();
+  await page.getByLabel("USD given").fill("50");
+  await page.getByLabel("LKR received").fill("16000");
+  await expect(page.getByTestId("conversion-rate")).toHaveText("1 USD = 320 LKR");
+  await expect(page.getByTestId("conversion-free")).toHaveText("Rs 16,000");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Changed $50 into Rs 16,000");
+  const list = page.getByRole("region", { name: "This cycle's conversions" });
+  await expect(list).toContainText("$50 → Rs 16,000");
+  await expect(page.getByLabel(/LKR for 1 USD/)).toHaveValue("320");
+
+  // Rs 10,000 + Rs 16,000 + $50 at the new counting rate (Rs 320) = Rs 42,000.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await tabs.getByRole("link", { name: "Today" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 42,000");
+});

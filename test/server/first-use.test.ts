@@ -45,6 +45,7 @@ describe("first use (item 3, spec 2)", () => {
       spends: [],
       commitments: [],
       pots: [],
+      conversions: [],
       lastCycle: null,
       dayChoices: [],
       savings: [],
@@ -69,7 +70,7 @@ describe("first use (item 3, spec 2)", () => {
         usualPayDay: 25,
         countingRate: null,
       },
-      cycle: { id: b.cycleId, startedOn: today, expectedSalaryOn: b.expectedSalaryOn },
+      cycle: { id: b.cycleId, startedOn: today, expectedSalaryOn: b.expectedSalaryOn, reserveRate: null },
       incomes: [
         {
           id: b.incomeId,
@@ -83,6 +84,7 @@ describe("first use (item 3, spec 2)", () => {
       spends: [],
       commitments: [],
       pots: [],
+      conversions: [],
       lastCycle: null,
       dayChoices: [],
       savings: [],
