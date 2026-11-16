@@ -417,6 +417,24 @@ export const conversion = sqliteTable(
 );
 
 /**
+ * A credit card (item 18, spec 9). Its balance is only ever worked out: its card
+ * spends (`spend.card_id`) less payments on its card bills (`commitment.card_id`).
+ * "Stop using this card": `archived`, not offered on the spend sheet.
+ */
+export const card = sqliteTable(
+  "card",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    ...appTimestamps,
+  },
+  (t) => [index("card_user_id_idx").on(t.userId)],
+);
+
+/**
  * The "Every cycle" template (item 11, spec 3): on salary day each active one
  * fills a `commitment` in the new cycle with its last amount and day. Kept up to
  * date from the commitment it is switched on for. Paused: `active` off.
@@ -427,7 +445,7 @@ export const recurringCommitment = sqliteTable(
     id: text("id").primaryKey(),
     userId: ownerColumn(),
     name: text("name").notNull(),
-    kind: text("kind", { enum: ["bill", "savings"] })
+    kind: text("kind", { enum: ["bill", "savings", "card_bill"] })
       .notNull()
       .default("bill"),
     currency: text("currency").notNull(),

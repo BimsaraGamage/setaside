@@ -7,7 +7,10 @@ import type { Toaster } from "./toast";
 export type CommitmentKind = "bill" | "savings";
 
 export interface CommitmentDraft {
-  kind: CommitmentKind;
+  /** A card bill is made from its card's page (item 18). */
+  kind: CommitmentKind | "card_bill";
+  /** A card bill's card. */
+  cardId?: string;
   name: string;
   plannedMinor: number;
   dueOn: string;
@@ -35,7 +38,13 @@ const add = (id: string, { everyCycle, ...d }: CommitmentDraft, recurringId?: st
       json: { id, ...d, recurringId: everyCycle ? (recurringId ?? newId()) : undefined },
     }),
   );
-const change = (id: string, d: Partial<CommitmentDraft> & { state?: State; recurringId?: string }) =>
+/** What PATCH takes: the kind only between a bill and savings; never the card or currency. */
+type CommitmentChangeBody = Partial<Omit<CommitmentDraft, "kind" | "cardId" | "currency">> & {
+  kind?: CommitmentKind;
+  state?: State;
+  recurringId?: string;
+};
+const change = (id: string, d: CommitmentChangeBody) =>
   ok(api.api.commitments[":id"].$patch({ param: { id }, json: d }));
 const remove = (id: string) => ok(api.api.commitments[":id"].$delete({ param: { id } }));
 
@@ -46,18 +55,26 @@ const changePayment = (id: string, d: Partial<PaymentDraft>) =>
 const removePayment = (id: string) => ok(api.api.payments[":id"].$delete({ param: { id } }));
 
 const draftOf = (c: Commitment): CommitmentDraft => ({
-  kind: c.kind === "savings" ? "savings" : "bill",
+  kind: c.kind === "savings" || c.kind === "card_bill" ? c.kind : "bill",
+  ...(c.kind === "card_bill" && c.cardId ? { cardId: c.cardId } : {}),
   name: c.name,
   plannedMinor: c.plannedMinor,
   dueOn: c.dueOn,
   everyCycle: c.recurringId !== null,
   currency: c.currency,
 });
-/** What the commitment page changes: a payback to savings keeps its kind and never repeats (item 14). */
+/**
+ * What the commitment page changes: a payback to savings keeps its kind and never
+ * repeats (item 14); a card bill keeps its kind and card (item 18).
+ */
 export type CommitmentChange = Pick<CommitmentDraft, "name" | "plannedMinor" | "dueOn"> &
-  Partial<Pick<CommitmentDraft, "kind" | "everyCycle">>;
-const changeOf = (c: Commitment): CommitmentChange =>
-  c.kind === "savings_payback" ? { name: c.name, plannedMinor: c.plannedMinor, dueOn: c.dueOn } : draftOf(c);
+  Partial<{ kind: CommitmentKind; everyCycle: boolean }>;
+const changeOf = (c: Commitment): CommitmentChange => {
+  const base = { name: c.name, plannedMinor: c.plannedMinor, dueOn: c.dueOn };
+  if (c.kind === "savings_payback") return base;
+  if (c.kind === "card_bill") return { ...base, everyCycle: c.recurringId !== null };
+  return { ...base, kind: c.kind === "savings" ? "savings" : "bill", everyCycle: c.recurringId !== null };
+};
 /** Puts a commitment's fields and its "Every cycle" switch back (the template keeps its id). */
 const changeBack = (old: Commitment) =>
   change(old.id, { ...changeOf(old), recurringId: old.recurringId ?? undefined });

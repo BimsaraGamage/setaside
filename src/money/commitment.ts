@@ -26,7 +26,12 @@ export interface CommitmentEntry {
   state: CommitmentState;
   /** Payments so far (parts allowed); none means unpaid. */
   payments?: PaymentEntry[];
+  /** `commitment.kind`; a card bill's money is held, not set aside (spec 9). None: a bill. */
+  kind?: string;
 }
+
+/** A card bill (spec 9): its card spends already came out of free money. */
+const held = (c: CommitmentEntry) => c.kind === "card_bill";
 
 /**
  * Due on or before the expected salary day: belongs to this cycle and is set aside.
@@ -89,7 +94,7 @@ export function paymentCovers(
 export function setAsideMinor(list: CommitmentEntry[], expectedSalaryOn: Day, currency: string): Minor {
   let total = 0;
   for (const c of list) {
-    if (c.currency === currency && isSetAside(c, expectedSalaryOn)) total += stillToPayMinor(c);
+    if (c.currency === currency && !held(c) && isSetAside(c, expectedSalaryOn)) total += stillToPayMinor(c);
   }
   return total;
 }
@@ -98,11 +103,11 @@ export function setAsideMinor(list: CommitmentEntry[], expectedSalaryOn: Day, cu
  * What commitments take out of free money, in one currency (spec 3): every payment
  * made, plus what is still set aside. So paying as planned changes nothing, paying
  * more lowers free money by the gap at once, and marking one finished after paying
- * less gives the rest back.
+ * less gives the rest back. Card bills take nothing: their card spends did (spec 9).
  */
 export function commitmentsOutMinor(list: CommitmentEntry[], expectedSalaryOn: Day, currency: string): Minor {
   let total = setAsideMinor(list, expectedSalaryOn, currency);
-  for (const c of list) total += paidMinor(c, currency);
+  for (const c of list) if (!held(c)) total += paidMinor(c, currency);
   return total;
 }
 

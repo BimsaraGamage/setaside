@@ -66,6 +66,7 @@ describe("spends (item 4, spec 7)", () => {
         amountMinor: 185_000,
         note: "lunch",
         potId: null,
+        cardId: null,
         oneOff: false,
       },
     ]);
@@ -155,6 +156,7 @@ describe("spends (item 4, spec 7)", () => {
         amountMinor: 250_000,
         note: null,
         potId: null,
+        cardId: null,
         oneOff: false,
       },
     ]);

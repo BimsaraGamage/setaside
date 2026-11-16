@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   type CommitmentState,
+  cardBalanceMinor,
   type DayChoiceEntry,
   formatMoney,
   type IncomeKind,
@@ -38,6 +39,8 @@ export interface Current {
   commitments: Commitment[];
   /** Every pot, in use or not, with this cycle's amount (item 7). */
   pots: Pot[];
+  /** Every card, in use or not, with what it owed before this cycle (item 18). */
+  cards: Card[];
   /** This cycle's conversions, newest first (item 16). */
   conversions: Conversion[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
@@ -68,15 +71,28 @@ export interface Conversion {
   doneOn: string;
 }
 
+/** A credit card (item 18, spec 9). */
+export interface Card {
+  id: string;
+  name: string;
+  currency: string;
+  /** "Stop using this card": not offered on the spend sheet. */
+  archived: boolean;
+  /** Card spends less card bill payments of ended cycles; this cycle's rows are added on the phone. */
+  earlierMinor: number;
+}
+
 export interface Recurring {
   id: string;
   name: string;
-  kind: "bill" | "savings";
+  kind: "bill" | "savings" | "card_bill";
   currency: string;
   usualAmountMinor: number;
   usualDay: number;
   /** Off: paused, not filled in on salary day. */
   active: boolean;
+  /** A card bill's card (item 18): salary day fills it from the card's balance. */
+  cardId: string | null;
 }
 
 export interface Prepayment {
@@ -134,6 +150,8 @@ export interface Commitment {
   carriedFromId: string | null;
   /** The prepayment a payback to savings pays back (item 14). */
   prepaymentId: string | null;
+  /** A card bill's card (item 18). */
+  cardId: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }
@@ -157,6 +175,8 @@ export interface Spend {
   potId: string | null;
   /** Left out of the spending speed (item 8). */
   oneOff: boolean;
+  /** The card it was paid with; null means cash (item 18). */
+  cardId: string | null;
 }
 
 /** The current cycle's settings and cycle, once first use is done. */
@@ -190,6 +210,11 @@ export function takenOut(data: Pick<Ready, "savings" | "cycle">) {
   return data.savings
     .filter((l) => l.kind === "take_out" && l.cycleId === data.cycle.id)
     .map((l) => ({ currency: l.currency, amountMinor: -l.amountMinor, movedOn: l.on }));
+}
+
+/** A card's balance now (spec 9): what it owed before this cycle, plus this cycle's card spends, less its bills' payments. */
+export function cardBalance(data: Pick<Ready, "spends" | "commitments">, card: Card): number {
+  return cardBalanceMinor(card, data.spends, data.commitments);
 }
 
 /** A pot as the money rules need it. */

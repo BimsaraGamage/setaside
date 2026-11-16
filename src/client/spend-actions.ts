@@ -8,6 +8,8 @@ export interface SpendDraft {
   note: string | null;
   /** The pot it comes from; null means free money (item 7). */
   potId: string | null;
+  /** The card it was paid with; null means cash (item 18). */
+  cardId: string | null;
   /** Left out of the spending speed (item 8). */
   oneOff: boolean;
 }
@@ -24,6 +26,7 @@ const draftOf = (s: Spend): SpendDraft => ({
   amountMinor: s.amountMinor,
   note: s.note,
   potId: s.potId,
+  cardId: s.cardId,
   oneOff: s.oneOff,
 });
 

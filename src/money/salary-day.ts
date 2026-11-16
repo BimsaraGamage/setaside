@@ -13,8 +13,8 @@ import { checkPot, type PotEntry } from "./pot";
 import { isRate, type Rate } from "./rate";
 import type { Speed } from "./speed";
 
-/** Kinds a recurring ("Every cycle") commitment can be until cards, plans and people (items 18–20). */
-export type RecurringKind = "bill" | "savings";
+/** Kinds a recurring ("Every cycle") commitment can be until plans and people (items 19, 20). */
+export type RecurringKind = "bill" | "savings" | "card_bill";
 
 /** One `recurring_commitment` row: the "Every cycle" template (spec 3). */
 export interface RecurringEntry {
@@ -28,6 +28,8 @@ export interface RecurringEntry {
   usualDay: number;
   /** Off: paused, not filled in on salary day. */
   active: boolean;
+  /** A card bill's card (item 18): filled from that card's balance, not the last amount. */
+  cardId?: string | null;
 }
 
 /** The day of the month a due date falls on: what "Every cycle" keeps (spec 3). */
@@ -64,6 +66,7 @@ export interface ComingUpEntry extends CommitmentEntry {
   name: string;
   kind: RecurringKind | "savings_payback";
   prepaymentId?: string | null;
+  cardId?: string | null;
   payments?: PaymentEntry[];
 }
 
@@ -83,18 +86,23 @@ export interface SalaryDayDraft {
   everyCycle: boolean;
   /** The prepayment a payback to savings pays back (item 14). */
   prepaymentId?: string;
+  /** A card bill's card (item 18). */
+  cardId?: string;
 }
 
 /**
  * Step 4's rows (spec 3, 6): last cycle's open commitments due after its salary
  * day, with what is still to pay, then every active recurring commitment with
  * its last amount and day. A coming-up one made from a recurring one stands in
- * for that one. By due date, then name.
+ * for that one. A card bill's template (item 18) is filled from its card:
+ * `cardFill` gives the amount (the balance less what other open bills of the
+ * card still owe); none or nothing owed leaves it out. By due date, then name.
  */
 export function salaryDayDrafts(a: {
   recurring: RecurringEntry[];
   comingUp: ComingUpEntry[];
   startedOn: Day;
+  cardFill?: (cardId: string) => Minor;
 }): SalaryDayDraft[] {
   const rows: SalaryDayDraft[] = [];
   const covered = new Set<string>();
@@ -114,19 +122,24 @@ export function salaryDayDrafts(a: {
       dueOn: c.dueOn,
       everyCycle: template !== undefined,
       ...(c.prepaymentId ? { prepaymentId: c.prepaymentId } : {}),
+      ...(c.cardId ? { cardId: c.cardId } : {}),
     });
   }
   for (const r of a.recurring) {
     if (!r.active || covered.has(r.id)) continue;
+    const card = r.kind === "card_bill" ? r.cardId : undefined;
+    const plannedMinor = card ? (a.cardFill?.(card) ?? 0) : r.usualAmountMinor;
+    if (r.kind === "card_bill" && (!card || plannedMinor <= 0)) continue;
     rows.push({
       recurringId: r.id,
       carriedFromId: null,
       name: r.name,
       kind: r.kind,
       currency: r.currency,
-      plannedMinor: r.usualAmountMinor,
+      plannedMinor,
       dueOn: dueOnFrom(a.startedOn, r.usualDay),
       everyCycle: true,
+      ...(card ? { cardId: card } : {}),
     });
   }
   return rows.sort((x, y) =>
@@ -178,7 +191,7 @@ export interface SalaryDayInput {
   receivedOn: string;
   expectedSalaryOn: string;
   /** Each in either currency (spec 8); none: the spending currency. */
-  commitments: { name: string; plannedMinor: number; dueOn: string; currency?: string }[];
+  commitments: { name: string; plannedMinor: number; dueOn: string; currency?: string; kind?: string }[];
   pots: { name: string; usualAmountMinor: number; amountMinor: number; currency?: string }[];
   /** Step 6, two currencies (spec 6, 8): a new counting rate; none keeps the current one. */
   countingRate?: Rate | null;
@@ -278,6 +291,7 @@ export function salaryDayView(a: {
   const salaryCur = otherCurrency({ spendingCurrency: cur, ...two }) ?? cur;
   const commitments: CommitmentEntry[] = [
     ...input.commitments.map((c) => ({
+      kind: c.kind,
       currency: c.currency ?? cur,
       plannedMinor: c.plannedMinor,
       dueOn: c.dueOn,
