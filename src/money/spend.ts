@@ -1,4 +1,4 @@
-import type { Minor } from "./amount";
+import type { Currencies, Minor } from "./amount";
 import { type Day, isDay } from "./days";
 import type { PotEntry } from "./pot";
 
@@ -21,11 +21,10 @@ export interface SpendInput {
   potId?: string | null;
 }
 
-export interface SpendContext {
+export interface SpendContext extends Currencies {
   today: Day;
   /** Spends are dated back within the current cycle only (spec 2). */
   cycleStartedOn: Day;
-  spendingCurrency: string;
   /** The user's pots; a spend goes to one in use (spec 4). */
   pots?: Pick<PotEntry, "id" | "currency" | "archived">[];
   /** A changed spend may stay in the stopped pot it is already in. */
@@ -43,8 +42,9 @@ export function checkSpend(input: SpendInput, ctx: SpendContext): SpendProblem[]
   if (!isDay(input.spentOn) || input.spentOn < ctx.cycleStartedOn || input.spentOn > ctx.today) {
     out.push("spent_on");
   }
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // In the spending currency; a spend in a salary-currency pot is in the pot's (spec 8).
+  const inSalaryPot = input.potId != null && input.currency === ctx.salaryCurrency;
+  if (input.currency !== ctx.spendingCurrency && !inSalaryPot) out.push("currency");
   if (input.note != null && input.note.length > NOTE_MAX) out.push("note");
   if (input.potId != null) {
     const pot = ctx.pots?.find((p) => p.id === input.potId);

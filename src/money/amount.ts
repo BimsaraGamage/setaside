@@ -13,6 +13,17 @@ export function isCurrency(code: string): boolean {
   return /^[A-Z]{3}$/.test(code) && currencies.has(code);
 }
 
+/** The user's currencies (spec 8): the spending currency, and the salary currency when it differs. */
+export interface Currencies {
+  spendingCurrency: string;
+  salaryCurrency?: string;
+}
+
+/** Whether `code` is one of the user's two currencies (at most two per user, spec 8). */
+export function isUsersCurrency(code: string, ctx: Currencies): boolean {
+  return code === ctx.spendingCurrency || (ctx.salaryCurrency !== undefined && code === ctx.salaryCurrency);
+}
+
 const digitsCache = new Map<string, number>();
 
 /** Digits after the point for this currency: LKR 2, JPY 0, KWD 3. */

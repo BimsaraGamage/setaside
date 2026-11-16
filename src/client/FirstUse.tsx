@@ -5,6 +5,7 @@ import {
   firstUseView,
   formatMoney,
   parseAmount,
+  parseRate,
   suggestSalaryDay,
   todayIn,
 } from "../money";
@@ -22,11 +23,15 @@ const STEPS = 6;
 /**
  * First use (spec 2): settings → money you have now → next salary day → the
  * bills still unpaid before it → pots → summary. Bills and pots are salary
- * day's steps 4 and 5 (shared in CycleSteps). One currency until item 15.
+ * day's steps 4 and 5 (shared in CycleSteps). Two currencies (spec 8): money
+ * held in each, and the counting rate.
  */
 export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSignedOut: () => void }) {
   const [step, setStep] = useState(1);
   const [currency, setCurrency] = useState("LKR");
+  const [salaryCurrency, setSalaryCurrency] = useState("LKR");
+  const [heldSalary, setHeldSalary] = useState("");
+  const [rateText, setRateText] = useState("");
   const [timeZone, setTimeZone] = useState(phoneTimeZone);
   const [payDay, setPayDay] = useState(25);
   const [held, setHeld] = useState("");
@@ -39,16 +44,32 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
 
   const today = todayIn(timeZone, Date.now());
   const heldMinor = parseAmount(held, currency);
+  const two = salaryCurrency !== currency;
+  const heldSalaryMinor = two ? parseAmount(heldSalary || "0", salaryCurrency) : 0;
+  const countingRate = two ? parseRate(rateText) : null;
+  const currencyList = two ? [currency, salaryCurrency] : [currency];
   const expected = salaryOn ?? suggestSalaryDay(today, payDay);
-  const amount = (t: string) => parseAmount(t, currency) ?? -1;
-  const bills = rows.map((r) => ({ name: r.name, plannedMinor: amount(r.text), dueOn: r.dueOn }));
-  const potAmounts = pots.map((p) => ({ name: p.name, amountMinor: amount(p.text) }));
+  // Each row's currency must still be one of the user's (the currencies can change in step 1).
+  const rowCur = (c: string) => (currencyList.includes(c) ? c : currency);
+  const amount = (t: string, c: string) => parseAmount(t, rowCur(c)) ?? -1;
+  const bills = rows.map((r) => ({
+    name: r.name,
+    currency: rowCur(r.currency),
+    plannedMinor: amount(r.text, r.currency),
+    dueOn: r.dueOn,
+  }));
+  const potAmounts = pots.map((p) => ({
+    name: p.name,
+    currency: rowCur(p.currency),
+    amountMinor: amount(p.text, p.currency),
+  }));
   const input = {
-    salaryCurrency: currency,
+    salaryCurrency,
     spendingCurrency: currency,
     homeTimeZone: timeZone,
     usualPayDay: payDay,
     heldMinor: heldMinor ?? -1,
+    ...(two ? { heldSalaryMinor: heldSalaryMinor ?? -1, countingRate } : {}),
     expectedSalaryOn: expected,
     commitments: bills,
     pots: potAmounts,
@@ -58,6 +79,9 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
   const view = firstUseView({
     heldMinor: heldMinor ?? 0,
     spendingCurrency: currency,
+    salaryCurrency,
+    heldSalaryMinor: heldSalaryMinor ?? 0,
+    countingRate,
     today,
     expectedSalaryOn: expected,
     commitments: bills,
@@ -79,10 +103,12 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
           settingsId: newId(),
           cycleId: newId(),
           incomeId: newId(),
+          ...(two ? { salaryIncomeId: newId(), countingRateId: newId() } : {}),
           commitments: rows.map((r) => ({
             id: r.id,
             name: r.name,
-            plannedMinor: amount(r.text),
+            currency: rowCur(r.currency),
+            plannedMinor: amount(r.text, r.currency),
             dueOn: r.dueOn,
             // "Every cycle" on: a template is made with the bill.
             recurringId: r.everyCycle ? newId() : null,
@@ -91,7 +117,8 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
             id: p.id,
             allocationId: p.allocationId,
             name: p.name,
-            amountMinor: amount(p.text),
+            currency: rowCur(p.currency),
+            amountMinor: amount(p.text, p.currency),
           })),
         },
       });
@@ -121,15 +148,33 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
             A few things first. You can change the pay day and time zone later in Settings.
           </p>
           <label className="field">
-            Currency
-            <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            Spending currency
+            <select
+              value={currency}
+              onChange={(e) => {
+                // Same as before: keep salary and spending together until the user splits them.
+                if (salaryCurrency === currency) setSalaryCurrency(e.target.value);
+                setCurrency(e.target.value);
+              }}
+            >
               {currencies.map((c) => (
                 <option key={c} value={c}>
                   {c} · {currencyNames.of(c)}
                 </option>
               ))}
             </select>
-            <span className="tiny mute">Salary and spending in one currency for now.</span>
+            <span className="tiny mute">What you spend day to day in. Set once.</span>
+          </label>
+          <label className="field">
+            Salary currency
+            <select value={salaryCurrency} onChange={(e) => setSalaryCurrency(e.target.value)}>
+              {currencies.map((c) => (
+                <option key={c} value={c}>
+                  {c} · {currencyNames.of(c)}
+                </option>
+              ))}
+            </select>
+            <span className="tiny mute">What your salary is paid in. Often the same. Set once.</span>
           </label>
           <label className="field">
             Home time zone
@@ -182,6 +227,38 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
               <span className="tiny bad">Type a plain amount, like 85000.</span>
             )}
           </label>
+          {two && (
+            <>
+              <label className="field">
+                Amount ({salaryCurrency})
+                <input
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={heldSalary}
+                  onChange={(e) => setHeldSalary(e.target.value)}
+                  placeholder="0"
+                />
+                {heldSalaryMinor === null && <span className="tiny bad">Type a plain amount.</span>}
+              </label>
+              <label className="field">
+                Counting rate ({currency} for 1 {salaryCurrency})
+                <input
+                  inputMode="decimal"
+                  autoComplete="off"
+                  value={rateText}
+                  onChange={(e) => setRateText(e.target.value)}
+                  placeholder="0"
+                />
+                <span className="tiny mute">
+                  {salaryCurrency} you haven't changed yet count toward free money at this rate. Your bank's
+                  rate today is fine; you can change it any time in Settings.
+                </span>
+                {rateText !== "" && countingRate === null && (
+                  <span className="tiny bad">Type a plain rate above zero, like 302.50.</span>
+                )}
+              </label>
+            </>
+          )}
           <div className="row">
             <button type="button" className="btn" onClick={() => go(1)}>
               Back
@@ -189,7 +266,7 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
             <button
               type="button"
               className="btn pri grow"
-              disabled={heldMinor === null}
+              disabled={heldMinor === null || (two && (heldSalaryMinor === null || countingRate === null))}
               onClick={() => go(3)}
             >
               Next
@@ -240,7 +317,7 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
           <CommitmentsStep
             rows={rows}
             setRows={setRows}
-            cur={currency}
+            currencies={currencyList}
             startedOn={today}
             expected={expected}
             has={has}
@@ -266,7 +343,7 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
         <section className="stack" aria-labelledby="fu-h">
           <h1 id="fu-h">Pots</h1>
           <p className="mute">Money kept for things bought bit by bit until the salary, like groceries.</p>
-          <PotsStep pots={pots} setPots={setPots} cur={currency} has={has} />
+          <PotsStep pots={pots} setPots={setPots} currencies={currencyList} has={has} />
           <div className="row">
             <button type="button" className="btn" onClick={() => go(4)}>
               Back
@@ -286,6 +363,12 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
               <span className="grow">Money you have</span>
               <b>{money(heldMinor)}</b>
             </div>
+            {two && heldSalaryMinor !== null && (
+              <div className="li">
+                <span className="grow">and</span>
+                <b>{formatMoney(heldSalaryMinor, salaryCurrency)}</b>
+              </div>
+            )}
             <div className="li">
               <span className="grow">Bills set aside</span>
               <b>{money(view.setAsideMinor)}</b>

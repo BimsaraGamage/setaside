@@ -9,6 +9,7 @@ import {
   todayView,
   type Verdict,
 } from "../money";
+import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { entriesOf, type Pot, potEntry, type Ready, type Spend, useToday } from "./data";
 import { newId } from "./id";
 import type { PotActions } from "./pot-actions";
@@ -142,7 +143,9 @@ export function PotPage({
   actions: PotActions;
   onOpenSpend: (s: Spend, today: string) => void;
 }) {
-  const cur = data.settings.spendingCurrency;
+  const spendCur = data.settings.spendingCurrency;
+  // Either currency, chosen when it is made, fixed after (spec 8).
+  const [cur, setCur] = useState(editing?.currency ?? spendCur);
   const today = useToday(data.settings.homeTimeZone);
   const [name, setName] = useState(editing?.name ?? starter ?? "");
   const [text, setText] = useState(editing?.amountMinor != null ? toText(editing.amountMinor, cur) : "");
@@ -157,7 +160,7 @@ export function PotPage({
     ? (parseAmount(usualText, cur) ?? (usualText === "" ? 0 : -1))
     : amountMinor;
   const draft = { name: name.trim(), usualAmountMinor, amountMinor };
-  const problems = checkPot({ ...draft, currency: cur }, { spendingCurrency: cur });
+  const problems = checkPot({ ...draft, currency: cur }, currencyContext(data));
   const spends = editing ? data.spends.filter((s) => s.potId === editing.id) : [];
   const stopped = editing?.archived ?? false;
 
@@ -219,6 +222,17 @@ export function PotPage({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        {!editing && (
+          <CurrencyChoice
+            currencies={currenciesOf(data.settings)}
+            value={cur}
+            onChange={(c) => {
+              setCur(c);
+              setText("");
+              setUsualText("");
+            }}
+          />
+        )}
         {amountField("Amount this cycle", text, setText, "Set aside now, until the salary.")}
         {amountField(
           "Usual amount",
@@ -231,7 +245,7 @@ export function PotPage({
         )}
         {!stopped && (
           <p className="small" data-testid="pot-after">
-            You can spend today after this: <b>{formatMoney(after.allowanceMinor, cur)}</b>
+            You can spend today after this: <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
           </p>
         )}
       </section>
@@ -285,7 +299,9 @@ export function PotPage({
             className="btn pri grow"
             disabled={busy || problems.length > 0}
             onClick={() =>
-              run(() => (editing ? actions.change(editing, draft) : actions.add(newId(), draft)))
+              run(() =>
+                editing ? actions.change(editing, draft) : actions.add(newId(), { ...draft, currency: cur }),
+              )
             }
           >
             Save

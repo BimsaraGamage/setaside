@@ -15,7 +15,7 @@ test("sign in as the demo user, first use, Today, then sign out", async ({ page 
   await expect(welcome.or(allowance)).toBeVisible();
 
   if (await welcome.isVisible()) {
-    await page.getByLabel("Currency").selectOption("LKR");
+    await page.getByLabel("Spending currency").selectOption("LKR");
     await page.getByLabel("Usual pay day").selectOption("25");
     await page.getByRole("button", { name: "Next" }).click();
 
@@ -24,10 +24,12 @@ test("sign in as the demo user, first use, Today, then sign out", async ({ page 
     await page.getByRole("button", { name: "Next" }).click();
 
     await expect(page.getByRole("heading", { name: "Next salary day" })).toBeVisible();
-    await page.getByRole("button", { name: "Next" }).click();
-
-    await expect(page.getByRole("heading", { name: "Summary" })).toBeVisible();
-    await expect(page.getByText("Rs 90,000")).toBeVisible();
+    // No bills and no pots (steps 4 and 5, ticket 37).
+    for (const heading of ["Bills still to pay", "Pots", "Summary"]) {
+      await page.getByRole("button", { name: "Next" }).click();
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
+    await expect(page.getByTestId("first-use-free")).toHaveText("Rs 90,000");
     await page.getByRole("button", { name: "Start" }).click();
   }
 

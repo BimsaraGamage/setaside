@@ -1,4 +1,4 @@
-import type { Minor } from "./amount";
+import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import { NAME_MAX } from "./commitment";
 import type { Day } from "./days";
 import type { SpendEntry } from "./spend";
@@ -82,13 +82,13 @@ export type PotProblem = "name" | "usual_amount" | "amount" | "currency";
 const minor = (n: number) => Number.isSafeInteger(n) && n >= 0;
 
 /** Checks a new or changed pot (spec 4). The phone shows the problems; the server refuses them. */
-export function checkPot(input: PotInput, ctx: { spendingCurrency: string }): PotProblem[] {
+export function checkPot(input: PotInput, ctx: Currencies): PotProblem[] {
   const out: PotProblem[] = [];
   const name = input.name.trim();
   if (!name || name.length > NAME_MAX) out.push("name");
   if (!minor(input.usualAmountMinor)) out.push("usual_amount");
   if (!minor(input.amountMinor)) out.push("amount");
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // Either of the user's currencies (spec 8).
+  if (!isUsersCurrency(input.currency, ctx)) out.push("currency");
   return out;
 }

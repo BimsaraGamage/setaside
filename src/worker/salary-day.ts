@@ -12,11 +12,12 @@ import {
   isComingUp,
   leftoverOf,
   paidItOn,
+  salaryLeftoverOf,
   stillToPayMinor,
   unpaidAtEnd,
   usualDayOf,
 } from "../money";
-import { current } from "./current";
+import { countingRateOf, current } from "./current";
 import {
   commitment,
   commitmentPayment,
@@ -53,6 +54,8 @@ const salaryDayBody = z.object({
         /** A payback to savings: the prepayment it pays back (item 14). */
         prepaymentId: z.uuid().nullish(),
         name,
+        /** Either of the user's currencies (spec 8); none: the spending currency. */
+        currency: z.string().optional(),
         plannedMinor: z.number().int(),
         dueOn: z.string(),
         /** The template it was filled from, or the one "Every cycle" makes. */
@@ -72,12 +75,16 @@ const salaryDayBody = z.object({
         allocationId: z.uuid(),
         amountMinor: z.number().int(),
         name: name.optional(),
+        /** A new pot's currency (spec 8); a known pot keeps its own. */
+        currency: z.string().optional(),
         usualAmountMinor: z.number().int().optional(),
       }),
     )
     .max(50),
   /** Steps 2 and 3: last cycle's leftover and unpaid commitments (item 12). */
   close: z.object({
+    /** Two currencies: the income row for the salary currency's leftover, carried whole (item 15). */
+    salaryLeftoverIncomeId: z.uuid().optional(),
     /** The `cycle_close` row and the new cycle's `leftover` income. */
     closeId: z.uuid(),
     leftoverIncomeId: z.uuid(),
@@ -144,6 +151,8 @@ async function entriesOf(
   });
   return {
     spendingCurrency: now.settings.spendingCurrency,
+    salaryCurrency: now.settings.salaryCurrency,
+    countingRate: await countingRateOf(c),
     startedOn: now.cycle.startedOn,
     expectedSalaryOn: now.cycle.expectedSalaryOn,
     incomes,
@@ -236,12 +245,13 @@ export const salaryDay = new Hono<SignedIn>()
         ...p,
         old,
         name: old?.name ?? p.name ?? "",
+        currency: old?.currency ?? p.currency ?? cur,
         usualAmountMinor: old?.usualAmountMinor ?? p.usualAmountMinor ?? -1,
       };
     });
     const problems = checkSalaryDay(
       { ...b, pots: potRows },
-      { today: now.today, cycleStartedOn: now.cycle.startedOn, spendingCurrency: cur },
+      { today: now.today, cycleStartedOn: now.cycle.startedOn, ...now.currencies },
     );
     // A pot once only; a stopped pot is not set aside again.
     if (new Set(b.pots.map((p) => p.id)).size !== b.pots.length) problems.push("pot.twice");
@@ -291,6 +301,8 @@ export const salaryDay = new Hono<SignedIn>()
     const entries = await entriesOf(c, now);
     const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
     const leftover = leftoverOf(entries, b.close.unpaid);
+    const salaryLeftover = salaryLeftoverOf(entries, b.close.unpaid);
+    if (salaryLeftover && !b.close.salaryLeftoverIncomeId) problems.push("close.new_id");
     for (const p of checkCycleClose(b.close, { unpaidIds: unpaid.map((k) => k.id), leftover })) {
       problems.push(`close.${p}`);
     }
@@ -332,6 +344,8 @@ export const salaryDay = new Hono<SignedIn>()
         userId,
         startedOn: b.receivedOn,
         expectedSalaryOn: b.expectedSalaryOn,
+        // The counting rate when salary day was confirmed (spec 8); item 16 reserves at it.
+        reserveRate: entries.countingRate ?? null,
       }),
       db.insert(income).values({
         ...stamp,
@@ -361,7 +375,7 @@ export const salaryDay = new Hono<SignedIn>()
           writes.push(
             db
               .insert(recurringCommitment)
-              .values({ ...stamp, id: k.recurringId, userId, currency: cur, ...template }),
+              .values({ ...stamp, id: k.recurringId, userId, currency: k.currency ?? cur, ...template }),
           );
         } else if (!k.carriedFromId) {
           // The amount and day confirmed today become the last ones (spec 3).
@@ -391,7 +405,7 @@ export const salaryDay = new Hono<SignedIn>()
           recurringId,
           name: k.name,
           kind: k.kind,
-          currency: cur,
+          currency: k.currency ?? cur,
           plannedMinor: k.plannedMinor,
           dueOn: k.dueOn,
           carriedFromId: k.carriedFromId ?? null,
@@ -501,6 +515,22 @@ export const salaryDay = new Hono<SignedIn>()
         }),
       );
     }
+    // Two currencies: the salary currency's leftover goes to the new cycle as unconverted money.
+    if (salaryLeftover && b.close.salaryLeftoverIncomeId && now.currencies.salaryCurrency) {
+      writes.push(
+        db.insert(income).values({
+          ...stamp,
+          id: b.close.salaryLeftoverIncomeId,
+          userId,
+          cycleId: b.cycleId,
+          kind: "leftover",
+          currency: now.currencies.salaryCurrency,
+          amountMinor: salaryLeftover,
+          toSavingsMinor: 0,
+          receivedOn: b.receivedOn,
+        }),
+      );
+    }
     for (const p of potRows) {
       if (!p.old) {
         writes.push(
@@ -509,7 +539,7 @@ export const salaryDay = new Hono<SignedIn>()
             id: p.id,
             userId,
             name: p.name,
-            currency: cur,
+            currency: p.currency,
             usualAmountMinor: p.usualAmountMinor,
           }),
         );

@@ -13,6 +13,8 @@ export interface CommitmentDraft {
   dueOn: string;
   /** The "Every cycle" switch (item 11). */
   everyCycle: boolean;
+  /** Either currency (spec 8), only when it is made; none: the spending currency. */
+  currency?: string;
 }
 
 export interface PaymentDraft {
@@ -47,6 +49,7 @@ const draftOf = (c: Commitment): CommitmentDraft => ({
   plannedMinor: c.plannedMinor,
   dueOn: c.dueOn,
   everyCycle: c.recurringId !== null,
+  currency: c.currency,
 });
 /** What the commitment page changes: a payback to savings keeps its kind and never repeats (item 14). */
 export type CommitmentChange = Pick<CommitmentDraft, "name" | "plannedMinor" | "dueOn"> &

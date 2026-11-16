@@ -1,4 +1,4 @@
-import type { Minor } from "./amount";
+import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import { type Day, daysBetween, isDay } from "./days";
 
 /** `commitment.state` (data-model.md). Only open ones are set aside. */
@@ -113,9 +113,8 @@ export interface CommitmentInput {
   currency: string;
 }
 
-export interface CommitmentContext {
+export interface CommitmentContext extends Currencies {
   cycleStartedOn: Day;
-  spendingCurrency: string;
 }
 
 export type CommitmentProblem = "name" | "amount" | "due_on" | "currency";
@@ -129,8 +128,8 @@ export function checkCommitment(input: CommitmentInput, ctx: CommitmentContext):
   if (!name || name.length > NAME_MAX) out.push("name");
   if (!Number.isSafeInteger(input.plannedMinor) || input.plannedMinor <= 0) out.push("amount");
   if (!isDay(input.dueOn) || input.dueOn < ctx.cycleStartedOn) out.push("due_on");
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // Either of the user's currencies (spec 8).
+  if (!isUsersCurrency(input.currency, ctx)) out.push("currency");
   return out;
 }
 
@@ -144,7 +143,8 @@ export interface PaymentContext {
   today: Day;
   /** Payments are dated within the current cycle, up to today (spec 2, 3). */
   cycleStartedOn: Day;
-  spendingCurrency: string;
+  /** The commitment's currency. */
+  currency: string;
 }
 
 export type PaymentProblem = "amount" | "paid_on" | "currency";
@@ -156,7 +156,7 @@ export function checkPayment(input: PaymentInput, ctx: PaymentContext): PaymentP
   if (!isDay(input.paidOn) || input.paidOn < ctx.cycleStartedOn || input.paidOn > ctx.today) {
     out.push("paid_on");
   }
-  // One currency until item 17 (paid in the other currency).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // In the commitment's own currency until item 17 (paid in the other currency).
+  if (input.currency !== ctx.currency) out.push("currency");
   return out;
 }

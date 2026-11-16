@@ -62,7 +62,13 @@ describe("first use (item 3, spec 2)", () => {
     const today = todayIn(TZ, Date.now());
     const cur = await (await call("/api/current", {}, cookie)).json();
     expect(cur).toEqual({
-      settings: { salaryCurrency: "LKR", spendingCurrency: "LKR", homeTimeZone: TZ, usualPayDay: 25 },
+      settings: {
+        salaryCurrency: "LKR",
+        spendingCurrency: "LKR",
+        homeTimeZone: TZ,
+        usualPayDay: 25,
+        countingRate: null,
+      },
       cycle: { id: b.cycleId, startedOn: today, expectedSalaryOn: b.expectedSalaryOn },
       incomes: [
         {
@@ -99,7 +105,7 @@ describe("first use (item 3, spec 2)", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({
       error: "invalid",
-      problems: ["salary_currency", "expected_salary_on"],
+      problems: ["counting_rate", "expected_salary_on", "new_id"],
     });
     const n = await env.DB.prepare("select count(*) as n from settings where user_id = ?")
       .bind(id)

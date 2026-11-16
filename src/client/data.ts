@@ -16,6 +16,8 @@ export interface Current {
     spendingCurrency: string;
     homeTimeZone: string;
     usualPayDay: number;
+    /** The counting rate (spec 8); null with one currency or none set. */
+    countingRate: string | null;
   } | null;
   cycle: { id: string; startedOn: string; expectedSalaryOn: string } | null;
   incomes: {
@@ -143,6 +145,8 @@ export type Ready = Current & {
 export function entriesOf(data: Ready) {
   return {
     spendingCurrency: data.settings.spendingCurrency,
+    salaryCurrency: data.settings.salaryCurrency,
+    countingRate: data.settings.countingRate,
     startedOn: data.cycle.startedOn,
     expectedSalaryOn: data.cycle.expectedSalaryOn,
     lastSpeed: data.lastCycle?.speed ?? null,

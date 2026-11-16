@@ -8,6 +8,8 @@ export interface PotDraft {
   usualAmountMinor: number;
   /** This cycle's amount. */
   amountMinor: number;
+  /** Either currency (spec 8), only when it is made; none: the spending currency. */
+  currency?: string;
 }
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
@@ -56,6 +58,7 @@ export function potActions({ done }: Toaster) {
               name: p.name,
               usualAmountMinor: p.usualAmountMinor,
               amountMinor: p.amountMinor ?? 0,
+              currency: p.currency,
             }),
         }),
       ),

@@ -1,4 +1,5 @@
-import { formatMoney, savingsTotal } from "../money";
+import { combinedSavingsMinor, formatMoney } from "../money";
+import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
 
 /** The pot a spend came from, by name; none for free money. */
@@ -38,7 +39,14 @@ export function Money({ data }: { data: Ready }) {
         <a className="li tap link" href="#Savings">
           <span className="grow">Savings</span>
           <span className="small mute" data-testid="money-savings">
-            {formatMoney(savingsTotal(data.savings, cur), cur)} ›
+            {formatMoney(
+              combinedSavingsMinor(data.savings, {
+                ...currencyContext(data),
+                countingRate: data.settings.countingRate,
+              }),
+              cur,
+            )}{" "}
+            ›
           </span>
         </a>
         <a className="li tap link" href="#AddIncome">
@@ -74,7 +82,10 @@ export function SpendsPage({ data, onOpen }: { data: Ready; onOpen: (s: Spend, t
             <h3 className="grow">{day === today ? "Today" : dayLabel(day)}</h3>
             <span className="tiny mute">
               {formatMoney(
-                list.reduce((n, s) => n + s.amountMinor, 0),
+                list.reduce(
+                  (n, s) => n + (s.currency === data.settings.spendingCurrency ? s.amountMinor : 0),
+                  0,
+                ),
                 data.settings.spendingCurrency,
               )}
             </span>

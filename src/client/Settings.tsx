@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
+import { parseRate } from "../money";
 import { api } from "./api";
 import type { Current } from "./data";
 import { timeZones } from "./data";
+import { newId } from "./id";
 import { SignInSettings } from "./SignInSettings";
 
-/** Settings (spec 10): currency, usual pay day, home time zone; sign-in. */
+/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; sign-in. */
 export function Settings({
   settings,
   onChanged,
@@ -16,6 +18,21 @@ export function Settings({
 }) {
   const [note, setNote] = useState<string | null>(null);
   const zones = useMemo(() => timeZones(settings.homeTimeZone), [settings.homeTimeZone]);
+  const two = settings.salaryCurrency !== settings.spendingCurrency;
+  const [rateText, setRateText] = useState(settings.countingRate ?? "");
+  const rate = parseRate(rateText);
+  const [rateBusy, setRateBusy] = useState(false);
+
+  /** Counting rate with Set (spec 8): free salary-currency money counts at it from now on. */
+  async function setRate() {
+    if (!rate) return;
+    setNote(null);
+    setRateBusy(true);
+    const res = await api.api["counting-rates"].$post({ json: { id: newId(), rate } }).catch(() => null);
+    setRateBusy(false);
+    if (!res?.ok) setNote("Not saved. Check the connection and try again.");
+    onChanged();
+  }
 
   async function save(change: { usualPayDay?: number; homeTimeZone?: string }) {
     setNote(null);
@@ -29,10 +46,46 @@ export function Settings({
       <h1>Settings</h1>
       <section className="card" aria-labelledby="money-settings-h">
         <h3 id="money-settings-h">Money</h3>
-        <div className="li">
-          <span className="grow">Currency</span>
-          <span className="small">{settings.spendingCurrency}</span>
-        </div>
+        {two ? (
+          <>
+            <div className="li">
+              <span className="grow">Salary currency</span>
+              <span className="small">{settings.salaryCurrency}</span>
+            </div>
+            <div className="li">
+              <span className="grow">Spending currency</span>
+              <span className="small">{settings.spendingCurrency}</span>
+            </div>
+            <label className="field">
+              Counting rate ({settings.spendingCurrency} for 1 {settings.salaryCurrency})
+              <input
+                inputMode="decimal"
+                autoComplete="off"
+                value={rateText}
+                onChange={(e) => setRateText(e.target.value)}
+              />
+              <span className="tiny mute">
+                {settings.salaryCurrency} not changed yet count toward free money at this rate.
+              </span>
+              {rateText !== "" && rate === null && (
+                <span className="tiny bad">Type a plain rate above zero, like 302.50.</span>
+              )}
+            </label>
+            <button
+              type="button"
+              className="btn"
+              disabled={rateBusy || rate === null || rate === settings.countingRate}
+              onClick={setRate}
+            >
+              Set
+            </button>
+          </>
+        ) : (
+          <div className="li">
+            <span className="grow">Currency</span>
+            <span className="small">{settings.spendingCurrency}</span>
+          </div>
+        )}
         <label className="li">
           <span className="grow">Usual pay day</span>
           <select

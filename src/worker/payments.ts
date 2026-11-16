@@ -30,16 +30,17 @@ export const payments = new Hono<SignedIn>()
     const now = await current(c);
     const owner = await db.query.commitment.findFirst({
       where: and(mine(commitment), eq(commitment.id, id)),
-      columns: { cycleId: true, state: true },
+      columns: { cycleId: true, state: true, currency: true },
     });
     if (!now || !owner) return c.json({ error: "not_found" as const }, 404);
     if (owner.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     if (owner.state !== "open") return c.json({ error: "not_open" as const }, 409);
-    const row = { ...b, currency: now.settings.spendingCurrency };
+    // In the commitment's own currency until item 17 (paid in the other currency).
+    const row = { ...b, currency: owner.currency };
     const problems = checkPayment(row, {
       today: now.today,
       cycleStartedOn: now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
+      currency: owner.currency,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     const insert = db.insert(commitmentPayment).values({ ...row, userId, commitmentId: id });
@@ -72,7 +73,7 @@ export const payments = new Hono<SignedIn>()
     const owner = old
       ? await db.query.commitment.findFirst({
           where: and(mine(commitment), eq(commitment.id, old.commitmentId)),
-          columns: { cycleId: true },
+          columns: { cycleId: true, currency: true },
         })
       : undefined;
     if (!now || !old || !owner) return c.json({ error: "not_found" as const }, 404);
@@ -81,7 +82,7 @@ export const payments = new Hono<SignedIn>()
     const problems = checkPayment(next, {
       today: now.today,
       cycleStartedOn: now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
+      currency: owner.currency,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
@@ -101,7 +102,7 @@ export const payments = new Hono<SignedIn>()
     const owner = old
       ? await db.query.commitment.findFirst({
           where: and(mine(commitment), eq(commitment.id, old.commitmentId)),
-          columns: { cycleId: true },
+          columns: { cycleId: true, currency: true },
         })
       : undefined;
     if (!now || !old || !owner) return c.json({ error: "not_found" as const }, 404);

@@ -31,7 +31,7 @@ async function firstUseToToday(page: Page) {
   const allowance = page.getByTestId("allowance");
   await expect(welcome.or(allowance)).toBeVisible();
   if (await welcome.isVisible()) {
-    await page.getByLabel("Currency").selectOption("LKR");
+    await page.getByLabel("Spending currency").selectOption("LKR");
     await page.getByLabel("Usual pay day").selectOption("25");
     await page.getByRole("button", { name: "Next" }).click();
     await page.getByLabel("Amount (LKR)").fill("90,000");

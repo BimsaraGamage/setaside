@@ -9,6 +9,7 @@ import {
   stillToPayMinor,
   todayView,
 } from "../money";
+import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
 import { type Commitment, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
@@ -64,8 +65,8 @@ export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) 
         </span>
         <b className="small">
           {formatMoney(
-            done ? paidMinor(c, cur) : c.payments.length ? stillToPayMinor(c) : c.plannedMinor,
-            cur,
+            done ? paidMinor(c, c.currency) : c.payments.length ? stillToPayMinor(c) : c.plannedMinor,
+            c.currency,
           )}
         </b>
       </a>
@@ -193,7 +194,9 @@ export function CommitmentPage({
   editing?: Commitment;
   actions: CommitmentActions;
 }) {
-  const cur = data.settings.spendingCurrency;
+  const spendCur = data.settings.spendingCurrency;
+  // Either currency, chosen when it is made, fixed after (spec 8).
+  const [cur, setCur] = useState(editing?.currency ?? spendCur);
   const today = useToday(data.settings.homeTimeZone);
   const [kind, setKind] = useState<CommitmentKind>(editing?.kind === "savings" ? "savings" : "bill");
   // A payback keeps its kind and never repeats: salary day makes the next one (item 14).
@@ -210,7 +213,7 @@ export function CommitmentPage({
   const changed = payback ? { name: draft.name, plannedMinor, dueOn } : draft;
   const problems = checkCommitment(
     { ...draft, currency: cur },
-    { cycleStartedOn: data.cycle.startedOn, spendingCurrency: cur },
+    { cycleStartedOn: data.cycle.startedOn, ...currencyContext(data) },
   );
   const others = data.commitments.filter((c) => c.id !== editing?.id);
   const mine = {
@@ -286,6 +289,16 @@ export function CommitmentPage({
             onChange={(e) => setName(e.target.value)}
           />
         </label>
+        {!editing && (
+          <CurrencyChoice
+            currencies={currenciesOf(data.settings)}
+            value={cur}
+            onChange={(c) => {
+              setCur(c);
+              setText("");
+            }}
+          />
+        )}
         <label className="field">
           Amount ({cur})
           <input
@@ -326,7 +339,7 @@ export function CommitmentPage({
           </label>
         )}
         <p className="small" data-testid="commitment-after">
-          You can spend today after this: <b>{formatMoney(after.allowanceMinor, cur)}</b>
+          You can spend today after this: <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
         </p>
       </section>
 
@@ -350,7 +363,9 @@ export function CommitmentPage({
           className="btn pri grow"
           disabled={busy || problems.length > 0}
           onClick={() =>
-            run(() => (editing ? actions.change(editing, changed) : actions.add(newId(), draft)))
+            run(() =>
+              editing ? actions.change(editing, changed) : actions.add(newId(), { ...draft, currency: cur }),
+            )
           }
         >
           Save

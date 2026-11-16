@@ -118,7 +118,7 @@ describe("part payments and still to pay (spec 3)", () => {
 });
 
 describe("a payment is checked before it is saved (spec 3)", () => {
-  const ctx = { today: "2026-11-14", cycleStartedOn: "2026-11-12", spendingCurrency: "LKR" };
+  const ctx = { today: "2026-11-14", cycleStartedOn: "2026-11-12", currency: "LKR" };
   const ok = { amountMinor: 3_600_000, paidOn: "2026-11-14", currency: "LKR" };
 
   it("accepts a whole positive amount, dated in this cycle up to today", () => {
@@ -126,7 +126,7 @@ describe("a payment is checked before it is saved (spec 3)", () => {
     expect(checkPayment({ ...ok, paidOn: "2026-11-12" }, ctx)).toEqual([]);
   });
 
-  it("needs a whole amount above zero in the spending currency", () => {
+  it("needs a whole amount above zero in the commitment's currency", () => {
     expect(checkPayment({ ...ok, amountMinor: 0 }, ctx)).toEqual(["amount"]);
     expect(checkPayment({ ...ok, amountMinor: -5 }, ctx)).toEqual(["amount"]);
     expect(checkPayment({ ...ok, amountMinor: 1.5 }, ctx)).toEqual(["amount"]);
