@@ -20,6 +20,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { planLines } from "./plans";
 import { prepaymentLines } from "./prepayments";
 import { undoRecord } from "./salary-day";
 import { savingsLines } from "./savings";
@@ -203,6 +204,8 @@ export const firstUse = new Hono<SignedIn>()
     const conversions = current ? await conversionLines(c, current.id) : [];
     // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
     const cards = current ? await cardLines(c, current.id) : [];
+    // Instalment plans with what is paid so far and their extra payments (item 19).
+    const plans = current ? await planLines(c) : [];
     return c.json({
       settings: s
         ? {
@@ -242,6 +245,7 @@ export const firstUse = new Hono<SignedIn>()
       })),
       pots,
       cards,
+      plans,
       conversions,
       lastCycle,
       undoSalaryDay,
@@ -261,6 +265,7 @@ export const firstUse = new Hono<SignedIn>()
         carriedFromId: k.carriedFromId,
         prepaymentId: k.prepaymentId,
         cardId: k.cardId,
+        planId: k.planId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
           .map((p) => ({

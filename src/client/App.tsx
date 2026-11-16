@@ -8,6 +8,7 @@ import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FirstUse } from "./FirstUse";
 import { PayPage } from "./Pay";
 import { CommitmentPage, Plan } from "./Plan";
+import { PlanPage, planActions } from "./Plans";
 import { PotPage } from "./Pots";
 import { potActions } from "./pot-actions";
 import { SalaryDayPage, salaryDayActions } from "./SalaryDay";
@@ -31,6 +32,7 @@ const pages = {
   AddIncome: "Money",
   ChangeDollars: "Money",
   Card: "Money",
+  Instalments: "Money",
   Commitment: "Plan",
   Pay: "Plan",
   Payment: "Plan",
@@ -66,6 +68,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const savings = savingsActions(toaster);
   const conversions = conversionActions(toaster);
   const cards = cardActions(toaster);
+  const plans = planActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
@@ -114,6 +117,8 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const pot = tab === "Pot" && !newPot ? ready.pots.find((p) => p.id === id) : undefined;
   // "#Card" adds a card; "#Card/<id>" opens one (item 18).
   const card = tab === "Card" && id ? ready.cards.find((k) => k.id === id) : undefined;
+  // "#Instalments" makes a plan; "#Instalments/<id>" opens one (item 19).
+  const plan = tab === "Instalments" && id ? ready.plans.find((p) => p.id === id) : undefined;
   const toast = toaster.toast;
   return (
     <>
@@ -198,6 +203,17 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
                 ← Back
               </a>
               <p className="mute">This card is no longer here.</p>
+            </>
+          ))}
+        {tab === "Instalments" &&
+          (!id || plan ? (
+            <PlanPage key={id ?? "new"} data={ready} editing={plan} actions={plans} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Money">
+                ← Back
+              </a>
+              <p className="mute">This plan is no longer here.</p>
             </>
           ))}
         {tab === "ChangeDollars" && <ChangeDollarsPage data={ready} actions={conversions} onRate={reload} />}

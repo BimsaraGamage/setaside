@@ -318,7 +318,8 @@ export const dayChoice = sqliteTable(
  * Take out (−). In the cycle it was made in: a take-out raises that cycle's free
  * money. Set-asides moved and extra income to savings are their own rows
  * (commitment payments, `income.to_savings_minor`). A prepayment's money out
- * is kind `prepayment`, linked to its `prepayment` row (item 14).
+ * is kind `prepayment`, linked to its `prepayment` row (item 14). Pay extra on a
+ * plan from savings is kind `plan_extra`, with its `plan_extra_payment`'s id (item 19).
  */
 export const savingsMovement = sqliteTable(
   "savings_movement",
@@ -432,6 +433,64 @@ export const card = sqliteTable(
     ...appTimestamps,
   },
   (t) => [index("card_user_id_idx").on(t.userId)],
+);
+
+/**
+ * An instalment plan (item 19, spec 9): a bank loan or card instalments, paid
+ * in fixed payments. Each cycle a commitment of kind `plan_payment` (linked by
+ * `commitment.plan_id`) sets aside the next payment. Paid so far, interest and
+ * the last payment date are only ever worked out. `paid_off_on`: Pay it all off.
+ */
+export const instalmentPlan = sqliteTable(
+  "instalment_plan",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    priceMinor: integer("price_minor").notNull(),
+    paymentCount: integer("payment_count").notNull(),
+    /** The usual payment; the last one is only what is left. */
+    paymentMinor: integer("payment_minor").notNull(),
+    firstPaymentOn: text("first_payment_on").notNull(),
+    /** The card it is on (shown only). */
+    cardId: text("card_id"),
+    /** The normal monthly price, for the prepayment saving (optional). */
+    normalMonthlyMinor: integer("normal_monthly_minor"),
+    paidOffOn: text("paid_off_on"),
+    ...appTimestamps,
+  },
+  (t) => [index("instalment_plan_user_id_idx").on(t.userId)],
+);
+
+/**
+ * Pay extra or Pay it all off on a plan (item 19, spec 9), in the current cycle.
+ * From free money it comes out of that cycle's free money at once; from savings
+ * a `savings_movement` of kind `plan_extra` with the same id takes it out of
+ * savings. `pays_off`: it was Pay it all off (Undo reopens the plan).
+ */
+export const planExtraPayment = sqliteTable(
+  "plan_extra_payment",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    cycleId: text("cycle_id")
+      .notNull()
+      .references(() => cycle.id, { onDelete: "cascade" }),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => instalmentPlan.id, { onDelete: "cascade" }),
+    currency: text("currency").notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    paidFrom: text("paid_from", { enum: ["free", "savings"] }).notNull(),
+    paysOff: integer("pays_off", { mode: "boolean" }).notNull().default(false),
+    paidOn: text("paid_on").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("plan_extra_payment_user_id_idx").on(t.userId),
+    index("plan_extra_payment_plan_id_idx").on(t.planId),
+  ],
 );
 
 /**

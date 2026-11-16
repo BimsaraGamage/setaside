@@ -191,6 +191,35 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/prepayments/:id": (o) => ({ path: `/api/prepayments/${firstRow(o, "prepayment")}` }),
+  // Aimed at the first user's plan, commitment and extra payment: must not take any over, pay or delete them.
+  "POST /api/plans": (o) => ({
+    path: "/api/plans",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "instalment_plan"),
+        commitmentId: firstRow(o, "commitment"),
+        name: "x",
+        priceMinor: 1,
+        paymentCount: 1,
+        paymentMinor: 1,
+        firstPaymentOn: "2999-01-01",
+        cardId: firstRow(o, "card"),
+      }),
+    },
+  }),
+  "DELETE /api/plans/:id": (o) => ({ path: `/api/plans/${firstRow(o, "instalment_plan")}` }),
+  "POST /api/plans/:id/extra": (o) => ({
+    path: `/api/plans/${firstRow(o, "instalment_plan")}/extra`,
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "plan_extra_payment"),
+        amountMinor: 1,
+        from: "free",
+        paysOff: true,
+      }),
+    },
+  }),
+  "DELETE /api/plans/extra/:id": (o) => ({ path: `/api/plans/extra/${firstRow(o, "plan_extra_payment")}` }),
   // Aimed at the first user's cycle, income, commitment, template and pot: must not take any over.
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
@@ -284,6 +313,8 @@ async function seedOwnerData(ownerId: string) {
   const pp = crypto.randomUUID();
   const cv = crypto.randomUUID();
   const cd = crypto.randomUUID();
+  const pl = crypto.randomUUID();
+  const px = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -337,6 +368,12 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into card (id, user_id, name, currency, archived, created_at, updated_at) values (?, ?, 'Visa', 'LKR', 0, ?, ?)",
     ).bind(cd, ownerId, now, now),
+    env.DB.prepare(
+      "insert into instalment_plan (id, user_id, name, currency, price_minor, payment_count, payment_minor, first_payment_on, created_at, updated_at) values (?, ?, 'Phone', 'LKR', 10800000, 12, 1000000, '2026-11-20', ?, ?)",
+    ).bind(pl, ownerId, now, now),
+    env.DB.prepare(
+      "insert into plan_extra_payment (id, user_id, cycle_id, plan_id, currency, amount_minor, paid_from, pays_off, paid_on, created_at, updated_at) values (?, ?, ?, ?, 'LKR', 100000, 'free', 0, '2026-11-12', ?, ?)",
+    ).bind(px, ownerId, c, pl, now, now),
   ]);
 }
 

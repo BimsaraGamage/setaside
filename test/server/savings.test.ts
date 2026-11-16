@@ -162,7 +162,7 @@ describe("add income (item 10, spec 5)", () => {
       { kind: "extra", amountMinor: 100, toSavingsMinor: 101 },
       { kind: "extra", amountMinor: 0, toSavingsMinor: 0 },
       { kind: "salary", amountMinor: 100, toSavingsMinor: 0 },
-      { kind: "loan", amountMinor: 100, toSavingsMinor: 0 },
+      { kind: "borrowed", amountMinor: 100, toSavingsMinor: 0 },
     ]) {
       expect((await send("POST", "/api/incomes", { id: crypto.randomUUID(), ...body }, cookie)).status).toBe(
         400,

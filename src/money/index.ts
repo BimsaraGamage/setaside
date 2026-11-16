@@ -11,6 +11,7 @@ export * from "./cycle";
 export * from "./cycle-close";
 export * from "./days";
 export * from "./first-use";
+export * from "./plan";
 export * from "./pot";
 export * from "./prepayment";
 export * from "./rate";

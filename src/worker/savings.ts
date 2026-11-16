@@ -8,6 +8,8 @@ import {
   commitmentPayment,
   conversion,
   income,
+  instalmentPlan,
+  planExtraPayment,
   prepayment,
   savingsMovement,
   settings,
@@ -18,12 +20,21 @@ import type { SignedIn } from "./user-check";
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
   id: string;
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback" | "rate_gain";
+  kind:
+    | "put_in"
+    | "take_out"
+    | "income"
+    | "leftover"
+    | "set_aside"
+    | "prepayment"
+    | "payback"
+    | "rate_gain"
+    | "plan_extra";
   cycleId: string;
   currency: string;
   amountMinor: number;
   on: string;
-  /** The commitment's name for a set-aside or payback moved; the prepayment's name. */
+  /** The commitment's name for a set-aside or payback moved; the prepayment's or plan's name. */
   name: string | null;
 }
 
@@ -45,9 +56,13 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       amountMinor: savingsMovement.amountMinor,
       movedOn: savingsMovement.movedOn,
       name: prepayment.name,
+      planName: instalmentPlan.name,
     })
     .from(savingsMovement)
     .leftJoin(prepayment, and(eq(prepayment.id, savingsMovement.prepaymentId), mine(prepayment)))
+    // Pay extra on a plan from savings (item 19): its extra payment has the same id.
+    .leftJoin(planExtraPayment, and(eq(planExtraPayment.id, savingsMovement.id), mine(planExtraPayment)))
+    .leftJoin(instalmentPlan, and(eq(instalmentPlan.id, planExtraPayment.planId), mine(instalmentPlan)))
     .where(mine(savingsMovement));
   const incomes = await db.query.income.findMany({
     where: and(mine(income), gt(income.toSavingsMinor, 0)),
@@ -82,23 +97,21 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
         ?.spendingCurrency
     : undefined;
   const lines: SavingsLine[] = [
-    ...moves
-      // Plan payoffs from savings come with item 19.
-      .flatMap((m) =>
-        m.kind === "put_in" || m.kind === "take_out" || m.kind === "prepayment"
-          ? [
-              {
-                id: m.id,
-                kind: m.kind,
-                cycleId: m.cycleId,
-                currency: m.currency,
-                amountMinor: m.amountMinor,
-                on: m.movedOn,
-                name: m.kind === "prepayment" ? m.name : null,
-              },
-            ]
-          : [],
-      ),
+    ...moves.flatMap((m) =>
+      m.kind === "put_in" || m.kind === "take_out" || m.kind === "prepayment" || m.kind === "plan_extra"
+        ? [
+            {
+              id: m.id,
+              kind: m.kind,
+              cycleId: m.cycleId,
+              currency: m.currency,
+              amountMinor: m.amountMinor,
+              on: m.movedOn,
+              name: m.kind === "prepayment" ? m.name : m.kind === "plan_extra" ? m.planName : null,
+            },
+          ]
+        : [],
+    ),
     ...incomes.map((i) => ({
       id: i.id,
       // Last cycle's leftover saved on salary day (item 12), or extra income.
@@ -148,7 +161,7 @@ const newIncome = z.object({
 
 /**
  * Savings and Add income (backlog item 10, spec 5): Put in, Take out (into free
- * money) and extra income split to savings and free money, dated today in the
+ * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
  * current cycle. Deletes are the toasts' Undo, current cycle only.
  * The phone works out every number with the money rules.
  */
@@ -204,7 +217,8 @@ export const savings = new Hono<SignedIn>()
     try {
       await db.insert(income).values({
         ...row,
-        kind: "extra",
+        // Checked above: extra income or loan money received as cash (item 19).
+        kind: row.kind as "extra" | "loan",
         userId,
         cycleId: now.cycle.id,
         receivedOn: now.today,
@@ -224,7 +238,9 @@ export const savings = new Hono<SignedIn>()
       columns: { cycleId: true, kind: true },
     });
     // Salary and opening money are changed on salary day and first use, not here.
-    if (!now || !old || old.kind !== "extra") return c.json({ error: "not_found" as const }, 404);
+    if (!now || !old || (old.kind !== "extra" && old.kind !== "loan")) {
+      return c.json({ error: "not_found" as const }, 404);
+    }
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     await db.delete(income).where(and(mine(income), eq(income.id, id)));
     return c.json({ ok: true as const });

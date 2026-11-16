@@ -74,3 +74,15 @@ export function suggestSalaryDay(today: Day, usualPayDay: number): Day {
   }
   throw new Error("unreachable");
 }
+
+/**
+ * `n` months after `day`, on `dayOfMonth` (1–31); a day past a month's end falls
+ * on its last day. Monthly instalments keep their day this way (spec 9).
+ */
+export function addMonths(day: Day, n: number, dayOfMonth: number): Day {
+  const [y, m] = day.split("-").map(Number) as [number, number];
+  const first = new Date(Date.UTC(y, m - 1 + n, 1));
+  const yy = first.getUTCFullYear();
+  const mm = first.getUTCMonth();
+  return fromUtcMs(Date.UTC(yy, mm, Math.min(dayOfMonth, lastDayOfMonth(yy, mm))));
+}

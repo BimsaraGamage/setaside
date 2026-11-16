@@ -19,6 +19,7 @@ import {
   parseAmount,
   parseRate,
   paybackDrafts,
+  planDrafts,
   type SalaryDayInput,
   salaryCarriedOf,
   salaryDayDrafts,
@@ -230,7 +231,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
           (c.kind === "bill" ||
             c.kind === "savings" ||
             c.kind === "savings_payback" ||
-            c.kind === "card_bill"),
+            c.kind === "card_bill" ||
+            c.kind === "plan_payment"),
       )
       .map((c) => ({ ...c, kind: c.kind as ComingUpEntry["kind"] }));
     const drafts = salaryDayDrafts({
@@ -245,17 +247,28 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     const add = (to: Record<string, number>, id: string | null | undefined, m: number) => {
       if (id) to[id] = (to[id] ?? 0) + m;
     };
+    // Plan payments (item 19) the same way, by plan.
+    const planPaid: Record<string, number> = {};
+    const planPlanned: Record<string, number> = {};
     for (const k of unpaid) {
       const choice = choices[k.id]?.choice;
       if (choice === "paid") add(paid, k.prepaymentId, stillToPayMinor(k));
       if (choice === "carry") add(planned, k.prepaymentId, stillToPayMinor(k));
+      if (choice === "paid") add(planPaid, k.planId, stillToPayMinor(k));
+      if (choice === "carry") add(planPlanned, k.planId, stillToPayMinor(k));
     }
     for (const d of drafts) add(planned, d.prepaymentId, d.plannedMinor);
+    for (const d of drafts) add(planPlanned, d.planId, d.plannedMinor);
+    const plans = data.plans.map((p) => ({ ...p, paidMinor: p.paidMinor + (planPaid[p.id] ?? 0) }));
     const prepayments = data.prepayments.map((p) => ({
       ...p,
       paidBackMinor: p.paidBackMinor + (paid[p.id] ?? 0),
     }));
-    return [...drafts, ...paybackDrafts(prepayments, receivedOn, planned)].map((d) => ({
+    return [
+      ...drafts,
+      ...paybackDrafts(prepayments, receivedOn, planned),
+      ...planDrafts(plans, receivedOn, expected, planPlanned),
+    ].map((d) => ({
       ...d,
       id: newId(),
       text: toText(d.plannedMinor, d.currency),
@@ -316,6 +329,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         kind: r.kind,
         prepaymentId: r.prepaymentId ?? null,
         cardId: r.cardId ?? null,
+        planId: r.planId ?? null,
         name: r.name,
         currency: r.currency,
         plannedMinor: amount(r.text, r.currency),
