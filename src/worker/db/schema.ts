@@ -240,6 +240,11 @@ export const commitmentPayment = sqliteTable(
       .references(() => commitment.id, { onDelete: "cascade" }),
     currency: text("currency").notNull(),
     amountMinor: integer("amount_minor").notNull(),
+    /**
+     * Paid in the other currency (item 17): how much of the commitment it covers, in
+     * the commitment's currency, at the counting rate when saved. Null in its own currency.
+     */
+    coversMinor: integer("covers_minor"),
     paidOn: text("paid_on").notNull(),
     ...appTimestamps,
   },

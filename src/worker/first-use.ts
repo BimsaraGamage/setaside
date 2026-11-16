@@ -256,7 +256,13 @@ export const firstUse = new Hono<SignedIn>()
         prepaymentId: k.prepaymentId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
-          .map((p) => ({ id: p.id, amountMinor: p.amountMinor, currency: p.currency, paidOn: p.paidOn })),
+          .map((p) => ({
+            id: p.id,
+            amountMinor: p.amountMinor,
+            currency: p.currency,
+            coversMinor: p.coversMinor,
+            paidOn: p.paidOn,
+          })),
       })),
     });
   })

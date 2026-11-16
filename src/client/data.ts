@@ -142,6 +142,8 @@ export interface Payment {
   id: string;
   amountMinor: number;
   currency: string;
+  /** Paid in the other currency (item 17): what it covers of the commitment; null in its own. */
+  coversMinor: number | null;
   paidOn: string;
 }
 

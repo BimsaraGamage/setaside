@@ -1,10 +1,10 @@
 import { useState } from "react";
 import {
   checkCommitment,
+  coveredMinor,
   formatMoney,
   inThisCycle,
   NAME_MAX,
-  paidMinor,
   parseAmount,
   stillToPayMinor,
   todayView,
@@ -33,7 +33,7 @@ export const isPayback = (c: Pick<Commitment, "kind">) => c.kind === "savings_pa
  * for a savings set-aside); "Savings" when nothing is moved yet; nothing for an unpaid bill.
  */
 export function paidNote(c: Commitment): string | undefined {
-  const of = `${formatMoney(paidMinor(c, c.currency), c.currency)} of ${formatMoney(c.plannedMinor, c.currency)}`;
+  const of = `${formatMoney(coveredMinor(c), c.currency)} of ${formatMoney(c.plannedMinor, c.currency)}`;
   if (isPayback(c)) return c.payments.length ? `Paid back ${of} · savings` : "Pays back savings";
   if (isSavings(c)) return c.payments.length ? `Moved ${of} · savings` : "Savings";
   if (c.payments.length === 0) return undefined;
@@ -65,7 +65,7 @@ export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) 
         </span>
         <b className="small">
           {formatMoney(
-            done ? paidMinor(c, c.currency) : c.payments.length ? stillToPayMinor(c) : c.plannedMinor,
+            done ? coveredMinor(c) : c.payments.length ? stillToPayMinor(c) : c.plannedMinor,
             c.currency,
           )}
         </b>
@@ -118,7 +118,8 @@ export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) 
 /** The commitment page's payments (spec 10): list, paid and still to pay, Pay, Mark finished or Reopen. */
 function Payments({ c, actions }: { c: Commitment; actions: CommitmentActions }) {
   const cur = c.currency;
-  const paid = paidMinor(c, cur);
+  // What the payments cover in its own currency, those in the other currency too (item 17).
+  const paid = coveredMinor(c);
   const open = c.state === "open";
   const saving = isSavings(c);
   const [busy, setBusy] = useState(false);
@@ -141,7 +142,12 @@ function Payments({ c, actions }: { c: Commitment; actions: CommitmentActions })
       {c.payments.map((p) => (
         <a key={p.id} className="li tap link" href={`#Payment/${p.id}`}>
           <span className="grow">{dayLabel(p.paidOn)}</span>
-          <b className="small">{formatMoney(p.amountMinor, cur)}</b>
+          <b className="small">
+            {formatMoney(p.amountMinor, p.currency)}
+            {p.currency !== cur && (
+              <span className="tiny mute"> · counts as {formatMoney(p.coversMinor ?? 0, cur)}</span>
+            )}
+          </b>
         </a>
       ))}
       <p className="small" data-testid="still-to-pay">

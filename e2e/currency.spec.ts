@@ -80,3 +80,44 @@ test("change dollars: the rate got becomes the counting rate, and this cycle's c
   await tabs.getByRole("link", { name: "Today" }).click();
   await expect(page.getByTestId("free-money")).toHaveText("Rs 42,000");
 });
+
+test("paid in the other currency: a dollar bill paid in rupees gives the dollars back", async ({ page }) => {
+  await signInFresh(page);
+  await page.getByLabel("Spending currency").selectOption("LKR");
+  await page.getByLabel("Salary currency").selectOption("USD");
+  await page.getByLabel("Usual pay day").selectOption("25");
+  await page.getByRole("button", { name: "Next" }).click();
+  // Rs 10,000 and $100 held, Rs 300 a dollar, a $10 bill.
+  await page.getByLabel("Amount (LKR)").fill("10000");
+  await page.getByLabel("Amount (USD)").fill("100");
+  await page.getByLabel(/Counting rate/).fill("300");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "+ Add" }).click();
+  const bill = page.getByRole("group", { name: "Bill 1" });
+  await bill.getByLabel("Name").fill("Netflix");
+  await bill.getByRole("radio", { name: "USD" }).click();
+  await bill.getByLabel("Amount (USD)").fill("10");
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 37,000");
+
+  // Charged Rs 3,100: it counts as $10.33, so it finishes the bill.
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  await tabs.getByRole("link", { name: "Plan" }).click();
+  await page.getByRole("link", { name: /Netflix/ }).click();
+  await page.getByRole("link", { name: "Pay", exact: true }).click();
+  await page.getByRole("radiogroup", { name: "Paid in" }).getByRole("radio", { name: "LKR" }).click();
+  await page.getByLabel("Amount paid (LKR)").fill("3100");
+  await expect(page.getByTestId("pay-other")).toContainText("counts as $10.33");
+  await expect(page.getByLabel("This finishes it")).toBeChecked();
+  await page.getByRole("button", { name: "Pay", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Netflix paid · finished");
+  await expect(page.getByRole("link", { name: /Rs 3,100 · counts as \$10\.33/ })).toBeVisible();
+
+  // The $10 goes back to the dollars, the rupees come out of the rupees: Rs 6,900 + $100 × 300.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await tabs.getByRole("link", { name: "Today" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText("Rs 36,900");
+});
