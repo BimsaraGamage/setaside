@@ -3,14 +3,22 @@ import { Hono } from "hono";
 import * as z from "zod";
 import { checkIncome, checkSavingsMove, savingsTotal } from "../money";
 import { current } from "./current";
-import { commitment, commitmentPayment, income, prepayment, savingsMovement } from "./db/schema";
+import {
+  commitment,
+  commitmentPayment,
+  conversion,
+  income,
+  prepayment,
+  savingsMovement,
+  settings,
+} from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
   id: string;
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback";
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback" | "rate_gain";
   cycleId: string;
   currency: string;
   amountMinor: number;
@@ -22,7 +30,8 @@ export interface SavingsLine {
 /**
  * Every movement into and out of savings, all cycles, newest first (spec 5):
  * Put in and Take out, extra income sent to savings, leftover saved on salary
- * day, savings set-asides moved, prepayments (out) and their paybacks moved (in).
+ * day, savings set-asides moved, prepayments (out) and their paybacks moved (in),
+ * rate gains on conversions (item 16, in the spending currency).
  * Totals are worked out from it with the money rules.
  */
 export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<SavingsLine[]> {
@@ -64,6 +73,14 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       ),
     )
     .orderBy(desc(commitmentPayment.paidOn));
+  const gains = await db.query.conversion.findMany({
+    where: and(mine(conversion), gt(conversion.gainMinor, 0)),
+    columns: { id: true, cycleId: true, gainMinor: true, doneOn: true },
+  });
+  const spendingCurrency = gains.length
+    ? (await db.query.settings.findFirst({ where: mine(settings), columns: { spendingCurrency: true } }))
+        ?.spendingCurrency
+    : undefined;
   const lines: SavingsLine[] = [
     ...moves
       // Plan payoffs from savings come with item 19.
@@ -96,6 +113,17 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       ...p,
       kind: kind === "savings_payback" ? ("payback" as const) : ("set_aside" as const),
     })),
+    ...(spendingCurrency
+      ? gains.map((g) => ({
+          id: g.id,
+          kind: "rate_gain" as const,
+          cycleId: g.cycleId,
+          currency: spendingCurrency,
+          amountMinor: g.gainMinor,
+          on: g.doneOn,
+          name: null,
+        }))
+      : []),
   ];
   return lines.sort((a, b) => (a.on === b.on ? (a.id < b.id ? 1 : -1) : a.on < b.on ? 1 : -1));
 }

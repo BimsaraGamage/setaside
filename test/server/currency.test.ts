@@ -191,7 +191,7 @@ describe("two currencies (item 15, spec 8)", () => {
     expect(spends.find((s) => s.id === inPot)?.currency).toBe("LKR");
   });
 
-  it("salary day: salary in dollars, reserve rate kept, and the dollar leftover carried whole", async () => {
+  it("salary day: salary in dollars, reserve rate kept, the dollar leftover split (item 16)", async () => {
     const { cookie, cycleId } = await setUp({ commitments: [], pots: [] });
     await env.DB.prepare("update cycle set started_on = ? where id = ?")
       .bind(addDays(today(), -20), cycleId)
@@ -214,10 +214,13 @@ describe("two currencies (item 15, spec 8)", () => {
           closeId: id(),
           leftoverIncomeId: id(),
           salaryLeftoverIncomeId: id(),
+          salaryCloseId: id(),
           unpaid: [],
           inHandMinor: null,
           toSavingsMinor: 0,
           overspend: null,
+          salaryInHandMinor: 48_000,
+          salaryToSavingsMinor: 20_000,
         },
       },
       cookie,
@@ -227,8 +230,20 @@ describe("two currencies (item 15, spec 8)", () => {
     expect(now.cycle.id).toBe(newCycle);
     expect(now.incomes.map((i) => [i.kind, i.currency, i.amountMinor]).sort()).toEqual([
       ["leftover", "LKR", 1_000_000],
-      ["leftover", "USD", 50_000],
+      ["leftover", "USD", 48_000],
       ["salary", "USD", 200_000],
+    ]);
+    expect(now.savings).toContainEqual(
+      expect.objectContaining({ kind: "leftover", currency: "USD", amountMinor: 20_000 }),
+    );
+    const closes = await env.DB.prepare(
+      "select currency, leftover_correction_minor as c, leftover_to_savings_minor as s from cycle_close where next_cycle_id = ? order by currency",
+    )
+      .bind(newCycle)
+      .all();
+    expect(closes.results).toEqual([
+      { currency: "LKR", c: 0, s: 0 },
+      { currency: "USD", c: -2_000, s: 20_000 },
     ]);
     expect(now.commitments).toMatchObject([{ name: "Rent", currency: "LKR" }]);
     const row = await env.DB.prepare("select reserve_rate from cycle where id = ?").bind(newCycle).first();

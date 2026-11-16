@@ -153,6 +153,19 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/incomes/:id": (o) => ({ path: `/api/incomes/${firstRow(o, "income")}` }),
+  // Aimed at the first user's conversion id: must not take it over or delete it (or its counting rate).
+  "POST /api/conversions": (o) => ({
+    path: "/api/conversions",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "conversion"),
+        givenMinor: 100,
+        receivedMinor: 30_000,
+        doneOn: "2026-11-12",
+      }),
+    },
+  }),
+  "DELETE /api/conversions/:id": (o) => ({ path: `/api/conversions/${firstRow(o, "conversion")}` }),
   // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
   "POST /api/prepayments": (o) => ({
     path: "/api/prepayments",
@@ -259,6 +272,7 @@ async function seedOwnerData(ownerId: string) {
   const rc = crypto.randomUUID();
   const cc = crypto.randomUUID();
   const pp = crypto.randomUUID();
+  const cv = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -303,6 +317,12 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into prepayment (id, user_id, name, currency, total_minor, payback_minor, created_at, updated_at) values (?, ?, 'Gym', 'LKR', 6000000, 500000, ?, ?)",
     ).bind(pp, ownerId, now, now),
+    env.DB.prepare(
+      "insert into conversion (id, user_id, cycle_id, given_minor, received_minor, rate, covered_minor, gain_minor, done_on, created_at, updated_at) values (?, ?, ?, 10000, 3000000, '300', 0, 0, '2026-11-12', ?, ?)",
+    ).bind(cv, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into counting_rate (id, user_id, rate, set_at, created_at, updated_at) values (?, ?, '300', ?, ?, ?)",
+    ).bind(cv, ownerId, now, now, now),
   ]);
 }
 

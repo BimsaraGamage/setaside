@@ -19,7 +19,13 @@ export interface Current {
     /** The counting rate (spec 8); null with one currency or none set. */
     countingRate: string | null;
   } | null;
-  cycle: { id: string; startedOn: string; expectedSalaryOn: string } | null;
+  cycle: {
+    id: string;
+    startedOn: string;
+    expectedSalaryOn: string;
+    /** Rupee set-asides past the rupees are reserved from the dollars at it (spec 8); null: the counting rate. */
+    reserveRate: string | null;
+  } | null;
   incomes: {
     id: string;
     kind: IncomeKind;
@@ -32,6 +38,8 @@ export interface Current {
   commitments: Commitment[];
   /** Every pot, in use or not, with this cycle's amount (item 7). */
   pots: Pot[];
+  /** This cycle's conversions, newest first (item 16). */
+  conversions: Conversion[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
   lastCycle: { speed: Speed; pots: Record<string, Speed> } | null;
   /** This cycle's underspend answers (item 9). */
@@ -44,6 +52,20 @@ export interface Current {
   recurring: Recurring[];
   /** Undo salary day is allowed: nothing new entered since salary day started this cycle (item 13). */
   undoSalaryDay: boolean;
+}
+
+/** Dollars changed into rupees (item 16, spec 8), with what its rupees did when saved. */
+export interface Conversion {
+  id: string;
+  givenMinor: number;
+  receivedMinor: number;
+  /** The rate actually got. */
+  rate: string;
+  /** Rupees that covered rupee set-asides not yet covered (bills first). */
+  coveredMinor: number;
+  /** The rate gain (to rupee savings) or, below zero, the loss (out of free money). */
+  gainMinor: number;
+  doneOn: string;
 }
 
 export interface Recurring {
@@ -76,7 +98,7 @@ export interface Prepayment {
 export interface SavingsLine {
   id: string;
   /** Put in, Take out, extra income to savings, a savings set-aside moved, a prepayment and its paybacks. */
-  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback";
+  kind: "put_in" | "take_out" | "income" | "leftover" | "set_aside" | "prepayment" | "payback" | "rate_gain";
   cycleId: string;
   currency: string;
   /** Below zero: money out of savings. */
@@ -147,6 +169,8 @@ export function entriesOf(data: Ready) {
     spendingCurrency: data.settings.spendingCurrency,
     salaryCurrency: data.settings.salaryCurrency,
     countingRate: data.settings.countingRate,
+    reserveRate: data.cycle.reserveRate,
+    conversions: data.conversions,
     startedOn: data.cycle.startedOn,
     expectedSalaryOn: data.cycle.expectedSalaryOn,
     lastSpeed: data.lastCycle?.speed ?? null,

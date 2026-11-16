@@ -117,6 +117,7 @@ describe("salary day starts a new cycle (item 11, spec 2, 6)", () => {
       id: b.cycleId,
       startedOn: addDays(today(), -1),
       expectedSalaryOn: b.expectedSalaryOn,
+      reserveRate: null,
     });
     expect(cur.incomes).toMatchObject([
       { kind: "salary", amountMinor: 25_000_000, receivedOn: addDays(today(), -1) },

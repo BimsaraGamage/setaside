@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   addDays,
   broughtIn,
+  broughtInSalary,
   type CloseInput,
   type ComingUpEntry,
   checkCycleClose,
@@ -15,6 +16,7 @@ import {
   parseAmount,
   paybackDrafts,
   type SalaryDayInput,
+  salaryCarriedOf,
   salaryDayDrafts,
   salaryDayView,
   salaryLeftoverOf,
@@ -111,10 +113,13 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     closeId: newId(),
     leftoverIncomeId: newId(),
     salaryLeftoverIncomeId: newId(),
+    salaryCloseId: newId(),
   }));
   const [choices, setChoices] = useState<Record<string, { choice: UnpaidChoice; newId: string }>>({});
   const [inHandText, setInHandText] = useState("");
   const [toSavingsText, setToSavingsText] = useState("");
+  const [salaryInHandText, setSalaryInHandText] = useState("");
+  const [salaryToSavingsText, setSalaryToSavingsText] = useState("");
   const [overspend, setOverspend] = useState<OverspendChoice | null>(null);
 
   const money = (m: number) => formatMoney(m, cur);
@@ -149,19 +154,30 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     return c ? [{ id: k.id, choice: c.choice, newId: c.newId }] : [];
   });
   const leftover = leftoverOf(entriesOf(data), chosen);
-  // Two currencies: the salary currency's leftover goes to the new cycle whole (item 15).
+  // Two currencies: the salary currency's leftover, split into dollar savings and the new cycle (item 16).
   const salaryLeftover = salaryLeftoverOf(entriesOf(data), chosen);
+  const dollarsToSplit = salaryLeftover !== null && salaryLeftover > 0;
   const overspent = leftover.leftoverMinor < 0;
   const closeInput: CloseInput = {
     unpaid: chosen.map(({ id, choice }) => ({ id, choice })),
     inHandMinor: overspent || inHandText === "" ? null : (parseAmount(inHandText, cur) ?? -1),
     toSavingsMinor: overspent || toSavingsText === "" ? 0 : (parseAmount(toSavingsText, cur) ?? -1),
     overspend: overspent ? overspend : null,
+    salaryInHandMinor:
+      !dollarsToSplit || salaryInHandText === "" ? null : (parseAmount(salaryInHandText, salaryCur) ?? -1),
+    salaryToSavingsMinor:
+      !dollarsToSplit || salaryToSavingsText === "" ? 0 : (parseAmount(salaryToSavingsText, salaryCur) ?? -1),
   };
-  for (const p of checkCycleClose(closeInput, { unpaidIds: unpaid.map((k) => k.id), leftover })) {
+  const closeCtx = { unpaidIds: unpaid.map((k) => k.id), leftover, salaryLeftoverMinor: salaryLeftover };
+  for (const p of checkCycleClose(closeInput, closeCtx)) {
     problems.push(`close.${p}`);
   }
   const brought = broughtIn(closeInput, leftover);
+  const salaryBrought =
+    salaryLeftover === null
+      ? null
+      : broughtInSalary(closeInput, salaryLeftover, salaryCarriedOf(entriesOf(data), chosen));
+  const salaryKept = closeInput.salaryInHandMinor ?? salaryLeftover ?? 0;
   const kept = closeInput.inHandMinor ?? leftover.leftoverMinor;
   const carried = unpaid
     .filter((k) => choices[k.id]?.choice === "carry")
@@ -233,7 +249,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     spendingCurrency: cur,
     salaryCurrency: salaryCur,
     countingRate: data.settings.countingRate,
-    broughtInSalaryMinor: salaryLeftover ?? 0,
+    broughtInSalaryMinor: salaryBrought ? salaryBrought.amountMinor - salaryBrought.toSavingsMinor : 0,
     today,
     lastSpeed: ended.days > 0 ? ended : null,
     broughtIn: brought,
@@ -271,8 +287,10 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       })),
       close: {
         ...closeIds,
-        ...(salaryLeftover === null ? { salaryLeftoverIncomeId: undefined } : {}),
+        ...(salaryLeftover === null ? { salaryLeftoverIncomeId: undefined, salaryCloseId: undefined } : {}),
         ...closeInput,
+        salaryInHandMinor: closeInput.salaryInHandMinor ?? null,
+        salaryToSavingsMinor: closeInput.salaryToSavingsMinor ?? 0,
         unpaid: chosen,
       },
     });
@@ -355,10 +373,10 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             <span className="grow">Leftover</span>
             <b data-testid="leftover">{money(leftover.leftoverMinor)}</b>
           </div>
-          {salaryLeftover !== null && salaryLeftover !== 0 && (
-            <p className="tiny mute" data-testid="salary-leftover">
-              Plus {formatMoney(salaryLeftover, salaryCur)} not changed yet: it goes to the new cycle as it
-              is.
+          {leftover.fromSalaryMinor > 0 && (
+            <p className="tiny mute" data-testid="covered-from-salary">
+              Includes {money(leftover.fromSalaryMinor)} from your {salaryCur} at the reserve rate, for {cur}{" "}
+              bills paid before changing dollars.
             </p>
           )}
           <label className="field">
@@ -390,6 +408,58 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               {money(Math.max(0, kept - Math.max(0, closeInput.toSavingsMinor)))}
             </b>
           </div>
+        </section>
+      )}
+
+      {step === 3 && salaryLeftover !== null && (
+        <section className="card stack" aria-label={`${salaryCur} leftover`}>
+          <div className="li">
+            <span className="grow">{salaryCur} not changed yet</span>
+            <b data-testid="salary-leftover">{formatMoney(salaryLeftover, salaryCur)}</b>
+          </div>
+          {dollarsToSplit ? (
+            <>
+              <label className="field">
+                Actually have in hand ({salaryCur})
+                <input
+                  value={salaryInHandText}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={toText(salaryLeftover, salaryCur)}
+                  onChange={(e) => typedSalary(e.target.value) && setSalaryInHandText(e.target.value)}
+                />
+              </label>
+              {has("close.salary_in_hand") && <p className="tiny bad">Type a plain amount.</p>}
+              <label className="field">
+                To {salaryCur} savings
+                <input
+                  value={salaryToSavingsText}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0"
+                  onChange={(e) => typedSalary(e.target.value) && setSalaryToSavingsText(e.target.value)}
+                />
+              </label>
+              {has("close.salary_to_savings") && (
+                <p className="tiny bad">At most {formatMoney(Math.max(0, salaryKept), salaryCur)}.</p>
+              )}
+              <div className="li">
+                <span className="grow">Carried over, not changed</span>
+                <b data-testid="salary-leftover-to-cycle">
+                  {formatMoney(
+                    Math.max(0, salaryKept - Math.max(0, closeInput.salaryToSavingsMinor ?? 0)),
+                    salaryCur,
+                  )}
+                </b>
+              </div>
+            </>
+          ) : (
+            salaryLeftover < 0 && (
+              <p className="tiny mute">
+                {salaryCur} bills went past your {salaryCur}: carried to the new cycle.
+              </p>
+            )
+          )}
         </section>
       )}
 
@@ -570,7 +640,11 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             disabled={
               (step === 1 && (input.salaryMinor <= 0 || has("salary") || has("received_on"))) ||
               (step === 2 && has("close.unpaid")) ||
-              (step === 3 && (has("close.in_hand") || has("close.to_savings") || has("close.overspend"))) ||
+              (step === 3 &&
+                (has("close.in_hand") ||
+                  has("close.to_savings") ||
+                  has("close.overspend") ||
+                  has("close.salary_"))) ||
               (step === 4 && has("commitment.")) ||
               (step === 5 && has("pot.")) ||
               (step === 6 && has("expected_salary_on"))

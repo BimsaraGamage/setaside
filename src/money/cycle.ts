@@ -1,8 +1,9 @@
 import { type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
+import type { ConversionEntry } from "./conversion";
 import { addDays, type Day, daysBetween } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
-import { atRate, type Rate } from "./rate";
+import { atRate, minorAtLeast, type Rate } from "./rate";
 import type { TakeOutEntry } from "./savings";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
 import type { SpendEntry } from "./spend";
@@ -28,6 +29,14 @@ export interface CycleEntries {
   salaryCurrency?: string;
   /** The counting rate (spec 8); without one, free money in the salary currency counts as nothing. */
   countingRate?: Rate | null;
+  /**
+   * The cycle's reserve rate (spec 8): the counting rate on its salary day.
+   * Rupee set-asides past the rupees held are reserved from the dollars at it;
+   * none: the counting rate.
+   */
+  reserveRate?: Rate | null;
+  /** This cycle's conversions (item 16): dollars out, rupees in, a rate gain to savings. */
+  conversions?: ConversionEntry[];
   expectedSalaryOn: Day;
   incomes: IncomeEntry[];
   spends: SpendEntry[];
@@ -68,7 +77,15 @@ export type FreeEntries = Pick<CycleEntries, "spendingCurrency" | "incomes"> &
   Partial<
     Pick<
       CycleEntries,
-      "spends" | "commitments" | "expectedSalaryOn" | "pots" | "takenOut" | "salaryCurrency" | "countingRate"
+      | "spends"
+      | "commitments"
+      | "expectedSalaryOn"
+      | "pots"
+      | "takenOut"
+      | "salaryCurrency"
+      | "countingRate"
+      | "reserveRate"
+      | "conversions"
     >
   >;
 
@@ -104,11 +121,29 @@ export function countedMinor(
  * with `startOf`, those dated after it are left out.
  * Two currencies (spec 8): each currency's money is held apart (`freeIn`); the
  * salary currency's (free dollars) counts at the counting rate, rounded down.
+ * Rupee set-asides past the rupees held are reserved from the dollars at the
+ * reserve rate first (`reservedMinor`); only the dollars past that are free.
  */
 export function freeMoney(entries: FreeEntries, startOf?: Day): Minor {
   const own = freeIn(entries, entries.spendingCurrency, startOf);
   const other = otherCurrency(entries);
-  return other ? own + countedMinor(entries, freeIn(entries, other, startOf)) : own;
+  if (!other) return own;
+  const dollars = freeIn(entries, other, startOf);
+  const rate = entries.reserveRate ?? entries.countingRate;
+  if (own >= 0 || dollars <= 0 || !rate || !entries.countingRate) return own + countedMinor(entries, dollars);
+  const reserved = minorAtLeast(-own, rate, other, entries.spendingCurrency);
+  if (dollars >= reserved) return countedMinor(entries, dollars - reserved);
+  // Not dollars enough: what they cover at the reserve rate, the rest is spent past free money.
+  return own + atRate(dollars, rate, other, entries.spendingCurrency);
+}
+
+/**
+ * Rupee set-asides not yet covered (spec 8, bills first): how far the spending
+ * currency's own money is below zero; 0 with one currency.
+ */
+export function uncoveredMinor(entries: FreeEntries): Minor {
+  if (!otherCurrency(entries)) return 0;
+  return Math.max(0, -freeIn(entries, entries.spendingCurrency));
 }
 
 /**
@@ -128,6 +163,12 @@ export function freeIn(entries: FreeEntries, cur: string, startOf?: Day): Minor 
   }
   for (const t of entries.takenOut ?? []) {
     if (t.currency === cur && countsBy(t.movedOn, startOf)) total += t.amountMinor;
+  }
+  // Conversions count at once, like a new counting rate (spec 7): they are not spends.
+  const other = otherCurrency(entries);
+  for (const v of entries.conversions ?? []) {
+    if (cur === other) total -= v.givenMinor;
+    else if (cur === entries.spendingCurrency && other) total += v.receivedMinor - Math.max(0, v.gainMinor);
   }
   for (const s of spends) {
     if (s.currency !== cur || inAPot(s, pots)) continue;

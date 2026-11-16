@@ -97,6 +97,7 @@ const lineName: Record<SavingsLine["kind"], string> = {
   set_aside: "Set aside",
   prepayment: "Prepayment",
   payback: "Paid back",
+  rate_gain: "Rate gain",
 };
 
 /** One amount field: digits only, in the spending currency. */

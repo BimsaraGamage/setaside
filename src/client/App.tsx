@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { authClient } from "./auth";
+import { ChangeDollarsPage, conversionActions } from "./ChangeDollars";
 import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
@@ -27,6 +28,7 @@ const pages = {
   Savings: "Money",
   SavingsMove: "Money",
   AddIncome: "Money",
+  ChangeDollars: "Money",
   Commitment: "Plan",
   Pay: "Plan",
   Payment: "Plan",
@@ -60,6 +62,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const pots = potActions(toaster);
   const dayChoices = dayChoiceActions(toaster);
   const savings = savingsActions(toaster);
+  const conversions = conversionActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
@@ -174,6 +177,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
           />
         )}
         {tab === "AddIncome" && <AddIncomePage data={ready} actions={savings} />}
+        {tab === "ChangeDollars" && <ChangeDollarsPage data={ready} actions={conversions} onRate={reload} />}
         {tab === "Settings" && (
           <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
         )}

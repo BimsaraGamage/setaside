@@ -78,6 +78,7 @@ describe("the leftover (spec 6: free money left + unused pot money + dropped com
       potsMinor: 1_700_000,
       droppedMinor: 0,
       carriedMinor: 0,
+      fromSalaryMinor: 0,
       leftoverMinor: 8_700_000,
     });
   });
@@ -112,6 +113,7 @@ describe("the leftover (spec 6: free money left + unused pot money + dropped com
       potsMinor: 0,
       droppedMinor: 500_000,
       carriedMinor: 2_000_000,
+      fromSalaryMinor: 0,
       leftoverMinor: 6_800_000,
     });
   });
@@ -162,6 +164,7 @@ const left = (leftoverMinor: number, carriedMinor = 0, droppedMinor = 0): Leftov
   potsMinor: 0,
   droppedMinor,
   carriedMinor,
+  fromSalaryMinor: 0,
   leftoverMinor,
 });
 
