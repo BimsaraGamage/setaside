@@ -21,6 +21,17 @@ export function isTimeZone(timeZone: string): boolean {
   }
 }
 
+/**
+ * The phone's time zone to ask about switching to (spec 10, item 22), or null.
+ * Asked once: when the phone is in a zone the app knows that is not home and
+ * not the zone last asked about (`asked`, saved whatever the answer).
+ */
+export function zoneToAsk(z: { home: string; phone: string; asked: string | null }): string | null {
+  if (!z.phone || !isTimeZone(z.phone)) return null;
+  if (z.phone === z.home || z.phone === z.asked) return null;
+  return z.phone;
+}
+
 const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 
 /** The calendar day at `instant` (ms since epoch) in `timeZone`. */

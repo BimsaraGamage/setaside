@@ -296,7 +296,7 @@ Section 6 and section 2.
 
 ### Home time zone
 
-Asked at first use, suggested from the phone. If the phone's time zone later differs, the app asks once whether to switch; the answer becomes the new home time zone. Due dates are plain calendar days with no time.
+Asked at first use, suggested from the phone. If the phone's time zone later differs, Today asks once whether to switch (Keep <home> / Switch to <phone zone>, with what today would become there); the answer becomes the new home time zone. "Once" means once per phone zone: the zone asked about is saved whatever the answer, and so is the phone's zone when a home is picked by hand at first use or in Settings. A new zone, or coming back home after a switch, is asked about again. After a switch "today" follows the new zone at once; dates already saved stay as they are, so after switching west a spend dated the next day counts in today's spent and can be changed once the new zone reaches that day. Due dates are plain calendar days with no time.
 
 ## 11. Offline use
 

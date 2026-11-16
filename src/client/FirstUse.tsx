@@ -67,6 +67,8 @@ export function FirstUse({ onDone, onSignedOut }: { onDone: () => void; onSigned
     salaryCurrency,
     spendingCurrency: currency,
     homeTimeZone: timeZone,
+    // Item 22: picking another zone than the phone's here is the answer; not asked again on Today.
+    askedTimeZone: phoneTimeZone(),
     usualPayDay: payDay,
     heldMinor: heldMinor ?? -1,
     ...(two ? { heldSalaryMinor: heldSalaryMinor ?? -1, countingRate } : {}),

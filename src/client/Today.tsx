@@ -16,6 +16,7 @@ import { cardName, potName, SpendRow } from "./Spends";
 import { type CycleActions, LateSalaryCard } from "./ThisCycle";
 import { type DayChoiceActions, UnderspendCard } from "./Underspend";
 import { VerdictChip } from "./Verdict";
+import { type ZoneActions, ZoneSwitchCard } from "./ZoneSwitch";
 
 /** "Speed Rs 2,300 a day · Tomorrow Rs 4,800" (spec 10); the speed is left out while it is too early to tell. */
 function speedLine(view: ReturnType<typeof todayView>): string {
@@ -72,12 +73,14 @@ export function Today({
   onEdit,
   dayChoices,
   cycle: cycleActions,
+  zone,
 }: {
   data: Ready;
   onAdd: (today: string) => void;
   onEdit: (spend: Spend, today: string) => void;
   dayChoices: DayChoiceActions;
   cycle: CycleActions;
+  zone: ZoneActions;
 }) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
@@ -108,6 +111,8 @@ export function Today({
           Salary arrived
         </a>
       </header>
+
+      <ZoneSwitchCard home={settings.homeTimeZone} asked={settings.askedTimeZone} actions={zone} />
 
       {isSalaryLate(today, cycle.expectedSalaryOn) && (
         <LateSalaryCard data={data} today={today} actions={cycleActions} />

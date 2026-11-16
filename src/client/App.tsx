@@ -24,6 +24,7 @@ import { cycleActions } from "./ThisCycle";
 import { Today } from "./Today";
 import { useToast } from "./toast";
 import { dayChoiceActions } from "./Underspend";
+import { zoneActions } from "./ZoneSwitch";
 
 const tabs = ["Today", "Plan", "Money", "Past", "Settings"] as const;
 /** Pages opened from a tab: they cover the tab bar and have a ← back (spec 10). */
@@ -79,6 +80,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
+  const zone = zoneActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -139,6 +141,7 @@ function SignedIn({ onSignedOut }: { onSignedOut: () => void }) {
             onEdit={edit}
             dayChoices={dayChoices}
             cycle={thisCycle}
+            zone={zone}
           />
         )}
         {tab === "Plan" && <Plan data={ready} actions={thisCycle} />}

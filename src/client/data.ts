@@ -17,6 +17,8 @@ export interface Current {
     spendingCurrency: string;
     homeTimeZone: string;
     usualPayDay: number;
+    /** The phone's zone last asked about switching to (item 22); null: never asked. */
+    askedTimeZone: string | null;
     /** The counting rate (spec 8); null with one currency or none set. */
     countingRate: string | null;
   } | null;
