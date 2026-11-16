@@ -275,6 +275,41 @@ describe("checks on Start new cycle (spec 2, 6)", () => {
   });
 });
 
+describe("the counting rate in step 6 (spec 6, 8)", () => {
+  const two = { ...ctx, salaryCurrency: "USD" };
+
+  it("a two-currency user may give a new counting rate; none keeps the current one", () => {
+    expect(checkSalaryDay(input({ countingRate: "302.5" }), two)).toEqual([]);
+    expect(checkSalaryDay(input({ countingRate: null }), two)).toEqual([]);
+    expect(checkSalaryDay(input(), two)).toEqual([]);
+  });
+
+  it("the rate is a plain number above zero, as typed", () => {
+    expect(checkSalaryDay(input({ countingRate: "0" }), two)).toEqual(["counting_rate"]);
+    expect(checkSalaryDay(input({ countingRate: "3,02" }), two)).toEqual(["counting_rate"]);
+    expect(checkSalaryDay(input({ countingRate: "abc" }), two)).toEqual(["counting_rate"]);
+  });
+
+  it("with one currency there is no counting rate to give", () => {
+    expect(checkSalaryDay(input({ countingRate: "300" }), ctx)).toEqual(["counting_rate"]);
+  });
+
+  it("the summary counts the salary at the rate given in step 6", () => {
+    const view = (countingRate: string) =>
+      salaryDayView({
+        input: input({ salaryMinor: 100_000, commitments: [], pots: [] }),
+        spendingCurrency: "LKR",
+        salaryCurrency: "USD",
+        countingRate,
+        today: "2026-11-25",
+        lastSpeed: null,
+      });
+    // $1,000 at Rs 300 is Rs 300,000; at Rs 310 it is Rs 310,000.
+    expect(view("300").today.freeMinor).toBe(30_000_000);
+    expect(view("310").today.freeMinor).toBe(31_000_000);
+  });
+});
+
 describe("the summary (spec 6 step 7)", () => {
   it("free money is the salary less set-asides; the allowance counts days to the next salary", () => {
     const v = salaryDayView({

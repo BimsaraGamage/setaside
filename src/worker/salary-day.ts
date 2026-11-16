@@ -24,6 +24,7 @@ import {
   commitment,
   commitmentPayment,
   conversion,
+  countingRate,
   cycle,
   cycleClose,
   dayChoice,
@@ -48,6 +49,8 @@ const salaryDayBody = z.object({
   salaryMinor: z.number().int(),
   receivedOn: z.string(),
   expectedSalaryOn: z.string(),
+  /** Step 6, two currencies (spec 6, 8): a new counting rate; none keeps the current one. */
+  countingRate: z.object({ id: z.uuid(), rate: z.string() }).nullish(),
   /** Step 4: this cycle's commitments. */
   commitments: z
     .array(
@@ -267,7 +270,7 @@ export const salaryDay = new Hono<SignedIn>()
       };
     });
     const problems = checkSalaryDay(
-      { ...b, pots: potRows },
+      { ...b, countingRate: b.countingRate?.rate ?? null, pots: potRows },
       { today: now.today, cycleStartedOn: now.cycle.startedOn, ...now.currencies },
     );
     // A pot once only; a stopped pot is not set aside again.
@@ -359,6 +362,7 @@ export const salaryDay = new Hono<SignedIn>()
       potsMade: potRows.filter((p) => !p.old).map((p) => p.id),
       reopened: [],
       payments: [],
+      ...(b.countingRate ? { countingRateId: b.countingRate.id } : {}),
     };
     const keep = (id: string, before: RecurringBefore | null) => {
       if (!undo.templates.some((t) => t.id === id)) undo.templates.push({ id, before });
@@ -372,7 +376,7 @@ export const salaryDay = new Hono<SignedIn>()
         startedOn: b.receivedOn,
         expectedSalaryOn: b.expectedSalaryOn,
         // The counting rate when salary day was confirmed (spec 8): rupee set-asides are reserved at it.
-        reserveRate: entries.countingRate ?? null,
+        reserveRate: b.countingRate?.rate ?? entries.countingRate ?? null,
       }),
       db.insert(income).values({
         ...stamp,
@@ -385,6 +389,14 @@ export const salaryDay = new Hono<SignedIn>()
         receivedOn: b.receivedOn,
       }),
     ];
+    if (b.countingRate) {
+      // Step 6's rate is the newest counting rate from now on (spec 6, 8).
+      writes.push(
+        db
+          .insert(countingRate)
+          .values({ ...stamp, id: b.countingRate.id, userId, rate: b.countingRate.rate, setAt: at }),
+      );
+    }
     for (const k of b.commitments) {
       const template = {
         name: k.name,
@@ -608,7 +620,7 @@ export const salaryDay = new Hono<SignedIn>()
   /**
    * Undo salary day (item 13, spec 2): removes the new cycle and everything in it
    * (cascades: its incomes, commitments, pot amounts, cycle-end choices), pots
-   * made that day, puts back the templates it made, changed or deleted, and
+   * made that day, the counting rate typed in step 6, puts back the templates it made, changed or deleted, and
    * reopens last cycle's commitments it paid, carried or dropped (Paid it's
    * payments go too). The old cycle is current again, as it was. `cycleId` is
    * the cycle to undo, so a second tap can't undo the salary day before it.
@@ -657,6 +669,11 @@ export const salaryDay = new Hono<SignedIn>()
             set: before,
             setWhere: eq(recurringCommitment.userId, userId),
           }),
+      );
+    }
+    if (undo.countingRateId) {
+      writes.push(
+        db.delete(countingRate).where(and(mine(countingRate), eq(countingRate.id, undo.countingRateId))),
       );
     }
     writes.push(db.delete(cycle).where(and(mine(cycle), eq(cycle.id, now.cycle.id))));

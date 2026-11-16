@@ -14,6 +14,7 @@ import {
   leftoverOf,
   type OverspendChoice,
   parseAmount,
+  parseRate,
   paybackDrafts,
   type SalaryDayInput,
   salaryCarriedOf,
@@ -80,7 +81,7 @@ const OVERSPEND: { choice: OverspendChoice; label: string }[] = [
  * Salary day (spec 6): Salary → last cycle's unpaid commitments (Paid it ·
  * Carry · Drop) → its leftover, dropped ones' money included (correct and
  * split, or the overspend choice) → this cycle's commitments (filled from the recurring ones and last cycle's
- * coming-up ones) → pots → expected next salary day → summary with the gap
+ * coming-up ones) → pots → expected next salary day and counting rate → summary with the gap
  * warning → Start new cycle. One step per screen.
  */
 export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryDayActions }) {
@@ -106,6 +107,16 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       })),
   );
   const [expected, setExpected] = useState(() => suggestSalaryDay(today, data.settings.usualPayDay));
+  // Step 6, two currencies (spec 6, 8): the counting rate, the current one by default.
+  const two = salaryCur !== cur;
+  const nowRate = data.settings.countingRate;
+  const [rateText, setRateText] = useState(nowRate ?? "");
+  const [rateId] = useState(newId);
+  const typedRate = two ? parseRate(rateText) : null;
+  const rateBad = two && typedRate === null && !(rateText === "" && nowRate === null);
+  /** The rate the new cycle counts dollars at, and keeps as its reserve rate. */
+  const rate = typedRate ?? nowRate;
+  const newRate = typedRate !== null && typedRate !== nowRate ? typedRate : null;
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // Steps 2 and 3.
@@ -134,6 +145,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       plannedMinor: amount(r.text, r.currency),
       dueOn: r.dueOn,
     })),
+    countingRate: newRate,
     pots: pots.map((p) => ({
       name: p.name,
       currency: p.currency,
@@ -146,6 +158,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     cycleStartedOn: data.cycle.startedOn,
     ...currencyContext(data),
   });
+  if (rateBad) problems.push("counting_rate");
 
   // Steps 2 and 3: the cycle that ends is still the current one.
   const unpaid = unpaidAtEnd(data.commitments, data.cycle.expectedSalaryOn);
@@ -235,7 +248,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       if ((x.currency ?? cur) === cur) own += x.minor;
       else other += x.minor;
     }
-    return own + countedMinor(entriesOf(data), other);
+    return own + countedMinor({ ...entriesOf(data), countingRate: rate }, other);
   };
 
   // The cycle that ends: its speed is the new cycle's in its first days (spec 7).
@@ -248,7 +261,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     input,
     spendingCurrency: cur,
     salaryCurrency: salaryCur,
-    countingRate: data.settings.countingRate,
+    countingRate: rate,
     broughtInSalaryMinor: salaryBrought ? salaryBrought.amountMinor - salaryBrought.toSavingsMinor : 0,
     today,
     lastSpeed: ended.days > 0 ? ended : null,
@@ -265,6 +278,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       salaryMinor: input.salaryMinor,
       receivedOn,
       expectedSalaryOn: expected,
+      ...(newRate ? { countingRate: { id: rateId, rate: newRate } } : {}),
       commitments: (rows ?? []).map((r) => ({
         id: r.id,
         kind: r.kind,
@@ -319,7 +333,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       <p className="tiny mute">
         Salary day · step {at + 1} of {STEPS.length}
       </p>
-      <h1>{TITLES[step]}</h1>
+      <h1>{step === 6 && two ? "Next salary day and rate" : TITLES[step]}</h1>
 
       {step === 1 && (
         <section className="card stack">
@@ -563,6 +577,22 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             <span className="tiny mute">{dayLabel(expected)} · suggested from your usual pay day.</span>
           </label>
           {has("expected_salary_on") && <p className="tiny bad">Pick a day after today.</p>}
+          {two && (
+            <label className="field">
+              Counting rate ({cur} for 1 {salaryCur})
+              <input
+                inputMode="decimal"
+                autoComplete="off"
+                value={rateText}
+                onChange={(e) => setRateText(e.target.value)}
+              />
+              <span className="tiny mute">
+                {salaryCur} not changed yet count toward free money at this rate, and {cur} bills are reserved
+                from them at it this cycle. Your last one by default.
+              </span>
+              {rateBad && <span className="tiny bad">Type a plain rate above zero, like 302.50.</span>}
+            </label>
+          )}
         </section>
       )}
 
@@ -647,7 +677,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
                   has("close.salary_"))) ||
               (step === 4 && has("commitment.")) ||
               (step === 5 && has("pot.")) ||
-              (step === 6 && has("expected_salary_on"))
+              (step === 6 && (has("expected_salary_on") || has("counting_rate")))
             }
           >
             Next
