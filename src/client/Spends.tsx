@@ -2,6 +2,7 @@ import { combinedSavingsMinor, formatMoney } from "../money";
 import { MoneyCards } from "./Cards";
 import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
+import { MoneyPeople } from "./People";
 import { MoneyPlans } from "./Plans";
 
 /** The pot a spend came from, by name; none for free money. */
@@ -38,7 +39,7 @@ export function SpendRow({
   );
 }
 
-/** Money (spec 10): Spends, Savings, Change dollars (two currencies), Add income, cards (item 18), plans (item 19). People come later. */
+/** Money (spec 10): Spends, Savings, Change dollars (two currencies), Add income, cards (item 18), plans (item 19), People (item 20). */
 export function Money({ data }: { data: Ready }) {
   const n = data.spends.length;
   const cur = data.settings.spendingCurrency;
@@ -78,6 +79,7 @@ export function Money({ data }: { data: Ready }) {
       </section>
       <MoneyCards data={data} />
       <MoneyPlans data={data} />
+      <MoneyPeople data={data} />
     </>
   );
 }

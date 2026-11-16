@@ -31,6 +31,7 @@ import {
   dayChoice,
   income,
   instalmentPlan,
+  personDebt,
   planExtraPayment,
   pot,
   potAllocation,
@@ -59,7 +60,9 @@ const salaryDayBody = z.object({
     .array(
       z.object({
         id: z.uuid(),
-        kind: z.enum(["bill", "savings", "savings_payback", "card_bill", "plan_payment"]).default("bill"),
+        kind: z
+          .enum(["bill", "savings", "savings_payback", "card_bill", "plan_payment", "person_payback"])
+          .default("bill"),
         /** A plan payment: its instalment plan (item 19); a carried one keeps the plan of the one it carries on. */
         planId: z.uuid().nullish(),
         /** A card bill: its card (item 18); a carried one keeps the card of the one it carries on. */
@@ -180,6 +183,11 @@ export async function entriesOf(
     ),
     columns: { currency: true, amountMinor: true },
   });
+  // Money lent to people in this cycle (item 20) came out of its free money.
+  const lent = await db.query.personDebt.findMany({
+    where: and(mine(personDebt), eq(personDebt.cycleId, id), eq(personDebt.direction, "lent")),
+    columns: { currency: true, amountMinor: true },
+  });
   return {
     spendingCurrency: now.settings.spendingCurrency,
     salaryCurrency: now.settings.salaryCurrency,
@@ -197,6 +205,7 @@ export async function entriesOf(
     pots,
     takenOut: takeOuts.map((t) => ({ ...t, amountMinor: -t.amountMinor })),
     planExtras,
+    lent,
   } satisfies ClosingEntries;
 }
 
@@ -217,6 +226,7 @@ type Stamped =
   | typeof card
   | typeof instalmentPlan
   | typeof planExtraPayment
+  | typeof personDebt
   | typeof income;
 
 /**
@@ -259,6 +269,7 @@ export async function undoRecord(
     any(card),
     any(instalmentPlan),
     any(planExtraPayment),
+    any(personDebt),
     // The salary amount stays editable during the current cycle (spec 2).
     any(income, or(ne(income.cycleId, cur.id), ne(income.kind, "salary"))),
   ]);
@@ -380,6 +391,16 @@ export const salaryDay = new Hono<SignedIn>()
         if (!found || found.paidOffOn || found.currency !== (k.currency ?? cur)) {
           problems.push(`commitment.${i}.plan`);
         }
+      }
+    });
+
+    // Paybacks to a person (item 20): only last cycle's coming-up ones move on, keeping their entry.
+    const personDebtOf = (k: (typeof b.commitments)[number]) =>
+      k.carriedFromId ? (carriedById.get(k.carriedFromId)?.personDebtId ?? null) : null;
+    b.commitments.forEach((k, i) => {
+      const payback = k.kind === "person_payback";
+      if (payback !== (personDebtOf(k) !== null) || (payback && k.everyCycle)) {
+        problems.push(`commitment.${i}.person`);
       }
     });
 
@@ -518,6 +539,7 @@ export const salaryDay = new Hono<SignedIn>()
           prepaymentId: prepaymentOf(k),
           cardId: cardOf(k),
           planId: planOf(k),
+          personDebtId: personDebtOf(k),
         }),
       );
       if (k.carriedFromId) {

@@ -156,13 +156,14 @@ describe("add income (item 10, spec 5)", () => {
     expect(cur.savings).toEqual([expect.objectContaining({ id, kind: "income", amountMinor: 2_000_000 })]);
   });
 
-  it("refuses a split past the amount, and kinds that come with later items", async () => {
+  it("refuses a split past the amount, and kinds made elsewhere (borrowed and paid back go with their person)", async () => {
     const { cookie } = await setUp();
     for (const body of [
       { kind: "extra", amountMinor: 100, toSavingsMinor: 101 },
       { kind: "extra", amountMinor: 0, toSavingsMinor: 0 },
       { kind: "salary", amountMinor: 100, toSavingsMinor: 0 },
       { kind: "borrowed", amountMinor: 100, toSavingsMinor: 0 },
+      { kind: "paid_back", amountMinor: 100, toSavingsMinor: 0 },
     ]) {
       expect((await send("POST", "/api/incomes", { id: crypto.randomUUID(), ...body }, cookie)).status).toBe(
         400,

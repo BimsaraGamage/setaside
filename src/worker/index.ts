@@ -8,6 +8,7 @@ import { conversions } from "./conversions";
 import { dayChoices } from "./day-choices";
 import { firstUse } from "./first-use";
 import { payments } from "./payments";
+import { people } from "./people";
 import { plans } from "./plans";
 import { pots } from "./pots";
 import { prepayments } from "./prepayments";
@@ -36,6 +37,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", conversions)
   .route("/", cards)
   .route("/", plans)
+  .route("/", people)
   .route("/", salaryDay);
 
 const app = new Hono<{ Bindings: Bindings }>()

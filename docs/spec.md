@@ -224,10 +224,11 @@ Bank loans and card instalment plans are one kind.
 
 ### People (lent and borrowed)
 
-- A list of who owes what, each in its own currency.
-- **Lend**: lowers free money now. **Got it back**: the money is split between savings and free money, like extra income.
-- **Borrow**: added like extra income. Paying back is a commitment with a date the user sets.
-- **Settled** closes an entry.
+- A list of who owes what, each in its own currency (either of the user's): open entries first, then Settled ones.
+- **Lend**: lowers free money now (not a spend: it counts at once), in the cycle it is made. **Got it back**: at most what is still owed, dated today; the money is split between savings and free money, like extra income. It can come back in parts, in any later cycle.
+- **Borrow**: added like extra income (on Add income, kind Borrowed, or People › I borrowed). Paying back is a commitment with a date the user sets: given when borrowing (the whole amount) or added later on the entry's page (filled with what is owed past the open paybacks, never more). A payback is never Every cycle; it can be changed or deleted like a bill; one due after the expected salary day moves on with salary day like any coming-up one. Paid back = what payments on its paybacks cover.
+- An entry with nothing owed closes by itself. **Settled** closes an entry at any time, whatever is still owed (forgiven, or paid outside the app), and finishes this cycle's open paybacks; its toast has **Undo**.
+- An entry is deleted (or its toast's Undo) only in the cycle it was made and while nothing is back; deleting a borrowed one deletes its income and paybacks.
 
 ## 10. Screens
 

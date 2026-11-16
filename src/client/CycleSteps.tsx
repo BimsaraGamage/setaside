@@ -18,15 +18,18 @@ export interface Row {
   name: string;
   /**
    * A payback to savings is filled by its prepayment (salary day, item 14); a card
-   * bill by its card (item 18); a plan payment by its instalment plan (item 19).
+   * bill by its card (item 18); a plan payment by its instalment plan (item 19);
+   * a payback to a person is last cycle's coming-up one moved on (item 20).
    */
-  kind: "bill" | "savings" | "savings_payback" | "card_bill" | "plan_payment";
+  kind: "bill" | "savings" | "savings_payback" | "card_bill" | "plan_payment" | "person_payback";
   /** The prepayment a payback pays back. */
   prepaymentId?: string;
   /** A card bill's card. */
   cardId?: string;
   /** A plan payment's plan. */
   planId?: string;
+  /** A payback to a person: the money borrowed (item 20). */
+  personDebtId?: string;
   /** Either of the user's currencies (spec 8); chosen on a new row only. */
   currency: string;
   text: string;
@@ -99,6 +102,9 @@ export function CommitmentsStep({
               This cycle's payment on an instalment plan; the last one is only what is left.
             </p>
           )}
+          {r.kind === "person_payback" && (
+            <p className="tiny mute">Pays back money you borrowed from a person.</p>
+          )}
           {r.kind === "card_bill" && (
             <p className="tiny mute">
               Card bill, filled from the card balance. Its money is already held from your card spends.
@@ -141,7 +147,7 @@ export function CommitmentsStep({
               <span className="tiny mute">After the next salary day: coming up only, not set aside.</span>
             )}
           </label>
-          {r.kind !== "savings_payback" && r.kind !== "plan_payment" && (
+          {r.kind !== "savings_payback" && r.kind !== "plan_payment" && r.kind !== "person_payback" && (
             <label className="row check">
               <input
                 type="checkbox"

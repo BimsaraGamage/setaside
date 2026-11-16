@@ -20,6 +20,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { personDebtLines } from "./people";
 import { planLines } from "./plans";
 import { prepaymentLines } from "./prepayments";
 import { undoRecord } from "./salary-day";
@@ -206,6 +207,8 @@ export const firstUse = new Hono<SignedIn>()
     const cards = current ? await cardLines(c, current.id) : [];
     // Instalment plans with what is paid so far and their extra payments (item 19).
     const plans = current ? await planLines(c) : [];
+    // People: lent and borrowed, with what is back so far (item 20).
+    const people = current ? await personDebtLines(c) : [];
     return c.json({
       settings: s
         ? {
@@ -246,6 +249,7 @@ export const firstUse = new Hono<SignedIn>()
       pots,
       cards,
       plans,
+      people,
       conversions,
       lastCycle,
       undoSalaryDay,
@@ -266,6 +270,7 @@ export const firstUse = new Hono<SignedIn>()
         prepaymentId: k.prepaymentId,
         cardId: k.cardId,
         planId: k.planId,
+        personDebtId: k.personDebtId,
         payments: payments
           .filter((p) => p.commitmentId === k.id)
           .map((p) => ({

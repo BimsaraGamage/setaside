@@ -156,11 +156,13 @@ describe("checks (spec 5)", () => {
     expect(checkIncome({ ...ok, toSavingsMinor: 1_000_001 }, ctx)).toContain("to_savings");
   });
 
-  it("extra income and loan money (item 19); borrowed and paid back wait for item 20", () => {
+  it("extra income, loan money (item 19), borrowed and paid back to me (item 20)", () => {
     const ok = { kind: "extra" as const, currency: "LKR", amountMinor: 1_000_000, toSavingsMinor: 0 };
     expect(checkIncome({ ...ok, currency: "USD" }, ctx)).toContain("currency");
-    expect(checkIncome({ ...ok, kind: "loan" }, ctx)).toEqual([]);
-    for (const kind of ["borrowed", "paid_back", "salary", "opening"] as const) {
+    for (const kind of ["loan", "borrowed", "paid_back"] as const) {
+      expect(checkIncome({ ...ok, kind }, ctx)).toEqual([]);
+    }
+    for (const kind of ["salary", "opening", "leftover"] as const) {
       expect(checkIncome({ ...ok, kind }, ctx)).toContain("kind");
     }
   });

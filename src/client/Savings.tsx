@@ -1,13 +1,17 @@
 import { useState } from "react";
 import {
-  type ADD_INCOME_KINDS,
+  ADD_INCOME_KINDS,
+  checkGotBack,
   checkIncome,
+  checkPersonDebt,
   checkPrepayment,
   checkSavingsMove,
   combinedSavingsMinor,
+  debtProgress,
   formatMoney,
   MONTHS_MAX,
   NAME_MAX,
+  PERSON_NAME_MAX,
   parseAmount,
   paybackCycles,
   prepaymentProgress,
@@ -19,6 +23,8 @@ import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, type Ready, type SavingsLine, useToday } from "./data";
 import { newId } from "./id";
+import type { PeopleActions } from "./People";
+import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
@@ -34,7 +40,7 @@ const addIncome = (
   currency: string,
 ) => ok(api.api.incomes.$post({ json: { id, kind, amountMinor, toSavingsMinor, currency } }));
 
-/** What Add income records (spec 5): extra income, or loan money received as cash (item 19). */
+/** What Add income records (spec 5): extra income, loan money received as cash (item 19), borrowed and paid back to me (item 20). */
 type IncomeKindAdded = (typeof ADD_INCOME_KINDS)[number];
 const removeIncome = (id: string) => ok(api.api.incomes[":id"].$delete({ param: { id } }));
 const addPrepayment = (json: {
@@ -471,40 +477,107 @@ export function SavingsMovePage({
 /**
  * Add income (spec 5, 10): amount, how much of it to savings, the rest to free
  * money, and the new allowance before saving. Kinds: extra income and loan
- * money received as cash (item 19); borrowed and paid back to me come with item 20.
+ * money received as cash (item 19); borrowed from a person (with when it is paid
+ * back) and paid back to me (on money lent), saved with their person (item 20).
  */
-export function AddIncomePage({ data, actions }: { data: Ready; actions: SavingsActions }) {
+export function AddIncomePage({
+  data,
+  actions,
+  people,
+  kind: startKind,
+  personId,
+}: {
+  data: Ready;
+  actions: SavingsActions;
+  people: PeopleActions;
+  kind?: string;
+  personId?: string;
+}) {
   const spendCur = data.settings.spendingCurrency;
-  const [cur, setCur] = useState(spendCur);
-  const [kind, setKind] = useState<IncomeKindAdded>("extra");
+  const lentOpen = data.people.filter((p) => p.direction === "lent" && !debtProgress(p).closed);
+  const firstKind = (ADD_INCOME_KINDS as readonly string[]).includes(startKind ?? "")
+    ? (startKind as IncomeKindAdded)
+    : "extra";
+  const [kind, setKind] = useState<IncomeKindAdded>(firstKind);
+  const [whoId, setWhoId] = useState(lentOpen.find((p) => p.id === personId)?.id ?? lentOpen[0]?.id ?? "");
+  const who = kind === "paid_back" ? lentOpen.find((p) => p.id === whoId) : undefined;
+  const [cur, setCur] = useState(who?.currency ?? spendCur);
   const today = useToday(data.settings.homeTimeZone);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(who ? toText(debtProgress(who).owedMinor, who.currency) : "");
   const [savedText, setSavedText] = useState("");
+  const [name, setName] = useState("");
+  const [paybackOn, setPaybackOn] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const amountMinor = parseAmount(text, cur) ?? 0;
   const toSavingsMinor = parseAmount(savedText, cur) ?? 0;
-  const problems = checkIncome({ kind, currency: cur, amountMinor, toSavingsMinor }, currencyContext(data));
+  const problems: string[] = checkIncome(
+    { kind, currency: cur, amountMinor, toSavingsMinor },
+    currencyContext(data),
+  );
+  const payback = kind === "borrowed" && paybackOn ? { plannedMinor: amountMinor, dueOn: paybackOn } : null;
+  if (kind === "borrowed") {
+    problems.push(
+      ...checkPersonDebt(
+        { direction: "borrowed", personName: name, currency: cur, amountMinor, toSavingsMinor, payback },
+        { ...currencyContext(data), cycleStartedOn: data.cycle.startedOn },
+      ),
+    );
+  }
+  if (kind === "paid_back") {
+    if (!who) problems.push("entry");
+    else problems.push(...checkGotBack({ amountMinor, toSavingsMinor }, who));
+  }
   const entries = entriesOf(data);
   const after = todayView(
-    problems.length === 0
+    amountMinor > 0 && toSavingsMinor <= amountMinor
       ? {
           ...entries,
           incomes: [
             ...entries.incomes,
             { kind, currency: cur, amountMinor, toSavingsMinor, receivedOn: today },
           ],
+          // A payback due by the salary day is set aside at once.
+          commitments: payback
+            ? [...entries.commitments, { ...payback, currency: cur, state: "open" as const }]
+            : entries.commitments,
         }
       : entries,
     today,
   );
 
+  function pickKind(k: IncomeKindAdded) {
+    setKind(k);
+    if (k === "paid_back") pickWho(whoId);
+  }
+
+  function pickWho(id: string) {
+    setWhoId(id);
+    const p = lentOpen.find((x) => x.id === id);
+    if (!p) return;
+    setCur(p.currency);
+    setText(toText(debtProgress(p).owedMinor, p.currency));
+    setSavedText("");
+  }
+
   async function save() {
     setBusy(true);
     setFailed(false);
-    const ok = await actions.addIncome(kind, amountMinor, toSavingsMinor, cur);
+    const ok =
+      kind === "borrowed"
+        ? await people.add({
+            direction: "borrowed",
+            personName: name.trim(),
+            currency: cur,
+            amountMinor,
+            toSavingsMinor,
+            payback,
+          })
+        : kind === "paid_back" && who
+          ? await people.gotBack(who, amountMinor, toSavingsMinor)
+          : await actions.addIncome(kind, amountMinor, toSavingsMinor, cur);
     setBusy(false);
-    if (ok) window.location.hash = "Money";
+    if (ok) window.location.hash = kind === "borrowed" || kind === "paid_back" ? "People" : "Money";
     else setFailed(true);
   }
 
@@ -514,15 +587,17 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
       <h1>Add income</h1>
       <section className="card stack">
         <fieldset className="stack" aria-label="Kind">
-          <div className="row">
+          <div className="row wrap">
             {(
               [
                 ["extra", "Extra income"],
                 ["loan", "Loan money"],
+                ["borrowed", "Borrowed"],
+                ["paid_back", "Paid back to me"],
               ] as const
             ).map(([k, label]) => (
               <label key={k} className="row check grow">
-                <input type="radio" name="income-kind" checked={kind === k} onChange={() => setKind(k)} />
+                <input type="radio" name="income-kind" checked={kind === k} onChange={() => pickKind(k)} />
                 <span>{label}</span>
               </label>
             ))}
@@ -530,19 +605,52 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
           <span className="tiny mute">
             {kind === "loan"
               ? "A loan paid to you as cash. Add the loan itself under Money › New loan or instalments."
-              : "A bonus, a refund. Dated today."}
+              : kind === "borrowed"
+                ? "Money a person lent you. It is listed under People until you pay it back."
+                : kind === "paid_back"
+                  ? "Money you lent coming back. Dated today."
+                  : "A bonus, a refund. Dated today."}
           </span>
         </fieldset>
-        <CurrencyChoice
-          currencies={currenciesOf(data.settings)}
-          value={cur}
-          onChange={(c) => {
-            setCur(c);
-            setText("");
-            setSavedText("");
-          }}
-        />
+        {kind === "borrowed" && (
+          <label className="field">
+            From whom
+            <input
+              value={name}
+              maxLength={PERSON_NAME_MAX}
+              placeholder="Name"
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+        )}
+        {kind === "paid_back" &&
+          (lentOpen.length === 0 ? (
+            <p className="small mute">Nobody owes you money. Add it under People › I lent money first.</p>
+          ) : (
+            <label className="field">
+              Who paid you back
+              <select value={whoId} onChange={(e) => pickWho(e.target.value)}>
+                {lentOpen.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.personName} · owes {formatMoney(debtProgress(p).owedMinor, p.currency)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        {kind !== "paid_back" && (
+          <CurrencyChoice
+            currencies={currenciesOf(data.settings)}
+            value={cur}
+            onChange={(c) => {
+              setCur(c);
+              setText("");
+              setSavedText("");
+            }}
+          />
+        )}
         <AmountField label="Amount" text={text} currency={cur} onChange={setText} />
+        {problems.includes("too_much") && <p className="small bad">More than they owe you.</p>}
         <AmountField label="To savings" text={savedText} currency={cur} onChange={setSavedText} />
         {problems.includes("to_savings") ? (
           <p className="small bad">To savings can't be more than the amount.</p>
@@ -550,6 +658,20 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
           <p className="small" data-testid="income-split">
             To free money: <b>{formatMoney(Math.max(0, amountMinor - toSavingsMinor), cur)}</b>
           </p>
+        )}
+        {kind === "borrowed" && (
+          <label className="field">
+            Pay back on
+            <input
+              type="date"
+              value={paybackOn}
+              min={data.cycle.startedOn}
+              onChange={(e) => setPaybackOn(e.target.value)}
+            />
+            <span className="tiny mute">
+              Optional. The whole amount is set aside as a payback on that day; change it later on its page.
+            </span>
+          </label>
         )}
         <p className="small" data-testid="income-after">
           You can spend today after this: <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
