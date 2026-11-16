@@ -1,5 +1,6 @@
 import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import { type Day, daysBetween, isDay } from "./days";
+import { atRate, fromRate, type Rate } from "./rate";
 
 /** `commitment.state` (data-model.md). Only open ones are set aside. */
 export type CommitmentState = "open" | "finished" | "carried" | "dropped";
@@ -9,6 +10,12 @@ export interface PaymentEntry {
   amountMinor: Minor;
   currency: string;
   paidOn: Day;
+  /**
+   * Paid in the other currency (spec 8): how much of the commitment it covers, in
+   * the commitment's currency, worked out when saved (`paymentCovers`). Left out
+   * for a payment in the commitment's own currency: it covers its amount.
+   */
+  coversMinor?: Minor | null;
 }
 
 /** One `commitment` row with its payments, as the money rules need it. */
@@ -40,9 +47,39 @@ export function paidMinor(c: Pick<CommitmentEntry, "payments">, currency: string
   return total;
 }
 
-/** "Still to pay": planned less paid, never below zero (spec 3). */
+/**
+ * How much of a commitment its payments cover, in its own currency (spec 3, 8):
+ * payments in its currency at their amount, payments in the other currency at
+ * what they covered when saved.
+ */
+export function coveredMinor(c: Pick<CommitmentEntry, "payments" | "currency">): Minor {
+  let total = 0;
+  for (const p of c.payments ?? []) total += p.currency === c.currency ? p.amountMinor : (p.coversMinor ?? 0);
+  return total;
+}
+
+/** "Still to pay": planned less what the payments cover, never below zero (spec 3). */
 export function stillToPayMinor(c: CommitmentEntry): Minor {
-  return Math.max(0, c.plannedMinor - paidMinor(c, c.currency));
+  return Math.max(0, c.plannedMinor - coveredMinor(c));
+}
+
+/**
+ * What a payment covers of a commitment in its own currency (spec 8, paid in the
+ * other currency): the same amount in the same currency; otherwise counted at the
+ * counting rate, rounded down; nothing without a rate.
+ */
+export function paymentCovers(
+  amountMinor: Minor,
+  payCurrency: string,
+  commitmentCurrency: string,
+  rates: { spendingCurrency: string; countingRate: Rate | null | undefined },
+): Minor {
+  if (payCurrency === commitmentCurrency) return amountMinor;
+  if (!rates.countingRate) return 0;
+  // A rate is spending-currency units for one salary-currency unit.
+  return payCurrency === rates.spendingCurrency
+    ? fromRate(amountMinor, rates.countingRate, payCurrency, commitmentCurrency)
+    : atRate(amountMinor, rates.countingRate, payCurrency, commitmentCurrency);
 }
 
 /**
@@ -145,6 +182,11 @@ export interface PaymentContext {
   cycleStartedOn: Day;
   /** The commitment's currency. */
   currency: string;
+  /**
+   * The other currency it may be paid in (spec 8); none for a one-currency user or
+   * a savings set-aside or payback, which move money within one savings total.
+   */
+  otherCurrency?: string | null;
 }
 
 export type PaymentProblem = "amount" | "paid_on" | "currency";
@@ -156,7 +198,6 @@ export function checkPayment(input: PaymentInput, ctx: PaymentContext): PaymentP
   if (!isDay(input.paidOn) || input.paidOn < ctx.cycleStartedOn || input.paidOn > ctx.today) {
     out.push("paid_on");
   }
-  // In the commitment's own currency until item 17 (paid in the other currency).
-  if (input.currency !== ctx.currency) out.push("currency");
+  if (input.currency !== ctx.currency && input.currency !== ctx.otherCurrency) out.push("currency");
   return out;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE `commitment_payment` ADD `covers_minor` integer;

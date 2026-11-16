@@ -51,6 +51,19 @@ export function minorAtLeast(target: Minor, rate: Rate, from: string, to: string
 }
 
 /**
+ * Spending-currency money (`from`) counted in the salary currency (`to`) at `rate`
+ * (spending units for one salary unit), rounded down: what rupees paid on a dollar
+ * bill cover of it (spec 8).
+ */
+export function fromRate(minor: Minor, rate: Rate, from: string, to: string): Minor {
+  if (minor <= 0) return 0;
+  const [whole = "0", frac = ""] = rate.split(".");
+  const num = BigInt(minor) * 10n ** BigInt(frac.length + minorDigits(to));
+  const den = BigInt(`${whole}${frac}`) * 10n ** BigInt(minorDigits(from));
+  return Number(num / den);
+}
+
+/**
  * The rate a conversion actually got (spec 8): `to` units for one `from` unit,
  * rounded down to 6 decimals, trailing zeros left out; null when either amount
  * is not above zero, or the rate rounds to nothing or is past what a rate holds.

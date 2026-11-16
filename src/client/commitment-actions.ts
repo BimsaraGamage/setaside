@@ -20,6 +20,8 @@ export interface CommitmentDraft {
 export interface PaymentDraft {
   amountMinor: number;
   paidOn: string;
+  /** Either currency (item 17); none: the commitment's own. */
+  currency?: string;
 }
 
 type State = "open" | "finished";
@@ -59,7 +61,11 @@ const changeOf = (c: Commitment): CommitmentChange =>
 /** Puts a commitment's fields and its "Every cycle" switch back (the template keeps its id). */
 const changeBack = (old: Commitment) =>
   change(old.id, { ...changeOf(old), recurringId: old.recurringId ?? undefined });
-const paymentDraftOf = (p: Payment): PaymentDraft => ({ amountMinor: p.amountMinor, paidOn: p.paidOn });
+const paymentDraftOf = (p: Payment): PaymentDraft => ({
+  amountMinor: p.amountMinor,
+  paidOn: p.paidOn,
+  currency: p.currency,
+});
 
 /** Steps in order; stops at the first that fails. */
 async function all(steps: (() => Promise<boolean>)[]): Promise<boolean> {
