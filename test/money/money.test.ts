@@ -206,10 +206,17 @@ describe("first use (spec 2)", () => {
     expect(checkFirstUse({ ...ok, expectedSalaryOn: "2026-11-30" }, "2026-11-12")).toEqual([]);
   });
 
-  it("needs real currencies, the same one for now (two currencies come with item 15)", () => {
-    expect(checkFirstUse({ ...ok, salaryCurrency: "USD" }, "2026-11-12")).toEqual(["salary_currency"]);
+  it("needs real currencies, and a counting rate when they differ (spec 8)", () => {
+    expect(checkFirstUse({ ...ok, salaryCurrency: "USD" }, "2026-11-12")).toEqual(["counting_rate"]);
+    expect(checkFirstUse({ ...ok, salaryCurrency: "USD", countingRate: "302.5" }, "2026-11-12")).toEqual([]);
+    expect(checkFirstUse({ ...ok, salaryCurrency: "XYZ", countingRate: "1" }, "2026-11-12")).toEqual([
+      "salary_currency",
+    ]);
+    // One currency: nothing held apart, nothing to count.
+    expect(checkFirstUse({ ...ok, heldSalaryMinor: 5 }, "2026-11-12")).toEqual(["held_salary"]);
     expect(checkFirstUse({ ...ok, spendingCurrency: "XYZ", salaryCurrency: "XYZ" }, "2026-11-12")).toEqual([
       "spending_currency",
+      "salary_currency",
     ]);
   });
 

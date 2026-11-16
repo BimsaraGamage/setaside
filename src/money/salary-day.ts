@@ -7,9 +7,10 @@ import {
   setAsideMinor,
   stillToPayMinor,
 } from "./commitment";
-import { type TodayView, todayView } from "./cycle";
+import { countedMinor, otherCurrency, type TodayView, todayView } from "./cycle";
 import { type Day, daysBetween, isDay } from "./days";
 import { checkPot, type PotEntry } from "./pot";
+import type { Rate } from "./rate";
 import type { Speed } from "./speed";
 
 /** Kinds a recurring ("Every cycle") commitment can be until cards, plans and people (items 18–20). */
@@ -75,6 +76,8 @@ export interface SalaryDayDraft {
   name: string;
   /** A payback to savings is filled by its prepayment (item 14), never Every cycle. */
   kind: RecurringKind | "savings_payback";
+  /** Its currency (spec 8): the template's or the coming-up commitment's. */
+  currency: string;
   plannedMinor: Minor;
   dueOn: Day;
   everyCycle: boolean;
@@ -106,6 +109,7 @@ export function salaryDayDrafts(a: {
       carriedFromId: c.id,
       name: c.name,
       kind: c.kind,
+      currency: c.currency,
       plannedMinor: rest,
       dueOn: c.dueOn,
       everyCycle: template !== undefined,
@@ -119,6 +123,7 @@ export function salaryDayDrafts(a: {
       carriedFromId: null,
       name: r.name,
       kind: r.kind,
+      currency: r.currency,
       plannedMinor: r.usualAmountMinor,
       dueOn: dueOnFrom(a.startedOn, r.usualDay),
       everyCycle: true,
@@ -132,29 +137,49 @@ export function salaryDayDrafts(a: {
 /**
  * The gap (spec 2): commitments set aside in the new cycle plus pot amounts, less
  * the salary and the free money last cycle brings in (item 12), when they are
- * more; else 0. Savings set-asides are commitments.
+ * more; else 0. Savings set-asides are commitments. With two currencies (spec 8)
+ * everything is compared in the spending currency, the salary currency's at the
+ * counting rate.
  */
 export function salaryDayGapMinor(a: {
   salaryMinor: Minor;
   expectedSalaryOn: Day;
   currency: string;
+  salaryCurrency?: string;
+  countingRate?: Rate | null;
   commitments: CommitmentEntry[];
   pots: PotEntry[];
   /** Free money from last cycle: leftover kept plus carried ones' money (less an overspend taken). */
   broughtInMinor?: Minor;
+  /** Two currencies: what last cycle brings in, in the salary currency. */
+  broughtInSalaryMinor?: Minor;
 }): Minor {
-  let total = setAsideMinor(a.commitments, a.expectedSalaryOn, a.currency);
-  for (const p of a.pots) if (p.currency === a.currency && !p.archived) total += p.amountMinor;
-  return Math.max(0, total - a.salaryMinor - (a.broughtInMinor ?? 0));
+  const two = {
+    spendingCurrency: a.currency,
+    salaryCurrency: a.salaryCurrency,
+    countingRate: a.countingRate,
+  };
+  const other = otherCurrency(two);
+  const netIn = (cur: string, salary: Minor, brought: Minor) => {
+    let total = setAsideMinor(a.commitments, a.expectedSalaryOn, cur);
+    for (const p of a.pots) if (p.currency === cur && !p.archived) total += p.amountMinor;
+    return total - salary - brought;
+  };
+  if (!other) return Math.max(0, netIn(a.currency, a.salaryMinor, a.broughtInMinor ?? 0));
+  const own = netIn(a.currency, 0, a.broughtInMinor ?? 0);
+  // Salary-currency set-asides less the salary: what is left over counts toward the rest.
+  const fromSalary = -netIn(other, a.salaryMinor, a.broughtInSalaryMinor ?? 0);
+  return Math.max(0, own - countedMinor(two, fromSalary));
 }
 
 export interface SalaryDayInput {
-  /** In the salary currency (one currency until item 15). */
+  /** In the salary currency (spec 2, 8). */
   salaryMinor: number;
   receivedOn: string;
   expectedSalaryOn: string;
-  commitments: { name: string; plannedMinor: number; dueOn: string }[];
-  pots: { name: string; usualAmountMinor: number; amountMinor: number }[];
+  /** Each in either currency (spec 8); none: the spending currency. */
+  commitments: { name: string; plannedMinor: number; dueOn: string; currency?: string }[];
+  pots: { name: string; usualAmountMinor: number; amountMinor: number; currency?: string }[];
 }
 
 export interface SalaryDayContext {
@@ -162,6 +187,7 @@ export interface SalaryDayContext {
   /** The cycle that ends: the salary can't be dated before it started. */
   cycleStartedOn: Day;
   spendingCurrency: string;
+  salaryCurrency?: string;
 }
 
 /** "salary", "received_on", "expected_salary_on", "commitment.<i>.<problem>", "pot.<i>.<problem>". */
@@ -176,15 +202,18 @@ export function checkSalaryDay(input: SalaryDayInput, ctx: SalaryDayContext): Sa
   if (!receivedOk) out.push("received_on");
   out.push(...checkExpectedSalaryDay(input.expectedSalaryOn, ctx.today));
   const startedOn = receivedOk ? input.receivedOn : ctx.today;
+  const currencies = ctx.salaryCurrency
+    ? { spendingCurrency: ctx.spendingCurrency, salaryCurrency: ctx.salaryCurrency }
+    : { spendingCurrency: ctx.spendingCurrency };
   input.commitments.forEach((c, i) => {
     const problems = checkCommitment(
-      { ...c, currency: ctx.spendingCurrency },
-      { cycleStartedOn: startedOn, spendingCurrency: ctx.spendingCurrency },
+      { ...c, currency: c.currency ?? ctx.spendingCurrency },
+      { ...currencies, cycleStartedOn: startedOn },
     );
     for (const p of problems) out.push(`commitment.${i}.${p}`);
   });
   input.pots.forEach((p, i) => {
-    const problems = checkPot({ ...p, currency: ctx.spendingCurrency }, ctx);
+    const problems = checkPot({ ...p, currency: p.currency ?? ctx.spendingCurrency }, currencies);
     for (const q of problems) out.push(`pot.${i}.${q}`);
   });
   return out;
@@ -228,16 +257,23 @@ export interface SalaryDayView {
 export function salaryDayView(a: {
   input: SalaryDayInput;
   spendingCurrency: string;
+  /** Two currencies (spec 8): the salary is in it; its money counts at the counting rate. */
+  salaryCurrency?: string;
+  countingRate?: Rate | null;
   today: Day;
   lastSpeed: Speed | null;
   broughtIn?: { amountMinor: Minor; toSavingsMinor: Minor } | null;
+  /** What last cycle brings in, in the salary currency (all of it to the new cycle, item 15). */
+  broughtInSalaryMinor?: Minor;
   carried?: CommitmentEntry[];
 }): SalaryDayView {
   const cur = a.spendingCurrency;
   const { input } = a;
+  const two = { salaryCurrency: a.salaryCurrency, countingRate: a.countingRate ?? null };
+  const salaryCur = otherCurrency({ spendingCurrency: cur, ...two }) ?? cur;
   const commitments: CommitmentEntry[] = [
     ...input.commitments.map((c) => ({
-      currency: cur,
+      currency: c.currency ?? cur,
       plannedMinor: c.plannedMinor,
       dueOn: c.dueOn,
       state: "open" as const,
@@ -246,7 +282,7 @@ export function salaryDayView(a: {
   ];
   const pots: PotEntry[] = input.pots.map((p, i) => ({
     id: `new-${i}`,
-    currency: cur,
+    currency: p.currency ?? cur,
     amountMinor: p.amountMinor,
     archived: false,
   }));
@@ -254,18 +290,30 @@ export function salaryDayView(a: {
   const today = todayView(
     {
       spendingCurrency: cur,
+      ...two,
       startedOn,
       expectedSalaryOn: input.expectedSalaryOn,
       incomes: [
         {
           kind: "salary",
-          currency: cur,
+          currency: salaryCur,
           amountMinor: input.salaryMinor,
           toSavingsMinor: 0,
           receivedOn: startedOn,
         },
         ...(a.broughtIn
           ? [{ kind: "leftover" as const, currency: cur, ...a.broughtIn, receivedOn: startedOn }]
+          : []),
+        ...(a.broughtInSalaryMinor && salaryCur !== cur
+          ? [
+              {
+                kind: "leftover" as const,
+                currency: salaryCur,
+                amountMinor: a.broughtInSalaryMinor,
+                toSavingsMinor: 0,
+                receivedOn: startedOn,
+              },
+            ]
           : []),
       ],
       spends: [],
@@ -279,9 +327,11 @@ export function salaryDayView(a: {
     salaryMinor: input.salaryMinor,
     expectedSalaryOn: input.expectedSalaryOn,
     currency: cur,
+    ...two,
     commitments,
     pots,
     broughtInMinor: a.broughtIn ? a.broughtIn.amountMinor - a.broughtIn.toSavingsMinor : 0,
+    broughtInSalaryMinor: a.broughtInSalaryMinor ?? 0,
   });
   return { today, gapMinor };
 }

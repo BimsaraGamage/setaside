@@ -9,7 +9,7 @@ test("first use: a bill with Every cycle and a starter pot are set aside in the 
 }) => {
   await signInFresh(page);
   await expect(page.getByRole("heading", { name: "Welcome to Setaside" })).toBeVisible();
-  await page.getByLabel("Currency").selectOption("LKR");
+  await page.getByLabel("Spending currency").selectOption("LKR");
   await page.getByLabel("Usual pay day").selectOption("25");
   await page.getByRole("button", { name: "Next" }).click();
   await page.getByLabel("Amount (LKR)").fill("100000");

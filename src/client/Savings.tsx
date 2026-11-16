@@ -3,6 +3,7 @@ import {
   checkIncome,
   checkPrepayment,
   checkSavingsMove,
+  combinedSavingsMinor,
   formatMoney,
   MONTHS_MAX,
   NAME_MAX,
@@ -14,23 +15,25 @@ import {
   todayView,
 } from "../money";
 import { api } from "./api";
+import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, type Ready, type SavingsLine, useToday } from "./data";
 import { newId } from "./id";
 import type { Toaster } from "./toast";
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
 
-const addMove = (id: string, kind: "put_in" | "take_out", amountMinor: number) =>
-  ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor } }));
+const addMove = (id: string, kind: "put_in" | "take_out", amountMinor: number, currency: string) =>
+  ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor, currency } }));
 const removeMove = (id: string) => ok(api.api["savings-movements"][":id"].$delete({ param: { id } }));
-const addIncome = (id: string, amountMinor: number, toSavingsMinor: number) =>
-  ok(api.api.incomes.$post({ json: { id, kind: "extra", amountMinor, toSavingsMinor } }));
+const addIncome = (id: string, amountMinor: number, toSavingsMinor: number, currency: string) =>
+  ok(api.api.incomes.$post({ json: { id, kind: "extra", amountMinor, toSavingsMinor, currency } }));
 const removeIncome = (id: string) => ok(api.api.incomes[":id"].$delete({ param: { id } }));
 const addPrepayment = (json: {
   id: string;
   movementId: string;
   commitmentId: string;
   name: string;
+  currency: string;
   totalMinor: number;
   paybackMinor: number;
   normalMonthlyMinor: number | null;
@@ -50,7 +53,7 @@ export function savingsActions({ done }: Toaster) {
   return {
     move: (kind: "put_in" | "take_out", amountMinor: number, currency: string) => {
       const id = newId();
-      return addMove(id, kind, amountMinor).then((ok) =>
+      return addMove(id, kind, amountMinor, currency).then((ok) =>
         done(ok, {
           text:
             kind === "take_out"
@@ -63,6 +66,7 @@ export function savingsActions({ done }: Toaster) {
     /** Take out "for a prepayment" (item 14): out of savings, with this cycle's payback set aside. */
     prepay: (p: {
       name: string;
+      currency: string;
       totalMinor: number;
       paybackMinor: number;
       normalMonthlyMinor: number | null;
@@ -74,9 +78,9 @@ export function savingsActions({ done }: Toaster) {
         done(ok, { text: `${name} prepayment saved`, undo: () => removePrepayment(id) }),
       );
     },
-    addIncome: (amountMinor: number, toSavingsMinor: number) => {
+    addIncome: (amountMinor: number, toSavingsMinor: number, currency: string) => {
       const id = newId();
-      return addIncome(id, amountMinor, toSavingsMinor).then((ok) =>
+      return addIncome(id, amountMinor, toSavingsMinor, currency).then((ok) =>
         done(ok, { text: "Income added", undo: () => removeIncome(id) }),
       );
     },
@@ -136,7 +140,12 @@ function Back({ to }: { to: string }) {
 /** Savings (spec 5, 10): the total, Take out, Put in, and every movement, newest first. */
 export function SavingsPage({ data }: { data: Ready }) {
   const cur = data.settings.spendingCurrency;
-  const total = savingsTotal(data.savings, cur);
+  const list = currenciesOf(data.settings);
+  const total = combinedSavingsMinor(data.savings, {
+    ...currencyContext(data),
+    countingRate: data.settings.countingRate,
+  });
+  const anySaved = list.some((c) => savingsTotal(data.savings, c) > 0);
   return (
     <>
       <Back to="Money" />
@@ -145,8 +154,19 @@ export function SavingsPage({ data }: { data: Ready }) {
         <p className="amount" data-testid="savings-total">
           {formatMoney(total, cur)}
         </p>
+        {list.length > 1 && (
+          <>
+            {list.map((c) => (
+              <div key={c} className="li" data-testid={`savings-total-${c}`}>
+                <span className="grow">{c}</span>
+                <b className="small">{formatMoney(savingsTotal(data.savings, c), c)}</b>
+              </div>
+            ))}
+            <p className="tiny mute">Combined in {cur} at the counting rate.</p>
+          </>
+        )}
         <div className="row">
-          {total > 0 ? (
+          {anySaved ? (
             <a className="btn grow link" href="#SavingsMove/take_out">
               Take out
             </a>
@@ -244,7 +264,8 @@ export function SavingsMovePage({
   kind: "put_in" | "take_out";
   actions: SavingsActions;
 }) {
-  const cur = data.settings.spendingCurrency;
+  const spendCur = data.settings.spendingCurrency;
+  const [cur, setCur] = useState(spendCur);
   const today = useToday(data.settings.homeTimeZone);
   const [text, setText] = useState("");
   const [prepay, setPrepay] = useState(false);
@@ -273,9 +294,9 @@ export function SavingsMovePage({
   const problems: string[] = forPrepayment
     ? checkPrepayment(
         { name, currency: cur, totalMinor: amountMinor, paybackMinor, normalMonthlyMinor, months },
-        { spendingCurrency: cur, savingsMinor: total },
+        { ...currencyContext(data), savingsMinor: total },
       )
-    : checkSavingsMove({ kind, currency: cur, amountMinor, totalMinor: total }, { spendingCurrency: cur });
+    : checkSavingsMove({ kind, currency: cur, amountMinor, totalMinor: total }, currencyContext(data));
   const entries = entriesOf(data);
   // A prepayment does not come to free money; its first payback is set aside today.
   const payback = {
@@ -302,6 +323,7 @@ export function SavingsMovePage({
     const ok = forPrepayment
       ? await actions.prepay({
           name: name.trim(),
+          currency: cur,
           totalMinor: amountMinor,
           paybackMinor,
           normalMonthlyMinor,
@@ -319,6 +341,16 @@ export function SavingsMovePage({
       <h1>{takeOut ? "Take out of savings" : "Put in savings"}</h1>
       <p className="small mute">Savings now {formatMoney(total, cur)}</p>
       <section className="card stack">
+        <CurrencyChoice
+          currencies={currenciesOf(data.settings)}
+          value={cur}
+          onChange={(c) => {
+            setCur(c);
+            setText("");
+            setPaybackText("");
+            setMonthlyText("");
+          }}
+        />
         <AmountField label="Amount" text={text} currency={cur} onChange={setText} />
         {problems.includes("too_much") && (
           <p className="small bad">More than is saved ({formatMoney(total, cur)}).</p>
@@ -401,12 +433,12 @@ export function SavingsMovePage({
         {forPrepayment ? (
           <p className="small" data-testid="savings-after">
             Free money stays the same, less this cycle's payback. You can spend today after this:{" "}
-            <b>{formatMoney(after.allowanceMinor, cur)}</b>
+            <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
           </p>
         ) : takeOut ? (
           <p className="small" data-testid="savings-after">
             It goes to free money. You can spend today after this:{" "}
-            <b>{formatMoney(after.allowanceMinor, cur)}</b>
+            <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
           </p>
         ) : (
           <p className="small mute">Money from outside the app. Free money stays the same.</p>
@@ -428,7 +460,8 @@ export function SavingsMovePage({
  * money, borrowed and paid back to me come with items 19 and 20.
  */
 export function AddIncomePage({ data, actions }: { data: Ready; actions: SavingsActions }) {
-  const cur = data.settings.spendingCurrency;
+  const spendCur = data.settings.spendingCurrency;
+  const [cur, setCur] = useState(spendCur);
   const today = useToday(data.settings.homeTimeZone);
   const [text, setText] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -438,7 +471,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
   const toSavingsMinor = parseAmount(savedText, cur) ?? 0;
   const problems = checkIncome(
     { kind: "extra", currency: cur, amountMinor, toSavingsMinor },
-    { spendingCurrency: cur },
+    currencyContext(data),
   );
   const entries = entriesOf(data);
   const after = todayView(
@@ -457,7 +490,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
   async function save() {
     setBusy(true);
     setFailed(false);
-    const ok = await actions.addIncome(amountMinor, toSavingsMinor);
+    const ok = await actions.addIncome(amountMinor, toSavingsMinor, cur);
     setBusy(false);
     if (ok) window.location.hash = "Money";
     else setFailed(true);
@@ -469,6 +502,15 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
       <h1>Add income</h1>
       <p className="small mute">Extra income: a bonus, a refund. Dated today.</p>
       <section className="card stack">
+        <CurrencyChoice
+          currencies={currenciesOf(data.settings)}
+          value={cur}
+          onChange={(c) => {
+            setCur(c);
+            setText("");
+            setSavedText("");
+          }}
+        />
         <AmountField label="Amount" text={text} currency={cur} onChange={setText} />
         <AmountField label="To savings" text={savedText} currency={cur} onChange={setSavedText} />
         {problems.includes("to_savings") ? (
@@ -479,7 +521,7 @@ export function AddIncomePage({ data, actions }: { data: Ready; actions: Savings
           </p>
         )}
         <p className="small" data-testid="income-after">
-          You can spend today after this: <b>{formatMoney(after.allowanceMinor, cur)}</b>
+          You can spend today after this: <b>{formatMoney(after.allowanceMinor, spendCur)}</b>
         </p>
       </section>
       {failed && <p className="error">Not saved. Check the connection and try again.</p>}

@@ -92,6 +92,13 @@
       "when": 1794785950896,
       "tag": "0012_prepayment",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794786945682,
+      "tag": "0013_counting_rate",
+      "breakpoints": true
     }
   ]
 }

@@ -103,6 +103,8 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
 const newMove = z.object({
   id: z.uuid(),
   kind: z.enum(["put_in", "take_out"]),
+  /** Either of the user's currencies (spec 8); none: the spending currency. */
+  currency: z.string().optional(),
   /** Above zero; a take-out is stored below zero. */
   amountMinor: z.number().int(),
 });
@@ -110,6 +112,8 @@ const newMove = z.object({
 const newIncome = z.object({
   id: z.uuid(),
   kind: z.string(),
+  /** Either of the user's currencies (spec 8); none: the spending currency. */
+  currency: z.string().optional(),
   amountMinor: z.number().int(),
   toSavingsMinor: z.number().int(),
 });
@@ -126,9 +130,9 @@ export const savings = new Hono<SignedIn>()
     const b = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const currency = now.settings.spendingCurrency;
+    const currency = b.currency ?? now.settings.spendingCurrency;
     const totalMinor = b.kind === "take_out" ? savingsTotal(await savingsLines(c), currency) : 0;
-    const problems = checkSavingsMove({ ...b, currency, totalMinor }, { spendingCurrency: currency });
+    const problems = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(savingsMovement).values({
@@ -166,8 +170,8 @@ export const savings = new Hono<SignedIn>()
     const b = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const row = { ...b, currency: now.settings.spendingCurrency };
-    const problems = checkIncome(row, { spendingCurrency: now.settings.spendingCurrency });
+    const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
+    const problems = checkIncome(row, now.currencies);
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(income).values({

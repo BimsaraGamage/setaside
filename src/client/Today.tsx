@@ -1,4 +1,14 @@
-import { formatMoney, isSalaryLate, nextUp, potVerdict, stillToPayMinor, todayView } from "../money";
+import {
+  countedMinor,
+  formatMoney,
+  isSalaryLate,
+  nextUp,
+  otherCurrency,
+  potVerdict,
+  setAsideMinor,
+  stillToPayMinor,
+  todayView,
+} from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
 import { paidNote } from "./Plan";
 import { PotRow } from "./Pots";
@@ -73,6 +83,13 @@ export function Today({
   const today = useToday(settings.homeTimeZone);
   const view = todayView(entriesOf(data), today);
   const up = nextUp(data.commitments, today, cycle.expectedSalaryOn, settings.spendingCurrency);
+  // Two currencies (spec 8): the salary currency's set-asides count at the counting rate.
+  const other = otherCurrency(entriesOf(data));
+  const nextUpTotal =
+    up.totalMinor +
+    (other
+      ? countedMinor(entriesOf(data), setAsideMinor(data.commitments, cycle.expectedSalaryOn, other))
+      : 0);
   const money = (m: number) => formatMoney(m, view.currency);
   const pots = data.pots.filter((p) => !p.archived);
   const over = view.leftTodayMinor < 0;
@@ -152,7 +169,7 @@ export function Today({
             Next up · already set aside
           </h3>
           <b className="small" data-testid="next-up-total">
-            {money(up.totalMinor)}
+            {money(nextUpTotal)}
           </b>
         </div>
         {up.items.length === 0 && (
@@ -166,7 +183,7 @@ export function Today({
             name={c.name}
             day={c.dueOn}
             inDays={inDays}
-            amount={money(stillToPayMinor(c))}
+            amount={formatMoney(stillToPayMinor(c), c.currency)}
             note={paidNote(c)}
           />
         ))}
@@ -177,7 +194,7 @@ export function Today({
             name={c.name}
             day={c.dueOn}
             inDays={inDays}
-            amount={money(c.plannedMinor)}
+            amount={formatMoney(c.plannedMinor, c.currency)}
             note="Coming up · next cycle"
             coming
           />

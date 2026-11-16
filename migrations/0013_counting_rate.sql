@@ -1,0 +1,11 @@
+CREATE TABLE `counting_rate` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`rate` text NOT NULL,
+	`set_at` integer NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `counting_rate_user_id_idx` ON `counting_rate` (`user_id`,`set_at`);

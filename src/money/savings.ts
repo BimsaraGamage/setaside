@@ -1,5 +1,6 @@
-import type { Minor } from "./amount";
+import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import type { Day } from "./days";
+import { atRate, type Rate } from "./rate";
 
 /**
  * One movement into or out of savings, as the money rules need it: `amountMinor`
@@ -41,11 +42,11 @@ export interface IncomeInput {
 export type IncomeProblem = "kind" | "currency" | "amount" | "to_savings";
 
 /** Checks Add income (spec 5): the split is to savings, the rest to free money. */
-export function checkIncome(input: IncomeInput, ctx: { spendingCurrency: string }): IncomeProblem[] {
+export function checkIncome(input: IncomeInput, ctx: Currencies): IncomeProblem[] {
   const out: IncomeProblem[] = [];
   if (!(ADD_INCOME_KINDS as readonly string[]).includes(input.kind)) out.push("kind");
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // Either of the user's currencies (spec 8).
+  if (!isUsersCurrency(input.currency, ctx)) out.push("currency");
   const amountOk = Number.isSafeInteger(input.amountMinor) && input.amountMinor > 0;
   if (!amountOk) out.push("amount");
   if (
@@ -69,14 +70,26 @@ export interface SavingsMoveInput {
 export type SavingsMoveProblem = "currency" | "amount" | "too_much";
 
 /** Checks Put in and Take out (spec 5). Take out can't go past what is saved. */
-export function checkSavingsMove(
-  input: SavingsMoveInput,
-  ctx: { spendingCurrency: string },
-): SavingsMoveProblem[] {
+export function checkSavingsMove(input: SavingsMoveInput, ctx: Currencies): SavingsMoveProblem[] {
   const out: SavingsMoveProblem[] = [];
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // Either of the user's currencies (spec 8).
+  if (!isUsersCurrency(input.currency, ctx)) out.push("currency");
   if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) out.push("amount");
   else if (input.kind === "take_out" && input.amountMinor > input.totalMinor) out.push("too_much");
   return out;
+}
+
+/**
+ * The combined savings total (spec 5, 8): the spending currency's total plus the
+ * salary currency's at the counting rate, rounded down; just the one total with
+ * one currency, and the spending currency's alone without a rate.
+ */
+export function combinedSavingsMinor(
+  moves: SavingsMove[],
+  ctx: Currencies & { countingRate?: Rate | null },
+): Minor {
+  const own = savingsTotal(moves, ctx.spendingCurrency);
+  const other = ctx.salaryCurrency;
+  if (!other || other === ctx.spendingCurrency || !ctx.countingRate) return own;
+  return own + atRate(savingsTotal(moves, other), ctx.countingRate, other, ctx.spendingCurrency);
 }

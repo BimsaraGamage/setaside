@@ -6,6 +6,7 @@ import {
   type ComingUpEntry,
   checkCycleClose,
   checkSalaryDay,
+  countedMinor,
   cycleSpeeds,
   formatMoney,
   isComingUp,
@@ -16,12 +17,14 @@ import {
   type SalaryDayInput,
   salaryDayDrafts,
   salaryDayView,
+  salaryLeftoverOf,
   stillToPayMinor,
   suggestSalaryDay,
   type UnpaidChoice,
   unpaidAtEnd,
 } from "../money";
 import { api } from "./api";
+import { currenciesOf, currencyContext } from "./CurrencyChoice";
 import { CommitmentsStep, type PotRow, PotsStep, type Row, typedOk } from "./CycleSteps";
 import { dayLabel, entriesOf, potEntry, type Ready, useToday } from "./data";
 import { newId } from "./id";
@@ -80,6 +83,9 @@ const OVERSPEND: { choice: OverspendChoice; label: string }[] = [
  */
 export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryDayActions }) {
   const cur = data.settings.spendingCurrency;
+  // The salary is in the salary currency (spec 2, 8).
+  const salaryCur = data.settings.salaryCurrency;
+  const currencyList = currenciesOf(data.settings);
   const today = useToday(data.settings.homeTimeZone);
   const [step, setStep] = useState<Step>(1);
   const [salaryText, setSalaryText] = useState("");
@@ -92,7 +98,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         id: p.id,
         allocationId: newId(),
         name: p.name,
-        text: toText(p.usualAmountMinor, cur),
+        currency: p.currency,
+        text: toText(p.usualAmountMinor, p.currency),
         isNew: false,
       })),
   );
@@ -100,25 +107,39 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   // Steps 2 and 3.
-  const [closeIds] = useState(() => ({ closeId: newId(), leftoverIncomeId: newId() }));
+  const [closeIds] = useState(() => ({
+    closeId: newId(),
+    leftoverIncomeId: newId(),
+    salaryLeftoverIncomeId: newId(),
+  }));
   const [choices, setChoices] = useState<Record<string, { choice: UnpaidChoice; newId: string }>>({});
   const [inHandText, setInHandText] = useState("");
   const [toSavingsText, setToSavingsText] = useState("");
   const [overspend, setOverspend] = useState<OverspendChoice | null>(null);
 
   const money = (m: number) => formatMoney(m, cur);
-  const amount = (t: string) => parseAmount(t, cur) ?? -1;
+  const amount = (t: string, c: string) => parseAmount(t, c) ?? -1;
   const input: SalaryDayInput = {
-    salaryMinor: parseAmount(salaryText, cur) ?? 0,
+    salaryMinor: parseAmount(salaryText, salaryCur) ?? 0,
     receivedOn,
     expectedSalaryOn: expected,
-    commitments: (rows ?? []).map((r) => ({ name: r.name, plannedMinor: amount(r.text), dueOn: r.dueOn })),
-    pots: pots.map((p) => ({ name: p.name, usualAmountMinor: amount(p.text), amountMinor: amount(p.text) })),
+    commitments: (rows ?? []).map((r) => ({
+      name: r.name,
+      currency: r.currency,
+      plannedMinor: amount(r.text, r.currency),
+      dueOn: r.dueOn,
+    })),
+    pots: pots.map((p) => ({
+      name: p.name,
+      currency: p.currency,
+      usualAmountMinor: amount(p.text, p.currency),
+      amountMinor: amount(p.text, p.currency),
+    })),
   };
   const problems = checkSalaryDay(input, {
     today,
     cycleStartedOn: data.cycle.startedOn,
-    spendingCurrency: cur,
+    ...currencyContext(data),
   });
 
   // Steps 2 and 3: the cycle that ends is still the current one.
@@ -128,6 +149,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     return c ? [{ id: k.id, choice: c.choice, newId: c.newId }] : [];
   });
   const leftover = leftoverOf(entriesOf(data), chosen);
+  // Two currencies: the salary currency's leftover goes to the new cycle whole (item 15).
+  const salaryLeftover = salaryLeftoverOf(entriesOf(data), chosen);
   const overspent = leftover.leftoverMinor < 0;
   const closeInput: CloseInput = {
     unpaid: chosen.map(({ id, choice }) => ({ id, choice })),
@@ -167,13 +190,14 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       if (choice === "carry") add(planned, k.prepaymentId, stillToPayMinor(k));
     }
     for (const d of drafts) add(planned, d.prepaymentId, d.plannedMinor);
-    const prepayments = data.prepayments
-      .filter((p) => p.currency === cur)
-      .map((p) => ({ ...p, paidBackMinor: p.paidBackMinor + (paid[p.id] ?? 0) }));
+    const prepayments = data.prepayments.map((p) => ({
+      ...p,
+      paidBackMinor: p.paidBackMinor + (paid[p.id] ?? 0),
+    }));
     return [...drafts, ...paybackDrafts(prepayments, receivedOn, planned)].map((d) => ({
       ...d,
       id: newId(),
-      text: toText(d.plannedMinor, cur),
+      text: toText(d.plannedMinor, d.currency),
     }));
   }
 
@@ -186,6 +210,17 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const next = () => go(STEPS[at + 1] as Step);
   const back = () => go(STEPS[at - 1] as Step);
   const typed = (t: string) => typedOk(t, cur);
+  const typedSalary = (t: string) => typedOk(t, salaryCur);
+  /** Amounts in both currencies, counted in the spending currency (the salary currency's at the counting rate). */
+  const inSpending = (list: { currency?: string; minor: number }[]) => {
+    let own = 0;
+    let other = 0;
+    for (const x of list) {
+      if ((x.currency ?? cur) === cur) own += x.minor;
+      else other += x.minor;
+    }
+    return own + countedMinor(entriesOf(data), other);
+  };
 
   // The cycle that ends: its speed is the new cycle's in its first days (spec 7).
   const ended = cycleSpeeds(
@@ -196,6 +231,9 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const view = salaryDayView({
     input,
     spendingCurrency: cur,
+    salaryCurrency: salaryCur,
+    countingRate: data.settings.countingRate,
+    broughtInSalaryMinor: salaryLeftover ?? 0,
     today,
     lastSpeed: ended.days > 0 ? ended : null,
     broughtIn: brought,
@@ -216,7 +254,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         kind: r.kind,
         prepaymentId: r.prepaymentId ?? null,
         name: r.name,
-        plannedMinor: amount(r.text),
+        currency: r.currency,
+        plannedMinor: amount(r.text, r.currency),
         dueOn: r.dueOn,
         recurringId: r.everyCycle ? (r.recurringId ?? newId()) : r.recurringId,
         everyCycle: r.everyCycle,
@@ -225,21 +264,32 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       pots: pots.map((p) => ({
         id: p.id,
         allocationId: p.allocationId,
-        amountMinor: amount(p.text),
-        ...(p.isNew ? { name: p.name, usualAmountMinor: amount(p.text) } : {}),
+        amountMinor: amount(p.text, p.currency),
+        ...(p.isNew
+          ? { name: p.name, currency: p.currency, usualAmountMinor: amount(p.text, p.currency) }
+          : {}),
       })),
-      close: { ...closeIds, ...closeInput, unpaid: chosen },
+      close: {
+        ...closeIds,
+        ...(salaryLeftover === null ? { salaryLeftoverIncomeId: undefined } : {}),
+        ...closeInput,
+        unpaid: chosen,
+      },
     });
     setBusy(false);
     if (done) window.location.hash = "Today";
     else setFailed(true);
   }
 
-  const setAside = [...input.commitments, ...carried]
-    .filter((c) => c.dueOn <= expected)
-    .reduce((t, c) => t + Math.max(0, c.plannedMinor), 0);
+  const setAside = inSpending(
+    [...input.commitments, ...carried]
+      .filter((c) => c.dueOn <= expected)
+      .map((c) => ({ currency: c.currency, minor: Math.max(0, c.plannedMinor) })),
+  );
   const fromLast = brought.amountMinor - brought.toSavingsMinor;
-  const potsTotal = input.pots.reduce((t, p) => t + Math.max(0, p.amountMinor), 0);
+  const potsTotal = inSpending(
+    input.pots.map((p) => ({ currency: p.currency, minor: Math.max(0, p.amountMinor) })),
+  );
 
   return (
     <>
@@ -262,7 +312,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               inputMode="decimal"
               autoComplete="off"
               placeholder="0"
-              onChange={(e) => typed(e.target.value) && setSalaryText(e.target.value)}
+              onChange={(e) => typedSalary(e.target.value) && setSalaryText(e.target.value)}
             />
           </label>
           <label className="field">
@@ -305,6 +355,12 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             <span className="grow">Leftover</span>
             <b data-testid="leftover">{money(leftover.leftoverMinor)}</b>
           </div>
+          {salaryLeftover !== null && salaryLeftover !== 0 && (
+            <p className="tiny mute" data-testid="salary-leftover">
+              Plus {formatMoney(salaryLeftover, salaryCur)} not changed yet: it goes to the new cycle as it
+              is.
+            </p>
+          )}
           <label className="field">
             Actually have in hand ({cur})
             <input
@@ -414,7 +470,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
           <CommitmentsStep
             rows={rows}
             setRows={(f) => setRows((rs) => f(rs ?? []))}
-            cur={cur}
+            currencies={currencyList}
             startedOn={receivedOn}
             expected={expected}
             has={has}
@@ -422,7 +478,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         </>
       )}
 
-      {step === 5 && <PotsStep pots={pots} setPots={setPots} cur={cur} has={has} />}
+      {step === 5 && <PotsStep pots={pots} setPots={setPots} currencies={currencyList} has={has} />}
 
       {step === 6 && (
         <section className="card stack">
@@ -445,7 +501,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
           <section className="card" aria-label="Summary">
             <div className="li">
               <span className="grow">Salary</span>
-              <b>{money(input.salaryMinor)}</b>
+              <b>{formatMoney(input.salaryMinor, salaryCur)}</b>
             </div>
             {fromLast !== 0 && (
               <div className="li">

@@ -2,6 +2,7 @@ import { type Minor, unitMinor } from "./amount";
 import { type CommitmentEntry, commitmentsOutMinor } from "./commitment";
 import { addDays, type Day, daysBetween } from "./days";
 import { inAPot, type PotEntry, potOutMinor } from "./pot";
+import { atRate, type Rate } from "./rate";
 import type { TakeOutEntry } from "./savings";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
 import type { SpendEntry } from "./spend";
@@ -23,6 +24,10 @@ export interface IncomeEntry {
 /** The stored entries of the current cycle that the numbers are worked out from. */
 export interface CycleEntries {
   spendingCurrency: string;
+  /** The salary currency when it differs (spec 8); its free money counts at the counting rate. */
+  salaryCurrency?: string;
+  /** The counting rate (spec 8); without one, free money in the salary currency counts as nothing. */
+  countingRate?: Rate | null;
   expectedSalaryOn: Day;
   incomes: IncomeEntry[];
   spends: SpendEntry[];
@@ -58,6 +63,36 @@ export function daysLeft(today: Day, expectedSalaryOn: Day): number {
   return Math.max(0, daysBetween(today, expectedSalaryOn));
 }
 
+/** The entries free money is worked out from. */
+export type FreeEntries = Pick<CycleEntries, "spendingCurrency" | "incomes"> &
+  Partial<
+    Pick<
+      CycleEntries,
+      "spends" | "commitments" | "expectedSalaryOn" | "pots" | "takenOut" | "salaryCurrency" | "countingRate"
+    >
+  >;
+
+/** The other currency of a two-currency user (spec 8), or null when there is one. */
+export function otherCurrency(
+  entries: Pick<CycleEntries, "spendingCurrency" | "salaryCurrency">,
+): string | null {
+  const s = entries.salaryCurrency;
+  return s && s !== entries.spendingCurrency ? s : null;
+}
+
+/**
+ * Salary-currency money counted in the spending currency at the counting rate,
+ * rounded down (spec 8); nothing without a rate.
+ */
+export function countedMinor(
+  entries: Pick<CycleEntries, "spendingCurrency" | "salaryCurrency" | "countingRate">,
+  minor: Minor,
+): Minor {
+  const other = otherCurrency(entries);
+  if (!other || !entries.countingRate || minor === 0) return 0;
+  return atRate(minor, entries.countingRate, other, entries.spendingCurrency);
+}
+
 /**
  * Free money (glossary): income to free money less the commitments (paid, and
  * still set aside) and the spends, in the spending currency. With `startOf`, only spends dated before
@@ -67,14 +102,20 @@ export function daysLeft(today: Day, expectedSalaryOn: Day): number {
  * the part past an empty pot comes out of free money (spec 4).
  * Income and money taken out of savings count from the day they came (spec 5):
  * with `startOf`, those dated after it are left out.
- * The counting rate joins in a later item.
+ * Two currencies (spec 8): each currency's money is held apart (`freeIn`); the
+ * salary currency's (free dollars) counts at the counting rate, rounded down.
  */
-export function freeMoney(
-  entries: Pick<CycleEntries, "spendingCurrency" | "incomes"> &
-    Partial<Pick<CycleEntries, "spends" | "commitments" | "expectedSalaryOn" | "pots" | "takenOut">>,
-  startOf?: Day,
-): Minor {
-  const cur = entries.spendingCurrency;
+export function freeMoney(entries: FreeEntries, startOf?: Day): Minor {
+  const own = freeIn(entries, entries.spendingCurrency, startOf);
+  const other = otherCurrency(entries);
+  return other ? own + countedMinor(entries, freeIn(entries, other, startOf)) : own;
+}
+
+/**
+ * Free money held in one currency (spec 8: money held per currency). Commitments
+ * and pots in that currency are set aside from it and never touch the other's.
+ */
+export function freeIn(entries: FreeEntries, cur: string, startOf?: Day): Minor {
   const pots = entries.pots ?? [];
   const spends = entries.spends ?? [];
   let total = -potOutMinor(pots, spends, cur, startOf);
@@ -103,13 +144,17 @@ function countsBy(on: Day | undefined, startOf: Day | undefined): boolean {
 
 /** Income and money taken out of savings that came to free money on that very day. */
 function cameOn(entries: CycleEntries, day: Day): Minor {
-  const cur = entries.spendingCurrency;
-  let total = 0;
-  for (const i of entries.incomes) {
-    if (i.currency === cur && i.receivedOn === day) total += i.amountMinor - i.toSavingsMinor;
-  }
-  for (const t of entries.takenOut ?? []) if (t.currency === cur && t.movedOn === day) total += t.amountMinor;
-  return total;
+  const inOne = (cur: string) => {
+    let total = 0;
+    for (const i of entries.incomes) {
+      if (i.currency === cur && i.receivedOn === day) total += i.amountMinor - i.toSavingsMinor;
+    }
+    for (const t of entries.takenOut ?? [])
+      if (t.currency === cur && t.movedOn === day) total += t.amountMinor;
+    return total;
+  };
+  const other = otherCurrency(entries);
+  return inOne(entries.spendingCurrency) + (other ? countedMinor(entries, inOne(other)) : 0);
 }
 
 /**

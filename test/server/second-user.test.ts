@@ -232,6 +232,11 @@ const probes: Record<string, Probe> = {
     path: "/api/cycle",
     init: { body: JSON.stringify({ expectedSalaryOn: "2999-01-01" }) },
   }),
+  // Only ever a rate of the signed-in user's own.
+  "POST /api/counting-rates": () => ({
+    path: "/api/counting-rates",
+    init: { body: JSON.stringify({ id: crypto.randomUUID(), rate: "1" }) },
+  }),
   "PATCH /api/settings": () => ({
     path: "/api/settings",
     init: { body: JSON.stringify({ usualPayDay: 2 }) },

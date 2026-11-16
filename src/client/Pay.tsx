@@ -29,7 +29,9 @@ export function PayPage({
   editing?: Payment;
   actions: CommitmentActions;
 }) {
-  const cur = data.settings.spendingCurrency;
+  // Paid in the commitment's own currency (the other currency comes with item 17).
+  const cur = c.currency;
+  const spendCur = data.settings.spendingCurrency;
   const today = useToday(data.settings.homeTimeZone);
   const still = stillToPayMinor(c);
   // A savings set-aside is moved to savings, not paid (item 10).
@@ -48,7 +50,7 @@ export function PayPage({
   const draft = { amountMinor, paidOn };
   const problems = checkPayment(
     { ...draft, currency: cur },
-    { today, cycleStartedOn: data.cycle.startedOn, spendingCurrency: cur },
+    { today, cycleStartedOn: data.cycle.startedOn, currency: cur },
   );
   const finish = editing ? c.state === "finished" : (finishChoice ?? amountMinor >= still);
   const others = c.payments.filter((p) => p.id !== editing?.id);
@@ -128,7 +130,7 @@ export function PayPage({
             : `Still to ${saving ? "move" : "pay"} after this: ${formatMoney(Math.max(0, c.plannedMinor - totalPaid), cur)}`}
         </p>
         <p className="small" data-testid="pay-after">
-          You can spend today after this: <b>{formatMoney(view.allowanceMinor, cur)}</b>
+          You can spend today after this: <b>{formatMoney(view.allowanceMinor, spendCur)}</b>
         </p>
       </section>
 

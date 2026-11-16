@@ -51,17 +51,19 @@ export const spends = new Hono<SignedIn>()
     const b = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
+    const inPot = await potsFor(c, b.potId);
     const row = {
       ...b,
       potId: b.potId ?? null,
       oneOff: b.oneOff ?? false,
-      currency: now.settings.spendingCurrency,
+      // A spend is in its pot's currency (a salary-currency pot's, spec 8), else the spending currency.
+      currency: inPot[0]?.currency ?? now.settings.spendingCurrency,
     };
     const problems = checkSpend(row, {
       today: now.today,
       cycleStartedOn: now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
-      pots: await potsFor(c, row.potId),
+      ...now.currencies,
+      pots: inPot,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
@@ -80,12 +82,19 @@ export const spends = new Hono<SignedIn>()
     const old = await db.query.spend.findFirst({ where: and(mine(spend), eq(spend.id, id)) });
     if (!now || !old) return c.json({ error: "not_found" as const }, 404);
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
-    const next = { ...old, ...b, potId: b.potId === undefined ? old.potId : b.potId };
+    const nextPotId = b.potId === undefined ? old.potId : b.potId;
+    const inPot = await potsFor(c, nextPotId);
+    const next = {
+      ...old,
+      ...b,
+      potId: nextPotId,
+      currency: inPot[0]?.currency ?? now.settings.spendingCurrency,
+    };
     const problems = checkSpend(next, {
       today: now.today,
       cycleStartedOn: now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
-      pots: await potsFor(c, next.potId),
+      ...now.currencies,
+      pots: inPot,
       keepPotId: old.potId,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
@@ -94,6 +103,7 @@ export const spends = new Hono<SignedIn>()
       .set({
         spentOn: next.spentOn,
         amountMinor: next.amountMinor,
+        currency: next.currency,
         note: next.note,
         potId: next.potId,
         oneOff: next.oneOff,

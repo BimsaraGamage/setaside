@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NAME_MAX, parseAmount, STARTER_POTS } from "../money";
+import { CurrencyChoice } from "./CurrencyChoice";
 import { newId } from "./id";
 
 /**
@@ -19,6 +20,8 @@ export interface Row {
   kind: "bill" | "savings" | "savings_payback";
   /** The prepayment a payback pays back. */
   prepaymentId?: string;
+  /** Either of the user's currencies (spec 8); chosen on a new row only. */
+  currency: string;
   text: string;
   dueOn: string;
   everyCycle: boolean;
@@ -29,6 +32,8 @@ export interface PotRow {
   id: string;
   allocationId: string;
   name: string;
+  /** Either of the user's currencies (spec 8); a pot in use keeps its own. */
+  currency: string;
   text: string;
   isNew: boolean;
 }
@@ -37,13 +42,14 @@ export interface PotRow {
 export const typedOk = (t: string, cur: string) =>
   t === "" || parseAmount(t.replace(/\.$/, ""), cur) !== null;
 
-/** A new, empty commitment row due on `dueOn`. */
-export const emptyRow = (dueOn: string): Row => ({
+/** A new, empty commitment row due on `dueOn`, in `currency`. */
+export const emptyRow = (dueOn: string, currency: string): Row => ({
   id: newId(),
   recurringId: null,
   carriedFromId: null,
   name: "",
   kind: "bill",
+  currency,
   text: "",
   dueOn,
   everyCycle: false,
@@ -53,7 +59,7 @@ export const emptyRow = (dueOn: string): Row => ({
 export function CommitmentsStep({
   rows,
   setRows,
-  cur,
+  currencies,
   startedOn,
   expected,
   has,
@@ -61,7 +67,8 @@ export function CommitmentsStep({
 }: {
   rows: Row[];
   setRows: (f: (rows: Row[]) => Row[]) => void;
-  cur: string;
+  /** The user's currencies, the spending currency first (spec 8). */
+  currencies: string[];
   /** The cycle's first day: nothing can be due before it. */
   startedOn: string;
   expected: string;
@@ -88,13 +95,21 @@ export function CommitmentsStep({
               onChange={(e) => change(i, { name: e.target.value })}
             />
           </label>
+          {!r.recurringId && !r.carriedFromId && r.kind !== "savings_payback" && (
+            <CurrencyChoice
+              currencies={currencies}
+              value={r.currency}
+              label={`${label} ${i + 1} currency`}
+              onChange={(currency) => change(i, { currency, text: "" })}
+            />
+          )}
           <label className="field">
-            Amount ({cur})
+            Amount ({r.currency})
             <input
               value={r.text}
               inputMode="decimal"
               placeholder="0"
-              onChange={(e) => typedOk(e.target.value, cur) && change(i, { text: e.target.value })}
+              onChange={(e) => typedOk(e.target.value, r.currency) && change(i, { text: e.target.value })}
             />
           </label>
           <label className="field">
@@ -130,7 +145,11 @@ export function CommitmentsStep({
           </button>
         </fieldset>
       ))}
-      <button type="button" className="btn add" onClick={() => setRows((rs) => [...rs, emptyRow(startedOn)])}>
+      <button
+        type="button"
+        className="btn add"
+        onClick={() => setRows((rs) => [...rs, emptyRow(startedOn, currencies[0] as string)])}
+      >
         + Add
       </button>
     </>
@@ -141,16 +160,19 @@ export function CommitmentsStep({
 export function PotsStep({
   pots,
   setPots,
-  cur,
+  currencies,
   has,
 }: {
   pots: PotRow[];
   setPots: (f: (pots: PotRow[]) => PotRow[]) => void;
-  cur: string;
+  /** The user's currencies, the spending currency first (spec 8). */
+  currencies: string[];
   has: (prefix: string) => boolean;
 }) {
   const [newPotName, setNewPotName] = useState("");
   const [newPotText, setNewPotText] = useState("");
+  const [newPotCur, setNewPotCur] = useState(currencies[0] as string);
+  const cur = newPotCur;
   const changePot = (i: number, text: string) =>
     setPots((ps) => ps.map((p, j) => (j === i ? { ...p, text } : p)));
   return (
@@ -159,12 +181,12 @@ export function PotsStep({
       {pots.map((p, i) => (
         <div key={p.id} className="stack">
           <label className="field">
-            {p.name} ({cur})
+            {p.name} ({p.currency})
             <input
               value={p.text}
               inputMode="decimal"
               placeholder="0"
-              onChange={(e) => typedOk(e.target.value, cur) && changePot(i, e.target.value)}
+              onChange={(e) => typedOk(e.target.value, p.currency) && changePot(i, e.target.value)}
             />
             {has(`pot.${i}.`) && <span className="tiny bad">Type a plain amount.</span>}
           </label>
@@ -196,6 +218,15 @@ export function PotsStep({
         New pot name
         <input value={newPotName} maxLength={NAME_MAX} onChange={(e) => setNewPotName(e.target.value)} />
       </label>
+      <CurrencyChoice
+        currencies={currencies}
+        value={newPotCur}
+        label="New pot currency"
+        onChange={(c) => {
+          setNewPotCur(c);
+          setNewPotText("");
+        }}
+      />
       <label className="field">
         New pot amount ({cur})
         <input
@@ -212,7 +243,14 @@ export function PotsStep({
         onClick={() => {
           setPots((ps) => [
             ...ps,
-            { id: newId(), allocationId: newId(), name: newPotName.trim(), text: newPotText, isNew: true },
+            {
+              id: newId(),
+              allocationId: newId(),
+              name: newPotName.trim(),
+              currency: cur,
+              text: newPotText,
+              isNew: true,
+            },
           ]);
           setNewPotName("");
           setNewPotText("");

@@ -9,6 +9,7 @@ import {
   potView,
   todayView,
 } from "../money";
+import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, potEntry, type Ready, type Spend } from "./data";
 import { newId } from "./id";
 import type { SpendActions } from "./spend-actions";
@@ -56,8 +57,8 @@ export function SpendSheet({
   actions: SpendActions;
   onClose: () => void;
 }) {
-  const cur = data.settings.spendingCurrency;
-  const [text, setText] = useState(editing ? toText(editing.amountMinor, cur) : "");
+  const spendCur = data.settings.spendingCurrency;
+  const [text, setText] = useState(editing ? toText(editing.amountMinor, editing.currency) : "");
   const [spentOn, setSpentOn] = useState(editing?.spentOn ?? today);
   const [note, setNote] = useState(editing?.note ?? "");
   // Spends default to free money; one tap switches to a pot (spec 4).
@@ -68,25 +69,27 @@ export function SpendSheet({
   const [failed, setFailed] = useState(false);
   const days = useMemo(() => cycleDays(today, data.cycle.startedOn), [today, data.cycle.startedOn]);
 
+  // Pots to choose from: those in use, and a stopped one this spend is already in.
+  const choices = data.pots.filter((p) => !p.archived || p.id === editing?.potId);
+  const pot = data.pots.find((p) => p.id === potId);
+  // A spend is in its pot's currency (a salary-currency pot's, spec 8), else the spending currency.
+  const cur = pot?.currency ?? spendCur;
   const amountMinor = parseAmount(text, cur) ?? 0;
   const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId, oneOff };
   const problems = checkSpend(draft, {
     today,
     cycleStartedOn: data.cycle.startedOn,
-    spendingCurrency: cur,
+    ...currencyContext(data),
     pots: data.pots,
     keepPotId: editing?.potId,
   });
-  // Pots to choose from: those in use, and a stopped one this spend is already in.
-  const choices = data.pots.filter((p) => !p.archived || p.id === editing?.potId);
-  const pot = data.pots.find((p) => p.id === potId);
 
   // The live line: today's numbers as they will be after this spend is saved.
   const others = data.spends.filter((s) => s.id !== editing?.id);
   const spendsAfter = amountMinor > 0 ? [...others, { ...draft, id: "draft" }] : others;
   const after = todayView({ ...entriesOf(data), spends: spendsAfter }, today);
   const potAfter = pot ? potView(potEntry(pot), spendsAfter) : null;
-  const money = (m: number) => formatMoney(m, cur);
+  const money = (m: number) => formatMoney(m, spendCur);
   const todayLine =
     after.leftTodayMinor < 0
       ? `Over today by ${money(-after.leftTodayMinor)}`
@@ -94,7 +97,7 @@ export function SpendSheet({
   const liveLine = !pot
     ? todayLine
     : potAfter && potAfter.overMinor === 0
-      ? `From ${pot.name} pot · ${money(potAfter.leftMinor)} left in it`
+      ? `From ${pot.name} pot · ${formatMoney(potAfter.leftMinor, cur)} left in it`
       : `${pot.name} used up · ${todayLine}`;
 
   function press(k: (typeof keys)[number]) {

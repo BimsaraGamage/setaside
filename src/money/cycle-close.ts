@@ -1,6 +1,6 @@
 import type { Minor } from "./amount";
 import { type CommitmentEntry, inThisCycle, stillToPayMinor } from "./commitment";
-import { type CycleEntries, freeMoney } from "./cycle";
+import { type CycleEntries, freeIn, freeMoney, otherCurrency } from "./cycle";
 import { addDays, type Day } from "./days";
 import { potView } from "./pot";
 
@@ -48,7 +48,8 @@ export function leftoverOf(
   choices: { id: string; choice: UnpaidChoice }[],
 ): Leftover {
   const cur = entries.spendingCurrency;
-  const freeMinor = freeMoney(entries);
+  // The spending currency's own money: free dollars are the salary currency's leftover.
+  const freeMinor = otherCurrency(entries) ? freeIn(entries, cur) : freeMoney(entries);
   let potsMinor = 0;
   for (const p of entries.pots ?? []) {
     if (p.currency === cur && !p.archived) potsMinor += potView(p, entries.spends).leftMinor;
@@ -69,6 +70,33 @@ export function leftoverOf(
     carriedMinor,
     leftoverMinor: freeMinor + potsMinor + droppedMinor,
   };
+}
+
+/**
+ * Two currencies (spec 6, 8): the leftover held in the salary currency (free
+ * dollars + unused dollar pots + dropped dollar commitments), or null with one
+ * currency. Item 15 carries all of it to the new cycle as unconverted dollars;
+ * splitting it into savings comes with item 16. Below zero (dollar set-asides
+ * past the dollars) it is carried too, so nothing is lost or counted twice.
+ */
+export function salaryLeftoverOf(
+  entries: ClosingEntries,
+  choices: { id: string; choice: UnpaidChoice }[],
+): Minor | null {
+  const cur = otherCurrency(entries);
+  if (!cur) return null;
+  let total = freeIn(entries, cur);
+  for (const p of entries.pots ?? []) {
+    if (p.currency === cur && !p.archived) total += potView(p, entries.spends).leftMinor;
+  }
+  const byId = new Map(choices.map((c) => [c.id, c.choice]));
+  for (const c of entries.commitments ?? []) {
+    if (c.currency !== cur || c.state !== "open" || !inThisCycle(c.dueOn, entries.expectedSalaryOn)) continue;
+    // Dropped money joins the leftover; carried money goes with the commitment.
+    const choice = byId.get(c.id);
+    if (choice === "drop" || choice === "carry") total += stillToPayMinor(c);
+  }
+  return total;
 }
 
 /**

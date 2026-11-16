@@ -59,6 +59,8 @@ const newPrepayment = z.object({
   /** This cycle's payback. */
   commitmentId: z.uuid(),
   name: z.string().transform((n) => n.trim()),
+  /** Either of the user's currencies (spec 8); none: the spending currency. */
+  currency: z.string().optional(),
   totalMinor: z.number().int(),
   paybackMinor: z.number().int(),
   /** For the prepayment saving: the normal monthly price and the months covered (both or neither). */
@@ -79,9 +81,9 @@ export const prepayments = new Hono<SignedIn>()
     const b = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const currency = now.settings.spendingCurrency;
+    const currency = b.currency ?? now.settings.spendingCurrency;
     const savingsMinor = savingsTotal(await savingsLines(c), currency);
-    const problems = checkPrepayment({ ...b, currency }, { spendingCurrency: currency, savingsMinor });
+    const problems = checkPrepayment({ ...b, currency }, { ...now.currencies, savingsMinor });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.batch([

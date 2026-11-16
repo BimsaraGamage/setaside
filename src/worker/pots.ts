@@ -11,6 +11,8 @@ const name = z.string().transform((n) => n.trim());
 
 const newPot = z.object({
   id: z.uuid(),
+  /** Either of the user's currencies (spec 8); none: the spending currency. Fixed once made. */
+  currency: z.string().optional(),
   /** This cycle's `pot_allocation` id. */
   allocationId: z.uuid(),
   name,
@@ -41,8 +43,8 @@ export const pots = new Hono<SignedIn>()
     const { allocationId, amountMinor, ...b } = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const row = { ...b, currency: now.settings.spendingCurrency };
-    const problems = checkPot({ ...row, amountMinor }, { spendingCurrency: now.settings.spendingCurrency });
+    const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
+    const problems = checkPot({ ...row, amountMinor }, now.currencies);
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.batch([
@@ -68,7 +70,7 @@ export const pots = new Hono<SignedIn>()
       where: and(mine(potAllocation), eq(potAllocation.potId, id), eq(potAllocation.cycleId, now.cycle.id)),
     });
     const next = { ...old, ...b, amountMinor: amountMinor ?? alloc?.amountMinor ?? 0 };
-    const problems = checkPot(next, { spendingCurrency: now.settings.spendingCurrency });
+    const problems = checkPot(next, now.currencies);
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     if (amountMinor !== undefined && !alloc && !allocationId)
       return c.json({ error: "bad_request" as const }, 400);

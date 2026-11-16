@@ -2,10 +2,12 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkFirstUse, cycleSpeeds, isTimeZone, todayIn, usualDayOf } from "../money";
+import { checkFirstUse, cycleSpeeds, isRate, isTimeZone, todayIn, usualDayOf } from "../money";
+import { countingRateOf } from "./current";
 import {
   commitment,
   commitmentPayment,
+  countingRate,
   cycle,
   dayChoice,
   income,
@@ -25,6 +27,11 @@ const firstUseBody = z.object({
   settingsId: z.uuid(),
   cycleId: z.uuid(),
   incomeId: z.uuid(),
+  /** Two currencies (spec 2, 8): the opening income in the salary currency and the counting rate. */
+  salaryIncomeId: z.uuid().optional(),
+  heldSalaryMinor: z.number().int().optional(),
+  countingRateId: z.uuid().optional(),
+  countingRate: z.string().nullish(),
   salaryCurrency: z.string(),
   spendingCurrency: z.string(),
   homeTimeZone: z.string(),
@@ -37,6 +44,8 @@ const firstUseBody = z.object({
       z.object({
         id: z.uuid(),
         name: z.string().transform((n) => n.trim()),
+        /** Either currency (spec 8); none: the spending currency. */
+        currency: z.string().optional(),
         plannedMinor: z.number().int(),
         dueOn: z.string(),
         /** With "Every cycle" on: the id of the template made from it. */
@@ -52,12 +61,16 @@ const firstUseBody = z.object({
         id: z.uuid(),
         allocationId: z.uuid(),
         name: z.string().transform((n) => n.trim()),
+        /** Either currency (spec 8); none: the spending currency. */
+        currency: z.string().optional(),
         amountMinor: z.number().int(),
       }),
     )
     .max(50)
     .default([]),
 });
+
+const countingRateBody = z.object({ id: z.uuid(), rate: z.string() });
 
 const settingsBody = z
   .object({ usualPayDay: z.number().int().min(1).max(31), homeTimeZone: z.string().refine(isTimeZone) })
@@ -190,6 +203,8 @@ export const firstUse = new Hono<SignedIn>()
             spendingCurrency: s.spendingCurrency,
             homeTimeZone: s.homeTimeZone,
             usualPayDay: s.usualPayDay,
+            // Two currencies (spec 8): the newest counting rate; null with one currency.
+            countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
           }
         : null,
       cycle: current
@@ -246,6 +261,8 @@ export const firstUse = new Hono<SignedIn>()
     const today = isTimeZone(b.homeTimeZone) ? todayIn(b.homeTimeZone, Date.now()) : "";
     const problems = checkFirstUse(b, today);
     if (new Set(b.pots.map((p) => p.id)).size !== b.pots.length) problems.push("pot.twice");
+    const two = b.salaryCurrency !== b.spendingCurrency;
+    if (two && (!b.salaryIncomeId || !b.countingRateId)) problems.push("new_id");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     if (await db.query.settings.findFirst({ where: mine(settings), columns: { id: true } })) {
       return c.json({ error: "already_set_up" as const }, 409);
@@ -276,6 +293,23 @@ export const firstUse = new Hono<SignedIn>()
         receivedOn: today,
       }),
     ];
+    // Two currencies: money held in the salary currency, and the counting rate (spec 8).
+    if (two && b.salaryIncomeId && b.countingRateId && b.countingRate) {
+      writes.push(
+        db.insert(income).values({
+          id: b.salaryIncomeId,
+          userId,
+          cycleId: b.cycleId,
+          kind: "opening",
+          currency: b.salaryCurrency,
+          amountMinor: b.heldSalaryMinor ?? 0,
+          receivedOn: today,
+        }),
+        db
+          .insert(countingRate)
+          .values({ id: b.countingRateId, userId, rate: b.countingRate, setAt: new Date() }),
+      );
+    }
     for (const k of b.commitments) {
       const recurringId = k.recurringId ?? null;
       if (recurringId) {
@@ -285,7 +319,7 @@ export const firstUse = new Hono<SignedIn>()
             userId,
             name: k.name,
             kind: "bill",
-            currency: cur,
+            currency: k.currency ?? cur,
             usualAmountMinor: k.plannedMinor,
             usualDay: usualDayOf(k.dueOn),
           }),
@@ -299,7 +333,7 @@ export const firstUse = new Hono<SignedIn>()
           recurringId,
           name: k.name,
           kind: "bill",
-          currency: cur,
+          currency: k.currency ?? cur,
           plannedMinor: k.plannedMinor,
           dueOn: k.dueOn,
         }),
@@ -307,9 +341,13 @@ export const firstUse = new Hono<SignedIn>()
     }
     for (const p of b.pots) {
       writes.push(
-        db
-          .insert(pot)
-          .values({ id: p.id, userId, name: p.name, currency: cur, usualAmountMinor: p.amountMinor }),
+        db.insert(pot).values({
+          id: p.id,
+          userId,
+          name: p.name,
+          currency: p.currency ?? cur,
+          usualAmountMinor: p.amountMinor,
+        }),
         db.insert(potAllocation).values({
           id: p.allocationId,
           userId,
@@ -326,6 +364,22 @@ export const firstUse = new Hono<SignedIn>()
       return c.json({ error: "conflict" as const }, 409);
     }
     return c.json({ ok: true as const, startedOn: today }, 201);
+  })
+  /** Counting rate set by hand (spec 8, item 15): any time, for a two-currency user. */
+  .post("/counting-rates", json(countingRateBody), async (c) => {
+    const { db, mine, userId } = c.var;
+    const b = c.req.valid("json");
+    const s = await db.query.settings.findFirst({ where: mine(settings) });
+    if (!s) return c.json({ error: "not_set_up" as const }, 404);
+    if (s.salaryCurrency === s.spendingCurrency) return c.json({ error: "one_currency" as const }, 409);
+    if (!isRate(b.rate)) return c.json({ error: "invalid" as const, problems: ["rate"] }, 400);
+    try {
+      await db.insert(countingRate).values({ id: b.id, userId, rate: b.rate, setAt: new Date() });
+    } catch {
+      // The id is already in use.
+      return c.json({ error: "conflict" as const }, 409);
+    }
+    return c.json({ ok: true as const }, 201);
   })
   /** Settings: usual pay day and home time zone (spec 10). Currencies are set once. */
   .patch("/settings", json(settingsBody), async (c) => {

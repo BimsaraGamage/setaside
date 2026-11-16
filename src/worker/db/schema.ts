@@ -363,6 +363,23 @@ export const prepayment = sqliteTable(
 );
 
 /**
+ * A counting rate the user typed (item 15, spec 8): spending-currency units for
+ * one salary-currency unit, as typed. The newest one counts (a conversion's rate
+ * joins with item 16).
+ */
+export const countingRate = sqliteTable(
+  "counting_rate",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    rate: text("rate").notNull(),
+    setAt: integer("set_at", { mode: "timestamp_ms" }).notNull(),
+    ...appTimestamps,
+  },
+  (t) => [index("counting_rate_user_id_idx").on(t.userId, t.setAt)],
+);
+
+/**
  * The "Every cycle" template (item 11, spec 3): on salary day each active one
  * fills a `commitment` in the new cycle with its last amount and day. Kept up to
  * date from the commitment it is switched on for. Paused: `active` off.

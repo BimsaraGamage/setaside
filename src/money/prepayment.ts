@@ -1,4 +1,4 @@
-import type { Minor } from "./amount";
+import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import { NAME_MAX } from "./commitment";
 import type { Day } from "./days";
 import type { SalaryDayDraft } from "./salary-day";
@@ -51,13 +51,13 @@ const given = (n: number | null | undefined): n is number => n !== null && n !==
  */
 export function checkPrepayment(
   input: PrepaymentInput,
-  ctx: { spendingCurrency: string; savingsMinor: Minor },
+  ctx: Currencies & { savingsMinor: Minor },
 ): PrepaymentProblem[] {
   const out: PrepaymentProblem[] = [];
   const name = input.name.trim();
   if (!name || name.length > NAME_MAX) out.push("name");
-  // One currency until item 15 (two currencies).
-  if (input.currency !== ctx.spendingCurrency) out.push("currency");
+  // Either of the user's currencies (spec 8).
+  if (!isUsersCurrency(input.currency, ctx)) out.push("currency");
   const amountOk = whole(input.totalMinor);
   if (!amountOk) out.push("amount");
   if (!whole(input.paybackMinor) || (amountOk && input.paybackMinor > input.totalMinor)) out.push("payback");
@@ -137,6 +137,7 @@ export function paybackDrafts(
         carriedFromId: null,
         name: p.name,
         kind: "savings_payback" as const,
+        currency: p.currency,
         plannedMinor,
         dueOn: startedOn,
         everyCycle: false,

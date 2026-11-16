@@ -14,6 +14,8 @@ const kind = z.enum(["bill", "savings"]);
 
 const newCommitment = z.object({
   id: z.uuid(),
+  /** Either of the user's currencies (spec 8); none: the spending currency. Fixed once made. */
+  currency: z.string().optional(),
   kind: kind.default("bill"),
   name,
   plannedMinor: z.number().int(),
@@ -57,11 +59,8 @@ export const commitments = new Hono<SignedIn>()
     const { recurringId, ...b } = c.req.valid("json");
     const now = await current(c);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const row = { ...b, currency: now.settings.spendingCurrency };
-    const problems = checkCommitment(row, {
-      cycleStartedOn: now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
-    });
+    const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
+    const problems = checkCommitment(row, { cycleStartedOn: now.cycle.startedOn, ...now.currencies });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     const insert = db
       .insert(commitment)
@@ -100,7 +99,7 @@ export const commitments = new Hono<SignedIn>()
     const keptDue = next.dueOn === old.dueOn && old.dueOn < now.cycle.startedOn;
     const problems = checkCommitment(next, {
       cycleStartedOn: keptDue ? old.dueOn : now.cycle.startedOn,
-      spendingCurrency: now.settings.spendingCurrency,
+      ...now.currencies,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     const linked = old.recurringId
