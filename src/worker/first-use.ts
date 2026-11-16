@@ -39,6 +39,8 @@ const firstUseBody = z.object({
   salaryCurrency: z.string(),
   spendingCurrency: z.string(),
   homeTimeZone: z.string(),
+  /** The phone's zone at first use (item 22): a different home picked here is not asked about again. */
+  askedTimeZone: z.string().refine(isTimeZone).optional(),
   usualPayDay: z.number().int(),
   heldMinor: z.number().int(),
   expectedSalaryOn: z.string(),
@@ -77,7 +79,12 @@ const firstUseBody = z.object({
 const countingRateBody = z.object({ id: z.uuid(), rate: z.string() });
 
 const settingsBody = z
-  .object({ usualPayDay: z.number().int().min(1).max(31), homeTimeZone: z.string().refine(isTimeZone) })
+  .object({
+    usualPayDay: z.number().int().min(1).max(31),
+    homeTimeZone: z.string().refine(isTimeZone),
+    /** The phone's zone the switch question was answered for (item 22). */
+    askedTimeZone: z.string().refine(isTimeZone),
+  })
   .partial();
 
 /**
@@ -216,6 +223,7 @@ export const firstUse = new Hono<SignedIn>()
             spendingCurrency: s.spendingCurrency,
             homeTimeZone: s.homeTimeZone,
             usualPayDay: s.usualPayDay,
+            askedTimeZone: s.askedTimeZone,
             // Two currencies (spec 8): the newest counting rate; null with one currency.
             countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
           }
@@ -307,6 +315,7 @@ export const firstUse = new Hono<SignedIn>()
         salaryCurrency: b.salaryCurrency,
         spendingCurrency: cur,
         homeTimeZone: b.homeTimeZone,
+        askedTimeZone: b.askedTimeZone ?? null,
         usualPayDay: b.usualPayDay,
       }),
       db.insert(cycle).values({
@@ -415,11 +424,14 @@ export const firstUse = new Hono<SignedIn>()
     }
     return c.json({ ok: true as const }, 201);
   })
-  /** Settings: usual pay day and home time zone (spec 10). Currencies are set once. */
+  /**
+   * Settings: usual pay day and home time zone (spec 10). Currencies are set once.
+   * The switch question (item 22): Keep sends `askedTimeZone`; Switch sends it and `homeTimeZone`.
+   */
   .patch("/settings", json(settingsBody), async (c) => {
     const { db, mine } = c.var;
     const b = c.req.valid("json");
-    if (b.usualPayDay === undefined && b.homeTimeZone === undefined) {
+    if (b.usualPayDay === undefined && b.homeTimeZone === undefined && b.askedTimeZone === undefined) {
       return c.json({ error: "bad_request" as const }, 400);
     }
     const done = await db.update(settings).set(b).where(mine(settings)).returning({ id: settings.id });

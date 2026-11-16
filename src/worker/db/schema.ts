@@ -121,6 +121,8 @@ export const settings = sqliteTable("settings", {
   spendingCurrency: text("spending_currency").notNull(),
   homeTimeZone: text("home_time_zone").notNull(),
   usualPayDay: integer("usual_pay_day").notNull(),
+  /** The phone's time zone last asked about switching to, whatever the answer (item 22); null: never asked. */
+  askedTimeZone: text("asked_time_zone"),
   ...appTimestamps,
 });
 

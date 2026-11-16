@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { parseRate } from "../money";
 import { api } from "./api";
 import type { Current } from "./data";
-import { timeZones } from "./data";
+import { phoneTimeZone, timeZones } from "./data";
 import { newId } from "./id";
 import { SignInSettings } from "./SignInSettings";
 
@@ -34,7 +34,7 @@ export function Settings({
     onChanged();
   }
 
-  async function save(change: { usualPayDay?: number; homeTimeZone?: string }) {
+  async function save(change: { usualPayDay?: number; homeTimeZone?: string; askedTimeZone?: string }) {
     setNote(null);
     const res = await api.api.settings.$patch({ json: change }).catch(() => null);
     if (!res?.ok) setNote("Not saved. Check the connection and try again.");
@@ -104,7 +104,8 @@ export function Settings({
           <span className="grow">Home time zone</span>
           <select
             value={settings.homeTimeZone}
-            onChange={(e) => save({ homeTimeZone: e.target.value })}
+            // Item 22: a zone picked here by hand is the answer for the phone's zone too.
+            onChange={(e) => save({ homeTimeZone: e.target.value, askedTimeZone: phoneTimeZone() })}
             aria-label="Home time zone"
           >
             {zones.map((z) => (

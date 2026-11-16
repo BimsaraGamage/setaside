@@ -71,6 +71,7 @@ describe("first use (item 3, spec 2)", () => {
         spendingCurrency: "LKR",
         homeTimeZone: TZ,
         usualPayDay: 25,
+        askedTimeZone: null,
         countingRate: null,
       },
       cycle: { id: b.cycleId, startedOn: today, expectedSalaryOn: b.expectedSalaryOn, reserveRate: null },
@@ -269,6 +270,17 @@ describe("settings (spec 10)", () => {
     }
   });
 
+  it("refuses a time zone asked about that the app does not know", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    const res = await call(
+      "/api/settings",
+      { method: "PATCH", body: JSON.stringify({ askedTimeZone: "Mars/Base" }) },
+      cookie,
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("needs first use done", async () => {
     const { cookie } = await freshUser();
     const res = await call(
@@ -277,5 +289,52 @@ describe("settings (spec 10)", () => {
       cookie,
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("home time zone switch (spec 10, item 22)", () => {
+  const patch = (b: unknown, cookie: string) =>
+    call("/api/settings", { method: "PATCH", body: JSON.stringify(b) }, cookie);
+  const settingsOf = async (cookie: string) =>
+    (await (await call("/api/current", {}, cookie)).json<{ settings: Record<string, unknown> }>()).settings;
+
+  it("first use keeps the phone's zone as asked, so a home picked by hand is not asked about", async () => {
+    const { cookie } = await freshUser();
+    expect((await post(body({ askedTimeZone: "Europe/London" }), cookie)).status).toBe(201);
+    expect(await settingsOf(cookie)).toMatchObject({ homeTimeZone: TZ, askedTimeZone: "Europe/London" });
+  });
+
+  it("Keep saves the zone asked about and leaves home as it was", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    expect((await patch({ askedTimeZone: "Europe/London" }, cookie)).status).toBe(200);
+    expect(await settingsOf(cookie)).toMatchObject({ homeTimeZone: TZ, askedTimeZone: "Europe/London" });
+  });
+
+  it("Switch makes the phone's zone home and saves it as asked", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    const res = await patch({ homeTimeZone: "Europe/London", askedTimeZone: "Europe/London" }, cookie);
+    expect(res.status).toBe(200);
+    expect(await settingsOf(cookie)).toMatchObject({
+      homeTimeZone: "Europe/London",
+      askedTimeZone: "Europe/London",
+    });
+  });
+
+  it("after a switch, today on the server follows the new home zone (spec 16: midnight)", async () => {
+    // Kiritimati is UTC+14: its today is never before Colombo's, and from 15:30 in Colombo it is the next day.
+    const far = "Pacific/Kiritimati";
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    const spend = () => ({ id: crypto.randomUUID(), spentOn: todayIn(far, Date.now()), amountMinor: 100 });
+    if (todayIn(far, Date.now()) !== todayIn(TZ, Date.now())) {
+      // Still in Colombo: Kiritimati's day is ahead of today.
+      const before = await call("/api/spends", { method: "POST", body: JSON.stringify(spend()) }, cookie);
+      expect(before.status).toBe(400);
+    }
+    await patch({ homeTimeZone: far, askedTimeZone: far }, cookie);
+    const after = await call("/api/spends", { method: "POST", body: JSON.stringify(spend()) }, cookie);
+    expect(after.status).toBe(201);
   });
 });
