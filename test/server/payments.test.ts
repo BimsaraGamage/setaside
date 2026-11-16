@@ -142,11 +142,11 @@ describe("paying a commitment (item 6, spec 3)", () => {
     const { cookie, rentId } = await setUp();
     const p = payment(100);
     expect((await send("POST", `/api/commitments/${rentId}/payments`, p, cookie)).status).toBe(201);
-    expect(
-      (await send("POST", `/api/commitments/${rentId}/payments`, { ...p, finish: true }, cookie)).status,
-    ).toBe(409);
-    // A refused write that would also have finished it leaves it open.
-    expect((await rentOf(cookie)).state).toBe("open");
+    // Saved once (item 24): a resend is answered as saved and changes nothing, finish included.
+    const again = await send("POST", `/api/commitments/${rentId}/payments`, { ...p, finish: true }, cookie);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ ok: true, already: true });
+    expect(await rentOf(cookie)).toMatchObject({ state: "open", payments: [{ id: p.id }] });
     const missing = await send(
       "POST",
       `/api/commitments/${crypto.randomUUID()}/payments`,
@@ -154,6 +154,21 @@ describe("paying a commitment (item 6, spec 3)", () => {
       cookie,
     );
     expect(missing.status).toBe(404);
+  });
+
+  it("a resent pay-and-finish is saved once, though its commitment is finished now (item 24)", async () => {
+    const { cookie, rentId } = await setUp();
+    const p = payment(3_600_000, { finish: true });
+    expect((await send("POST", `/api/commitments/${rentId}/payments`, p, cookie)).status).toBe(201);
+    expect((await send("POST", `/api/commitments/${rentId}/payments`, p, cookie)).status).toBe(200);
+    expect((await rentOf(cookie)).payments).toHaveLength(1);
+    // The same id sent for another commitment is not the same payment.
+    const gymId = crypto.randomUUID();
+    const gym = { id: gymId, name: "Gym", plannedMinor: 500_000, dueOn: today() };
+    expect((await send("POST", "/api/commitments", gym, cookie)).status).toBe(201);
+    const elsewhere = await send("POST", `/api/commitments/${gymId}/payments`, p, cookie);
+    expect(elsewhere.status).toBe(409);
+    expect(await elsewhere.json()).toEqual({ error: "conflict" });
   });
 
   it("edits a payment's amount and day, checked like a new one", async () => {

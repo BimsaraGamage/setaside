@@ -115,12 +115,36 @@ describe("spends (item 4, spec 7)", () => {
     expect(await spendsOf(cookie)).toEqual([]);
   });
 
-  it("refuses an id already in use", async () => {
+  it("a resent spend (same id) is saved once (item 24, spec 11)", async () => {
     const { cookie } = await setUp();
     const b = { id: crypto.randomUUID(), spentOn: today(), amountMinor: 100 };
     expect((await send("POST", "/api/spends", b, cookie)).status).toBe(201);
-    expect((await send("POST", "/api/spends", { ...b, amountMinor: 999 }, cookie)).status).toBe(409);
+    const again = await send("POST", "/api/spends", { ...b, amountMinor: 999 }, cookie);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ ok: true, already: true });
     expect(await spendsOf(cookie)).toMatchObject([{ amountMinor: 100 }]);
+  });
+
+  it("another user's spend id is refused, never treated as saved", async () => {
+    const other = await signIn("demo");
+    const { cookie } = await setUp();
+    const b = { id: crypto.randomUUID(), spentOn: today(), amountMinor: 100 };
+    expect((await send("POST", "/api/spends", b, cookie)).status).toBe(201);
+    const theirs = await send("POST", "/api/spends", b, other.cookie);
+    expect([404, 409]).toContain(theirs.status);
+    expect(await theirs.json()).not.toMatchObject({ ok: true });
+  });
+
+  it("an unsent spend sent after its cycle ended moves to the current cycle's first day (item 24)", async () => {
+    const { cookie } = await setUp(addDays(today(), -2));
+    const b = { id: crypto.randomUUID(), spentOn: addDays(today(), -5), amountMinor: 100, queued: true };
+    const res = await send("POST", "/api/spends", b, cookie);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ ok: true, movedFrom: addDays(today(), -5) });
+    expect(await spendsOf(cookie)).toMatchObject([{ id: b.id, spentOn: addDays(today(), -2) }]);
+    // Not from the queue: refused as before.
+    const live = { ...b, id: crypto.randomUUID(), queued: undefined };
+    expect((await send("POST", "/api/spends", live, cookie)).status).toBe(400);
   });
 
   it("needs first use done", async () => {

@@ -60,6 +60,14 @@ export const payments = new Hono<SignedIn>()
     const { db, mine, userId } = c.var;
     const { finish, ...b } = c.req.valid("json");
     const id = c.req.param("id");
+    // Saved once (item 24, spec 11): a resend of this payment is answered as saved, even if its commitment
+    // was finished by it (pay and finish) or its cycle has ended since.
+    const saved = await db.query.commitmentPayment.findFirst({
+      where: and(mine(commitmentPayment), eq(commitmentPayment.id, b.id)),
+      columns: { commitmentId: true },
+    });
+    if (saved?.commitmentId === id) return c.json({ ok: true as const, already: true as const }, 200);
+    if (saved) return c.json({ error: "conflict" as const }, 409);
     const now = await current(c);
     const owner = await db.query.commitment.findFirst({
       where: and(mine(commitment), eq(commitment.id, id)),
