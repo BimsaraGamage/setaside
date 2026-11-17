@@ -341,6 +341,9 @@ See [ADR 0004](adr/0004-passkey-and-google-login-no-email.md).
 ## 14. Data download and delete account
 
 - **Download my data**: one JSON file with every record of the account. A CSV of spends as a second choice.
+  - Settings → **Your data**: "Download my data" and "Download spends". The phone fetches the file first, so offline or signed out says "Not downloaded" instead of opening a broken page.
+  - **JSON** (`setaside-data-<today>.json`, today in the home time zone): `app`, `format` (1), `exportedAt`, the account (id, name, email, made), sign-in methods (provider, added) and passkeys (name, device type, backed up, added), then `records`: every table with the user's id, by table name ([data-model.md](data-model.md)), each row as stored (field names as in code, times as ISO text), oldest first. The table list comes from the schema, so a new table is in it without a change here. Left out: the owner id, session and sign-in tokens, passkey keys, and a phone's push address and keys (secrets).
+  - **CSV** (`setaside-spends-<today>.csv`): Date, Amount (plain decimal, like 1850.50), Currency, Note, Pot, Card, One-off ("yes"), Cycle started; oldest first. RFC 4180 lines with a byte-order mark, so spreadsheet apps read Sinhala and Tamil notes; a note starting with `=`, `+`, `-` or `@` gets a leading `'` so it never runs as a formula.
 - **Delete account**: a warning, a "download first" button, and typing DELETE to confirm. It deletes the account and all its data (every row with the user's id) and signs out every device.
 
 ## 15. Stack and architecture

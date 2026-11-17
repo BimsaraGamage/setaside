@@ -267,6 +267,9 @@ const probes: Record<string, Probe> = {
     init: { body: JSON.stringify({ endpoint: OWNER_ENDPOINT }) },
   }),
   "POST /api/push-subscriptions/remove-all": () => ({ path: "/api/push-subscriptions/remove-all" }),
+  // Download my data (item 27): only the second user's own records.
+  "GET /api/export": () => ({ path: "/api/export" }),
+  "GET /api/export/spends.csv": () => ({ path: "/api/export/spends.csv" }),
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
     init: {
