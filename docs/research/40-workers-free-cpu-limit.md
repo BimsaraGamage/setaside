@@ -82,3 +82,47 @@ So: as long as tail shows `outcome: "ok"`, the request was not cut. A kill shows
 1. 10 ms is per request, with only an undocumented tolerance for *infrequent* overruns; "hitting the limit consistently" gets requests killed (1102, `exceededCpu`). Today's `ok` results prove nothing about steady use.
 2. `GET /api/current` at 19–39 ms on *every* load (2–4x the limit, and growing with cycle size) is exactly "consistently" — real risk, likely to start failing on the main screen; auth calls at 11–16 ms are borderline (inside Cloudflare's "10-20 ms" auth norm, but still over).
 3. D1/fetch waiting is free, so the fix is cutting JS work (part (b)/(c): profile `/api/current` first); the only other way out is Workers Paid ($5/mo, 30 s default limit).
+
+---
+
+# Part (b) and (c): where the CPU goes, measured
+
+Measured 2026-11-17 on this computer: `wrangler dev` (workerd) of `main` at v0.0.1, built with `--define import.meta.env.DEV:true` so the demo sign-in works. CPU from a V8 CPU profile through the local inspector (50 µs sampling, non-idle time per request, after 3 warm-up requests). Data: one demo user with a **full month in two cycles** (90 spends, 14 bills with payments, 6 pots, 5 day choices, savings, 8 Every cycle bills, a card, a plan, a person, a prepayment; 293 rows, from `40-cpu-profile/seed.cjs`). Scripts: `40-cpu-profile/` (`prof.mjs` sends N requests while profiling, `analyze.mjs` splits time by source package).
+
+Local numbers include `wrangler dev`'s own overhead (tracing, facade). Live `get-session` is 1–4 ms against 6.4–6.9 ms here, so subtract about 3–4 ms to estimate live.
+
+| Request (30 runs, 20 for the spend) | CPU / request, local | Live (ticket 34) |
+| --- | --- | --- |
+| `GET /api/health` (one `select 1`) | 4.9 ms | — |
+| `GET /api/auth/get-session` | 6.4–6.9 ms | 1–4 ms |
+| `GET /api/current`, full month | **29.5–31.7 ms** | 19–39 ms with a fresh cycle |
+| `POST /api/spends` (money-rule check + insert) | 12.9 ms | — |
+| experiment: the same reads as **one raw `env.DB.batch`** (`select *`, 3x more JSON: 89 kB vs 29 kB) | **9.8 ms** | — |
+
+## (b) Who carries the cost
+
+- **`GET /api/current` is the only steady problem.** `currentData` (`src/worker/first-use.ts`) and its helpers (`savingsLines`, `prepaymentLines`, `cardLines`, `planLines`, `personDebtLines`, `undoRecord`, `lastCycleSpeeds`, `conversionLines`, `countingRateOf`) make **about 25 separate D1 queries**, one after the other. Each costs CPU twice:
+  - **Drizzle: 12.8 ms of 29.5 (43%)** building SQL (`buildRelationalQuery`, `buildSelectQuery`, `sqlToQuery`, its `is()` class check alone 4.6 ms) and mapping rows (`mapRelationalRow`).
+  - **The D1 binding per call: ~5.7 ms** (`toJson`, `fetch`, `text`, `setAttributes`, `_send`): ~0.25 ms a query.
+  - Hono ~2 ms, Better Auth session check ~1.5 ms, the rest runtime.
+  - It also explains the **~1.8 s wall time** live: ~25 round trips to D1 in a row.
+  - It grows with every backlog item that adds a helper, and with rows (spends, payments).
+- **Writes are borderline, not the problem:** a spend is 12.9 ms here, so ~8–9 ms live; Drizzle only ~2 ms of it.
+- **Sign-in routes (Google callback 12 ms, passkey verify 16 ms, sign-out 11 ms) and first use (14 ms) are rare**: once per sign-in (sessions last 30 days) or once ever. That is the "infrequent" overrun the isolate tolerance is for, and Cloudflare calls 10–20 ms normal for auth. No fix.
+- The reminder cron reads `currentData` for each user it sends to, so the cron run (ticket 39, also 10 ms on Free) carries the same cost per user.
+
+## (c) Cheapest fix
+
+**Read Today's data in one D1 batch with fixed SQL, no per-request query building.** The experiment above (21 statements in one `env.DB.batch` plus the cycle lookup, returning *more* data) took **9.8 ms against 31.7 ms**, and ~7 ms of that 9.8 is the session check plus local overhead, so the route's own work drops from **~25 ms to ~3 ms**: live it should land around 5–8 ms. Wall time drops from ~25 round trips to 2.
+
+Options weighed:
+
+| Option | CPU win | Cost |
+| --- | --- | --- |
+| **One `env.DB.batch` of fixed SQL strings, rows mapped by hand** (recommended) | ~25 → ~3 ms measured | rewrite `currentData` + helpers' reads; the JSON shape stays the same, so the phone and its tests don't change; server tests check the shape |
+| Drizzle `db.batch([...])` of the same builders | saves the binding part (~4–5 ms), keeps Drizzle's 12.8 ms | still over 10 ms |
+| Drizzle prepared statements (`.prepare()` once per isolate with `sql.placeholder`) | saves the building part, keeps 25 round trips and mapping | still ~15 ms, still 1.8 s wall |
+| Cache the computed view (isolate memory / Cache API) keyed by a data version | near 0 on a hit | every write route must bump the version; easy to get stale money numbers; a miss still costs 30 ms |
+| Workers Paid | none needed | money ($5/month minimum): not for v0.1 |
+
+Writes, auth and first use need no change now; check them again live after the fix.
