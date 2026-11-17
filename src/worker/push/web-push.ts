@@ -170,7 +170,9 @@ export async function sendPush(
       "content-encoding": "aes128gcm",
       "content-type": "application/octet-stream",
       ttl: String(PUSH_TTL),
-      urgency: "normal",
+      // Android holds `normal` pushes while the phone is idle (seen on a Pixel 7), so the
+      // morning summary and spend nudge came late or not at all. They are at most two a day.
+      urgency: "high",
     },
     body,
   });

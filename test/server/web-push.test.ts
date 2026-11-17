@@ -81,6 +81,8 @@ describe("Web Push (item 26, spec 12)", () => {
     expect(req.url).toBe("https://push.example/send/1");
     expect(req.headers.get("content-encoding")).toBe("aes128gcm");
     expect(req.headers.get("ttl")).toBe("43200");
+    // Android holds normal-urgency pushes while the phone is idle; reminders go at high.
+    expect(req.headers.get("urgency")).toBe("high");
     expect(req.headers.get("authorization")).toMatch(/^vapid t=.+, k=/);
     const body = new Uint8Array(await req.arrayBuffer());
     expect(JSON.parse(await decrypt(body, RFC.uaPublic, RFC.uaPrivate, RFC.auth))).toEqual({
