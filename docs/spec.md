@@ -315,14 +315,14 @@ Asked at first use, suggested from the phone. If the phone's time zone later dif
 - **Six reminders**, each with its own switch in Settings, all on at first:
   1. **Bill due soon**: an open commitment (card bills and plan payments included) is due in N days; N = 3, changeable. Sent once.
   2. **Bill due today / overdue**: repeats every morning until paid, carried or dropped.
-  3. **Running out**: the free-money verdict or a pot's verdict is Tight or Runs out. Tight is sent only on the day it changes to Tight; Runs out repeats every morning while it holds.
+  3. **Running out**: the free-money verdict or a pot's verdict is Tight or Runs out, or free money is at zero or below ("over by"). Tight is sent only on the day it changes to Tight (yesterday's verdict was not Tight, or yesterday was last cycle); Runs out and over by repeat every morning while they hold.
   4. **Salary late**: from the morning after the expected salary day with no salary entered; repeats every morning.
-  5. **Questions waiting**: an unanswered underspend choice, unpaid commitments at cycle end, or an overspend choice.
+  5. **Questions waiting**: an unanswered underspend choice; and from the expected salary day, what salary day will ask: unpaid commitments of the cycle and an overspend (free money below zero).
   6. **Spend nudge**: an evening reminder to log spends; skipped on a day with at least one spend.
 - **Times** in the home time zone: **morning summary** at 08:00 and spend nudge at 21:00, each changeable in 15-minute steps.
 - **Morning summary**: reminders 1–5 together in one notification (for example "Rent due today · Phone bill in 3 days · Groceries: runs out on 24 Nov"). Nothing due means no notification. Tapping it opens Today.
-- **No alerts** (not on the Home Screen, blocked, or never turned on): the same reminders show as a list at the top of Today, with a dismissable banner explaining how to turn alerts on (including the Home Screen step on iPhone).
-- No reminders before the first salary is entered.
+- **No alerts** (not on the Home Screen, blocked, or never turned on): the same reminders show as a list at the top of Today, with a dismissable banner explaining how to turn alerts on (including the Home Screen step on iPhone). The list is worked out on the phone with the money rules whenever Today shows: reminders 1–5 all day, the spend nudge from its time; switched-off reminders are left out; nothing to list hides it. The banner, once dismissed, stays hidden for the user.
+- No reminders before the first salary is entered: none in the first cycle, which starts with the money held.
 - **Settings → Reminders**: six switches, the two times, the days-ahead number, this device's on/off and a Turn on reminders button.
 - **How it runs**: one Cron Trigger every 15 minutes (UTC), within the free plan's limits (10 ms CPU and about 50 outgoing calls per run). Each run sends what is due for users whose local time matches. Push subscriptions are stored one per device and deleted when the push service answers 404 or 410. What was sent is recorded, so "send once" and "Tight only on change" work. Measure CPU per push early.
 
