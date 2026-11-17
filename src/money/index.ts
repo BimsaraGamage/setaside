@@ -17,8 +17,10 @@ export * from "./plan";
 export * from "./pot";
 export * from "./prepayment";
 export * from "./rate";
+export * from "./reminders";
 export * from "./salary-day";
 export * from "./savings";
 export * from "./speed";
 export * from "./spend";
 export * from "./unsent";
+
