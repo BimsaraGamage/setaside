@@ -14,6 +14,7 @@ import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, use
 import { agoLabel } from "./offline-copy";
 import { commitmentNote } from "./Plan";
 import { PotRow } from "./Pots";
+import { type ReminderActions, RemindersCard } from "./Reminders";
 import { cardName, potName, SpendRow } from "./Spends";
 import { type CycleActions, LateSalaryCard } from "./ThisCycle";
 import { type DayChoiceActions, UnderspendCard } from "./Underspend";
@@ -65,7 +66,7 @@ function NextUpRow({
 }
 
 /**
- * Today (spec 10): header, the salary-late card (item 13), the underspend card, main card with the daily
+ * Today (spec 10): header, the reminders list (item 25), the salary-late card (item 13), the underspend card, main card with the daily
  * allowance, verdict, today's spends and the speed line, Next up, pots with
  * their verdicts, the + button.
  */
@@ -76,6 +77,7 @@ export function Today({
   dayChoices,
   cycle: cycleActions,
   zone,
+  reminders,
   offlineSince = null,
   children,
 }: {
@@ -89,6 +91,7 @@ export function Today({
   dayChoices: DayChoiceActions;
   cycle: CycleActions;
   zone: ZoneActions;
+  reminders: ReminderActions;
 }) {
   const { settings, cycle } = data;
   const today = useToday(settings.homeTimeZone);
@@ -123,6 +126,8 @@ export function Today({
       <ZoneSwitchCard home={settings.homeTimeZone} asked={settings.askedTimeZone} actions={zone} />
 
       {children}
+
+      <RemindersCard data={data} today={today} actions={reminders} />
 
       {isSalaryLate(today, cycle.expectedSalaryOn) && (
         <LateSalaryCard data={data} today={today} actions={cycleActions} />

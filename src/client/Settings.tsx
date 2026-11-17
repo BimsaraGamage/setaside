@@ -1,12 +1,91 @@
 import { useMemo, useState } from "react";
-import { parseRate } from "../money";
+import { DUE_SOON_DAYS_MAX, parseRate, type ReminderSettings, reminderTimes } from "../money";
 import { api } from "./api";
 import type { Current } from "./data";
 import { phoneTimeZone, timeZones } from "./data";
 import { newId } from "./id";
 import { SignInSettings } from "./SignInSettings";
 
-/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; sign-in. */
+/** The six reminders' switches (spec 12), in the order of the spec. */
+const SWITCHES: { key: keyof ReminderSettings; label: string; hint: string }[] = [
+  { key: "dueSoon", label: "Bill due soon", hint: "Once, a few days before" },
+  { key: "dueToday", label: "Bill due today or late", hint: "Every morning until paid" },
+  { key: "runningOut", label: "Running out", hint: "Free money or a pot is tight or runs out" },
+  { key: "salaryLate", label: "Salary late", hint: "From the day after it was expected" },
+  { key: "questions", label: "Questions waiting", hint: "Underspend and salary day questions" },
+  { key: "spendNudge", label: "Spend nudge", hint: "In the evening, if nothing was added today" },
+];
+
+/** Settings → Reminders (spec 12, item 25): six switches, the two times, the days-ahead number. */
+function RemindersSettings({
+  reminders,
+  save,
+}: {
+  reminders: ReminderSettings;
+  save: (change: Partial<ReminderSettings>) => Promise<void>;
+}) {
+  const times = useMemo(reminderTimes, []);
+  return (
+    <section className="card" aria-labelledby="reminders-settings-h">
+      <h3 id="reminders-settings-h">Reminders</h3>
+      {SWITCHES.map(({ key, label, hint }) => (
+        <label key={key} className="li">
+          <span className="grow">
+            {label}
+            <span className="tiny mute block">{hint}</span>
+          </span>
+          <input
+            type="checkbox"
+            aria-label={label}
+            checked={reminders[key] as boolean}
+            onChange={(e) => save({ [key]: e.target.checked })}
+          />
+        </label>
+      ))}
+      <label className="li">
+        <span className="grow">Days ahead for bill due soon</span>
+        <select
+          aria-label="Days ahead"
+          value={reminders.dueSoonDays}
+          onChange={(e) => save({ dueSoonDays: Number(e.target.value) })}
+        >
+          {Array.from({ length: DUE_SOON_DAYS_MAX }, (_, i) => i + 1).map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="li">
+        <span className="grow">Morning summary at</span>
+        <select
+          aria-label="Morning summary at"
+          value={reminders.morningAt}
+          onChange={(e) => save({ morningAt: e.target.value })}
+        >
+          {times.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
+      </label>
+      <label className="li">
+        <span className="grow">Spend nudge at</span>
+        <select
+          aria-label="Spend nudge at"
+          value={reminders.nudgeAt}
+          onChange={(e) => save({ nudgeAt: e.target.value })}
+        >
+          {times.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+        </select>
+      </label>
+      <p className="tiny mute">Times are in your home time zone. Reminders show at the top of Today.</p>
+    </section>
+  );
+}
+
+/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; reminders; sign-in. */
 export function Settings({
   settings,
   onChanged,
@@ -34,7 +113,12 @@ export function Settings({
     onChanged();
   }
 
-  async function save(change: { usualPayDay?: number; homeTimeZone?: string; askedTimeZone?: string }) {
+  async function save(change: {
+    usualPayDay?: number;
+    homeTimeZone?: string;
+    askedTimeZone?: string;
+    reminders?: Partial<ReminderSettings>;
+  }) {
     setNote(null);
     const res = await api.api.settings.$patch({ json: change }).catch(() => null);
     if (!res?.ok) setNote("Not saved. Check the connection and try again.");
@@ -121,6 +205,7 @@ export function Settings({
           </p>
         )}
       </section>
+      <RemindersSettings reminders={settings.reminders} save={(reminders) => save({ reminders })} />
       <SignInSettings onSignedOut={onSignedOut} />
     </>
   );
