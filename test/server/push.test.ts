@@ -184,14 +184,14 @@ describe("the reminder cron (item 26, spec 12)", () => {
     });
   });
 
-  it("sends nothing at other times, and nothing before the first salary", async () => {
+  it("sends nothing at other times, and sends in the first cycle (no salary yet) too", async () => {
     const u = await cycleWithBills();
     const svc = pushService();
     await sendReminders(env, MORNING + 15 * 60 * 1000, svc.fetcher);
     expect(to(svc.sent, u.device)).toEqual([]);
     await env.DB.prepare("update income set kind = 'opening' where user_id = ?").bind(u.id).run();
     await sendReminders(env, MORNING, svc.fetcher);
-    expect(to(svc.sent, u.device)).toEqual([]);
+    expect(to(svc.sent, u.device)[0]?.message.body).toContain("Rent due today");
   });
 
   it("follows the user's own morning time and switches", async () => {

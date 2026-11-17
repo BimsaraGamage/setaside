@@ -141,8 +141,6 @@ const byDue = (a: Named, b: Named) =>
 export function reminders(input: ReminderInput): Reminder[] {
   const { today, settings: on } = input;
   const entries: CycleEntries = { ...input.entries, commitments: input.commitments, pots: input.pots };
-  // No reminders before the first salary is entered.
-  if (!entries.incomes.some((i) => i.kind === "salary")) return [];
   const out: Reminder[] = [];
   const open = input.commitments.filter((c) => c.state === "open" && stillToPayMinor(c) > 0).sort(byDue);
 

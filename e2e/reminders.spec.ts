@@ -1,10 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
 import { signInFreshToToday } from "./helpers";
 
-// Journey: reminders in the app (backlog item 25, spec 12). Needs a salary day, so
-// it runs as a fresh demo user of its own.
+// Journey: reminders in the app (backlog item 25, spec 12). Goes through a salary day,
+// so it runs as a fresh demo user of its own.
 
-test("reminders: none before the first salary, a bill due today listed, switched off in Settings, banner dismissed, phone alerts on hide the list", async ({
+test("reminders: listed in the first cycle and after salary day, switched off in Settings, banner dismissed, phone alerts on hide the list", async ({
   page,
 }) => {
   await fakePush(page);
@@ -23,10 +23,9 @@ test("reminders: none before the first salary, a bill due today listed, switched
     await tabs.getByRole("link", { name: "Today" }).click();
   };
 
-  // First cycle: started with money held, no salary yet, so no reminders.
+  // First cycle: started with money held, no salary yet; reminders already work.
   await addRent();
-  await expect(page.getByTestId("allowance")).toBeVisible();
-  await expect(reminders).toHaveCount(0);
+  await expect(reminders.getByText("Rent due today · Rs 5,000")).toBeVisible();
 
   // Salary day: Rent was paid; nothing else.
   await page.getByRole("link", { name: "Salary arrived" }).click();
