@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { pushSubscription } from "./db/schema";
@@ -6,8 +6,30 @@ import { json } from "./json";
 import { vapidOf } from "./push/vapid";
 import type { SignedIn } from "./user-check";
 
+/** Devices with alerts on, per user: keeps one user from filling a cron run (8 pushes). */
+export const MAX_DEVICES = 5;
+
+/**
+ * The browsers' push services. The cron POSTs to the saved address, so only these
+ * hosts are taken: the Worker never sends to an address of the user's choosing.
+ */
+const PUSH_HOSTS = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com"];
+const PUSH_HOST_ENDINGS = [".push.apple.com", ".notify.windows.com"];
+
+export function isPushService(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:" || url.port !== "" || url.username || url.password) return false;
+  const host = url.hostname;
+  return PUSH_HOSTS.includes(host) || PUSH_HOST_ENDINGS.some((end) => host.endsWith(end));
+}
+
 const subscriptionBody = z.object({
-  endpoint: z.url({ protocol: /^https$/ }).max(2000),
+  endpoint: z.string().max(2000).refine(isPushService),
   p256dh: z.string().regex(/^[A-Za-z0-9_-]{80,100}$/),
   auth: z.string().regex(/^[A-Za-z0-9_-]{16,32}$/),
 });
@@ -21,7 +43,7 @@ export const push = new Hono<SignedIn>()
   .get("/push/key", (c) => c.json({ publicKey: vapidOf(c.env)?.publicKey ?? null }))
   /** Turn on reminders on this device: saves (or refreshes) its subscription. */
   .post("/push-subscriptions", json(subscriptionBody), async (c) => {
-    const { db, userId } = c.var;
+    const { db, mine, userId } = c.var;
     const b = c.req.valid("json");
     const found = await db.query.pushSubscription.findFirst({
       where: eq(pushSubscription.endpoint, b.endpoint),
@@ -36,15 +58,23 @@ export const push = new Hono<SignedIn>()
         .where(eq(pushSubscription.id, found.id));
       return c.json({ ok: true as const }, 200);
     }
+    const [had] = await db.select({ n: count() }).from(pushSubscription).where(mine(pushSubscription));
+    if ((had?.n ?? 0) >= MAX_DEVICES) return c.json({ error: "too_many_devices" as const }, 409);
     await db.insert(pushSubscription).values({ id: crypto.randomUUID(), userId, ...b });
     return c.json({ ok: true as const }, 201);
   })
   /** Turn off reminders on this device (and on signing out). */
-  .post("/push-subscriptions/remove", json(subscriptionBody.pick({ endpoint: true })), async (c) => {
+  .post("/push-subscriptions/remove", json(z.object({ endpoint: z.string().max(2000) })), async (c) => {
     const { db, mine } = c.var;
     const { endpoint } = c.req.valid("json");
     await db
       .delete(pushSubscription)
       .where(and(mine(pushSubscription), eq(pushSubscription.endpoint, endpoint)));
+    return c.json({ ok: true as const }, 200);
+  })
+  /** Sign out everywhere: alerts go off on every device of the user. */
+  .post("/push-subscriptions/remove-all", async (c) => {
+    const { db, mine } = c.var;
+    await db.delete(pushSubscription).where(mine(pushSubscription));
     return c.json({ ok: true as const }, 200);
   });

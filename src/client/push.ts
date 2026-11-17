@@ -52,6 +52,12 @@ export async function turnOffPushHere(): Promise<void> {
   await sub.unsubscribe().catch(() => false);
 }
 
+/** Sign out everywhere: alerts go off on every device of the user, this one included. */
+export async function turnOffPushEverywhere(): Promise<void> {
+  await turnOffPushHere();
+  await api.api["push-subscriptions"]["remove-all"].$post().catch(() => null);
+}
+
 /** Why turning on did not work, in words for the screen. */
 export type TurnOnProblem = "blocked" | "not_set_up" | "failed";
 

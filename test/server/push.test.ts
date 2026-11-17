@@ -28,7 +28,7 @@ async function freshUser() {
 
 /** A device's subscription; the RFC's keys, so the test can read what was sent. */
 const device = (n = crypto.randomUUID()) => ({
-  endpoint: `https://push.example/send/${n}`,
+  endpoint: `https://fcm.googleapis.com/fcm/send/${n}`,
   p256dh: RFC.uaPublic,
   auth: RFC.auth,
 });
@@ -141,10 +141,24 @@ describe("turn on reminders on a device (item 26, spec 12)", () => {
     expect(await devices(b.id)).toEqual([]);
   });
 
-  it("takes only a real https push address and real keys", async () => {
+  it("takes at most 5 devices per user, and sign out everywhere removes them all", async () => {
+    const u = await freshUser();
+    for (let i = 0; i < 5; i++) expect((await subscribe(u.cookie, device())).status).toBe(201);
+    const sixth = await subscribe(u.cookie, device());
+    expect(sixth.status).toBe(409);
+    expect(await sixth.json()).toEqual({ error: "too_many_devices" });
+    const all = await call("/api/push-subscriptions/remove-all", { method: "POST" }, u.cookie);
+    expect(all.status).toBe(200);
+    expect(await devices(u.id)).toEqual([]);
+  });
+
+  it("takes only a browser push service address and real keys", async () => {
     const { cookie } = await freshUser();
     for (const bad of [
-      { ...device(), endpoint: "http://push.example/x" },
+      { ...device(), endpoint: "http://fcm.googleapis.com/fcm/send/x" },
+      { ...device(), endpoint: "https://evil.example/fcm.googleapis.com" },
+      { ...device(), endpoint: "https://fcm.googleapis.com.evil.example/x" },
+      { ...device(), endpoint: "https://fcm.googleapis.com:8443/x" },
       { ...device(), p256dh: "short" },
       { ...device(), auth: "" },
     ]) {

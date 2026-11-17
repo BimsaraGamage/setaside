@@ -117,7 +117,7 @@ async function fakePush(page: Page) {
         return endpoint ? makeSub(endpoint) : null;
       },
       subscribe: async () => {
-        const endpoint = `https://push.example/send/e2e-${crypto.randomUUID()}`;
+        const endpoint = `https://fcm.googleapis.com/fcm/send/e2e-${crypto.randomUUID()}`;
         store.setItem("fake-push", endpoint);
         return makeSub(endpoint);
       },

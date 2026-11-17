@@ -26,7 +26,7 @@ interface Owner {
 type Probe = (owner: Owner) => { path: string; init?: RequestInit };
 
 /** The first user's device with alerts on (item 26). */
-const OWNER_ENDPOINT = "https://push.example/send/owner-device";
+const OWNER_ENDPOINT = "https://fcm.googleapis.com/fcm/send/owner-device";
 
 const firstRow = (o: Owner, table: string) => o.rows[table]?.[0]?.id ?? "missing";
 
@@ -266,6 +266,7 @@ const probes: Record<string, Probe> = {
     path: "/api/push-subscriptions/remove",
     init: { body: JSON.stringify({ endpoint: OWNER_ENDPOINT }) },
   }),
+  "POST /api/push-subscriptions/remove-all": () => ({ path: "/api/push-subscriptions/remove-all" }),
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
     init: {
