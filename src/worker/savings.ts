@@ -96,6 +96,49 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
     ? (await db.query.settings.findFirst({ where: mine(settings), columns: { spendingCurrency: true } }))
         ?.spendingCurrency
     : undefined;
+  return savingsLinesOf({ moves, incomes, setAsides, gains }, spendingCurrency);
+}
+
+/** The rows `savingsLines` reads (Today reads the same in its one batch, `today-read.ts`). */
+export interface SavingsRows {
+  moves: {
+    id: string;
+    kind: (typeof savingsMovement.$inferSelect)["kind"];
+    cycleId: string;
+    currency: string;
+    amountMinor: number;
+    movedOn: string;
+    name: string | null;
+    planName: string | null;
+  }[];
+  /** Incomes with part sent to savings. */
+  incomes: {
+    id: string;
+    kind: (typeof income.$inferSelect)["kind"];
+    cycleId: string;
+    currency: string;
+    toSavingsMinor: number;
+    receivedOn: string;
+  }[];
+  /** Payments on savings and savings payback commitments, newest first. */
+  setAsides: {
+    id: string;
+    cycleId: string;
+    currency: string;
+    amountMinor: number;
+    on: string;
+    name: string;
+    kind: (typeof commitment.$inferSelect)["kind"];
+  }[];
+  /** Conversions with a rate gain. */
+  gains: { id: string; cycleId: string; gainMinor: number; doneOn: string }[];
+}
+
+/** Savings lines from their rows, newest first; rate gains need the spending currency. */
+export function savingsLinesOf(
+  { moves, incomes, setAsides, gains }: SavingsRows,
+  spendingCurrency: string | undefined,
+): SavingsLine[] {
   const lines: SavingsLine[] = [
     ...moves.flatMap((m) =>
       m.kind === "put_in" || m.kind === "take_out" || m.kind === "prepayment" || m.kind === "plan_extra"

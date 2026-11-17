@@ -235,7 +235,8 @@ type Stamped =
  * entered or changed since, in it or anywhere it touches, except the salary
  * amount and the expected salary day, which stay editable. Salary day stamps
  * every row it writes with the new cycle's `created_at`, so "newer" is any row
- * changed after that. Null when undo is not allowed.
+ * changed after that. Null when undo is not allowed. Today reads the same in
+ * SQL (`UNDO_TABLES` in today-read.ts): a table added here goes there too.
  */
 export async function undoRecord(
   c: { var: SignedIn["Variables"] },

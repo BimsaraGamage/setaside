@@ -8,14 +8,16 @@ import * as schema from "./db/schema";
 /**
  * The one shared user check (spec 13). Every private route runs behind it: no
  * signed-in user means 401, and the route only gets `userId` plus `mine()`, which
- * scopes a query to that user. No private route reads `c.env.DB` directly.
+ * scopes a query to that user. No private route reads `c.env.DB` directly; the one
+ * fixed-SQL read of Today (`today-read.ts`) binds `userId` and scopes every table to it.
  */
 export interface SignedIn {
   Bindings: Env;
   Variables: {
     userId: string;
     user: { id: string; name: string; email: string };
-    db: DrizzleD1Database<typeof schema>;
+    /** `$client` is the D1 binding, for the one fixed-SQL batch of Today (`today-read.ts`). */
+    db: DrizzleD1Database<typeof schema> & { $client: D1Database };
     /** `where` clause for "rows owned by the signed-in user". */
     mine: (table: { userId: SQLiteColumn }) => SQL;
   };

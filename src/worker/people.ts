@@ -66,6 +66,28 @@ export async function personDebtLines(c: { var: SignedIn["Variables"] }): Promis
     .innerJoin(commitment, eq(commitment.id, commitmentPayment.commitmentId))
     .where(and(mine(commitmentPayment), mine(commitment), eq(commitment.kind, "person_payback")))
     .groupBy(commitment.personDebtId);
+  return personDebtLinesOf({ debts, incomes, paid });
+}
+
+/** The rows `personDebtLines` reads (Today reads the same in its one batch, `today-read.ts`). */
+export interface PersonDebtRows {
+  debts: Omit<typeof personDebt.$inferSelect, "userId" | "createdAt" | "updatedAt">[];
+  /** Incomes linked to a person entry, oldest first. */
+  incomes: {
+    id: string;
+    kind: (typeof income.$inferSelect)["kind"];
+    cycleId: string;
+    amountMinor: number;
+    toSavingsMinor: number;
+    receivedOn: string;
+    personDebtId: string | null;
+  }[];
+  /** What payments on each borrowed entry's paybacks cover. */
+  paid: { personDebtId: string | null; covered: number }[];
+}
+
+/** Person entry lines from their rows. */
+export function personDebtLinesOf({ debts, incomes, paid }: PersonDebtRows): PersonDebtLine[] {
   return debts.map((d) => {
     const own = incomes.filter((i) => i.personDebtId === d.id);
     const gotBack = own

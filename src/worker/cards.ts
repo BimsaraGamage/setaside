@@ -59,8 +59,19 @@ export async function cardLines(c: { var: SignedIn["Variables"] }, cycleId: stri
       ),
     )
     .groupBy(commitment.cardId);
-  const sum = (rows: { cardId: string | null; total: number }[], id: string) =>
-    Number(rows.find((r) => r.cardId === id)?.total ?? 0);
+  return cardLinesOf(cards, spent, paid);
+}
+
+/** What one card spent or had paid before the cycle, per card. */
+export type CardTotal = { cardId: string | null; total: number };
+
+/** Card lines from the cards and their totals before the cycle (also Today's one batch, `today-read.ts`). */
+export function cardLinesOf(
+  cards: { id: string; name: string; currency: string; archived: boolean }[],
+  spent: CardTotal[],
+  paid: CardTotal[],
+) {
+  const sum = (rows: CardTotal[], id: string) => Number(rows.find((r) => r.cardId === id)?.total ?? 0);
   return cards.map((k) => ({ ...k, earlierMinor: sum(spent, k.id) - sum(paid, k.id) }));
 }
 

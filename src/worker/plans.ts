@@ -67,6 +67,20 @@ export async function planLines(c: { var: SignedIn["Variables"] }): Promise<Plan
     where: mine(planExtraPayment),
     orderBy: [planExtraPayment.paidOn, planExtraPayment.createdAt],
   });
+  return planLinesOf({ plans, paid, extras });
+}
+
+/** The rows `planLines` reads (Today reads the same in its one batch, `today-read.ts`). */
+export interface PlanRows {
+  plans: Omit<typeof instalmentPlan.$inferSelect, "userId" | "createdAt" | "updatedAt">[];
+  /** What each plan payment's payments cover, one row per commitment. */
+  paid: { planId: string | null; state: (typeof commitment.$inferSelect)["state"]; covered: number }[];
+  /** Extra payments, oldest first. */
+  extras: (PlanExtraLine & { planId: string })[];
+}
+
+/** Plan lines from their rows. */
+export function planLinesOf({ plans, paid, extras }: PlanRows): PlanLine[] {
   return plans.map((p) => {
     const own = paid.filter((r) => r.planId === p.id);
     const ownExtras = extras.filter((x) => x.planId === p.id);

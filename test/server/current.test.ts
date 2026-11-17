@@ -116,7 +116,13 @@ async function seedFullMonth(userId: string, p: string) {
     normal_monthly_minor: 600_000,
     months: 12,
   });
-  add("prepayment", { id: id("prep-2"), name: "Insurance", currency: "LKR", total_minor: 1_200_000, payback_minor: 100_000 });
+  add("prepayment", {
+    id: id("prep-2"),
+    name: "Insurance",
+    currency: "LKR",
+    total_minor: 1_200_000,
+    payback_minor: 100_000,
+  });
   add("instalment_plan", {
     id: id("plan-phone"),
     name: "Phone",
@@ -171,8 +177,24 @@ async function seedFullMonth(userId: string, p: string) {
   });
 
   // Incomes: this cycle's (all kinds), and older ones that count for savings and people.
-  const income = (n: string, cycle: string, kind: string, currency: string, amount: number, on: string, more = {}) =>
-    add("income", { id: id(n), cycle_id: cycle, kind, currency, amount_minor: amount, received_on: on, ...more });
+  const income = (
+    n: string,
+    cycle: string,
+    kind: string,
+    currency: string,
+    amount: number,
+    on: string,
+    more = {},
+  ) =>
+    add("income", {
+      id: id(n),
+      cycle_id: cycle,
+      kind,
+      currency,
+      amount_minor: amount,
+      received_on: on,
+      ...more,
+    });
   income("inc-o-salary", O, "salary", "USD", 190_000, "2026-09-25");
   income("inc-l-salary", L, "salary", "USD", 195_000, "2026-10-25");
   income("inc-l-extra", L, "extra", "LKR", 1_000_000, "2026-11-02", { to_savings_minor: 100_000 });
@@ -184,7 +206,9 @@ async function seedFullMonth(userId: string, p: string) {
   income("inc-c-leftover", C, "leftover", "LKR", 500_000, "2026-11-25", { to_savings_minor: 200_000 });
   income("inc-c-leftover-usd", C, "leftover", "USD", 3_000, "2026-11-25");
   income("inc-c-extra", C, "extra", "LKR", 1_000_000, "2026-11-27", { to_savings_minor: 300_000 });
-  income("inc-c-borrowed", C, "borrowed", "LKR", 400_000, "2026-11-26", { person_debt_id: id("debt-borrowed") });
+  income("inc-c-borrowed", C, "borrowed", "LKR", 400_000, "2026-11-26", {
+    person_debt_id: id("debt-borrowed"),
+  });
   income("inc-c-back", C, "paid_back", "LKR", 150_000, "2026-11-28", {
     person_debt_id: id("debt-lent"),
     created_at: T0 + 2,
@@ -193,7 +217,14 @@ async function seedFullMonth(userId: string, p: string) {
 
   // Spends: last cycle (speeds, card balance) and this one.
   const spend = (n: string, cycle: string, on: string, amount: number, more = {}) =>
-    add("spend", { id: id(n), cycle_id: cycle, spent_on: on, amount_minor: amount, currency: "LKR", ...more });
+    add("spend", {
+      id: id(n),
+      cycle_id: cycle,
+      spent_on: on,
+      amount_minor: amount,
+      currency: "LKR",
+      ...more,
+    });
   spend("sp-o-1", O, "2026-09-26", 99_000, { card_id: id("card-visa") });
   spend("sp-l-1", L, "2026-10-25", 120_000, { note: "lunch" });
   spend("sp-l-2", L, "2026-10-26", 300_000, { pot_id: id("pot-b"), card_id: id("card-visa") });
@@ -207,7 +238,16 @@ async function seedFullMonth(userId: string, p: string) {
   spend("sp-c-5", C, "2026-11-27", 64_000, { card_id: id("card-amex"), note: "online" });
 
   // Commitments with payments, every kind.
-  const commit = (n: string, cycle: string, name: string, kind: string, currency: string, planned: number, due: string, more = {}) =>
+  const commit = (
+    n: string,
+    cycle: string,
+    name: string,
+    kind: string,
+    currency: string,
+    planned: number,
+    due: string,
+    more = {},
+  ) =>
     add("commitment", {
       id: id(n),
       cycle_id: cycle,
@@ -240,7 +280,10 @@ async function seedFullMonth(userId: string, p: string) {
     plan_id: id("plan-phone"),
   });
   pay("p-l-phone", "k-l-phone", "LKR", 1_000_000, "2026-10-28");
-  commit("k-l-tv", L, "TV", "plan_payment", "USD", 10_000, "2026-10-30", { state: "finished", plan_id: id("plan-tv") });
+  commit("k-l-tv", L, "TV", "plan_payment", "USD", 10_000, "2026-10-30", {
+    state: "finished",
+    plan_id: id("plan-tv"),
+  });
   pay("p-l-tv", "k-l-tv", "LKR", 2_900_000, "2026-10-30", { covers_minor: 10_000 });
   commit("k-l-gym", L, "Gym", "savings_payback", "LKR", 500_000, "2026-11-20", {
     state: "finished",
@@ -280,15 +323,40 @@ async function seedFullMonth(userId: string, p: string) {
   add("day_choice", { id: id("dc-l"), cycle_id: L, day_on: "2026-11-01", choice: "spread" });
   add("day_choice", { id: id("dc-2"), cycle_id: C, day_on: "2026-11-28", choice: "today" });
   add("day_choice", { id: id("dc-1"), cycle_id: C, day_on: "2026-11-27", choice: "spread" });
-  const move = (n: string, cycle: string, kind: string, currency: string, amount: number, on: string, more = {}) =>
-    add("savings_movement", { id: id(n), cycle_id: cycle, kind, currency, amount_minor: amount, moved_on: on, ...more });
+  const move = (
+    n: string,
+    cycle: string,
+    kind: string,
+    currency: string,
+    amount: number,
+    on: string,
+    more = {},
+  ) =>
+    add("savings_movement", {
+      id: id(n),
+      cycle_id: cycle,
+      kind,
+      currency,
+      amount_minor: amount,
+      moved_on: on,
+      ...more,
+    });
   move("sm-o-open", O, "opening", "LKR", 5_000_000, "2026-09-25");
   move("sm-l-prep", L, "prepayment", "LKR", -6_000_000, "2026-10-28", { prepayment_id: id("prep") });
   move("sm-c-prep", C, "prepayment", "LKR", -1_200_000, "2026-11-26", { prepayment_id: id("prep-2") });
   move("sm-c-in", C, "put_in", "LKR", 300_000, "2026-11-26");
   move("sm-c-out", C, "take_out", "USD", -1_000, "2026-11-26");
   move("x-c-savings", C, "plan_extra", "LKR", -400_000, "2026-11-29");
-  const extra = (n: string, plan: string, currency: string, amount: number, from: string, off: number, on: string, created: number) =>
+  const extra = (
+    n: string,
+    plan: string,
+    currency: string,
+    amount: number,
+    from: string,
+    off: number,
+    on: string,
+    created: number,
+  ) =>
     add("plan_extra_payment", {
       id: id(n),
       cycle_id: C,
@@ -303,7 +371,17 @@ async function seedFullMonth(userId: string, p: string) {
   extra("x-c-free", "plan-phone", "LKR", 100_000, "free", 0, "2026-11-27", T0 + 1);
   extra("x-c-savings", "plan-phone", "LKR", 400_000, "savings", 0, "2026-11-29", T0);
   extra("x-c-tv", "plan-tv", "USD", 40_000, "free", 1, "2026-11-26", T0);
-  const conv = (n: string, cycle: string, given: number, received: number, rate: string, covered: number, gain: number, on: string, created: number) =>
+  const conv = (
+    n: string,
+    cycle: string,
+    given: number,
+    received: number,
+    rate: string,
+    covered: number,
+    gain: number,
+    on: string,
+    created: number,
+  ) =>
     add("conversion", {
       id: id(n),
       cycle_id: cycle,
@@ -319,7 +397,16 @@ async function seedFullMonth(userId: string, p: string) {
   conv("cv-c-1", C, 20_000, 6_040_000, "302", 1_000_000, 40_000, "2026-11-26", T0 + 1);
   conv("cv-c-2", C, 5_000, 1_490_000, "298", 0, -10_000, "2026-11-26", T0 + 2);
   conv("cv-c-3", C, 1_000, 300_000, "300", 0, 0, "2026-11-27", T0);
-  const rec = (n: string, name: string, kind: string, currency: string, amount: number, day: number, active: number, more = {}) =>
+  const rec = (
+    n: string,
+    name: string,
+    kind: string,
+    currency: string,
+    amount: number,
+    day: number,
+    active: number,
+    more = {},
+  ) =>
     add("recurring_commitment", {
       id: id(n),
       name,
@@ -345,7 +432,13 @@ async function seedFullMonth(userId: string, p: string) {
     leftover_minor: 500_000,
     undo: JSON.stringify(undo),
   });
-  add("cycle_close", { id: id("close-usd"), cycle_id: L, next_cycle_id: C, currency: "USD", leftover_minor: 3_000 });
+  add("cycle_close", {
+    id: id("close-usd"),
+    cycle_id: L,
+    next_cycle_id: C,
+    currency: "USD",
+    leftover_minor: 3_000,
+  });
   await run();
 }
 
@@ -368,7 +461,9 @@ describe("GET /api/current", () => {
     const u = await freshUser("current-undo");
     await seedFullMonth(u.id, "undo");
     const touch = (table: string, rowId: string) =>
-      env.DB.prepare(`update "${table}" set updated_at = ? where id = ?`).bind(T0 + 5000, rowId).run();
+      env.DB.prepare(`update "${table}" set updated_at = ? where id = ?`)
+        .bind(T0 + 5000, rowId)
+        .run();
     await touch("income", "undo-inc-c-salary");
     expect((await current(u.cookie)).undoSalaryDay).toBe(true);
     await touch("income", "undo-inc-c-extra");
