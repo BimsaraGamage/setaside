@@ -2,7 +2,7 @@
 
 After every salary, Setaside sets aside the **commitments** of the pay cycle and shows the **free money** left, a **daily allowance** for everyday spending, and whether the money will last to the next salary. Mobile-first web app, runs on Cloudflare's free plan, costs nothing to run.
 
-Status: early build (backlog item 2 of 29). Rules: [docs/spec.md](docs/spec.md). Build order: [docs/backlog.md](docs/backlog.md). Words: [GLOSSARY.md](GLOSSARY.md). Decisions: [docs/adr/](docs/adr/).
+Status: items 1–28 of 29 built; first release 0.0.1; v0.1.0 comes with going public (item 29). Rules: [docs/spec.md](docs/spec.md). Build order: [docs/backlog.md](docs/backlog.md). Words: [GLOSSARY.md](GLOSSARY.md). Decisions: [docs/adr/](docs/adr/).
 
 ## Run it locally
 
