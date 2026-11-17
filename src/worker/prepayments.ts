@@ -48,6 +48,17 @@ export async function prepaymentLines(c: { var: SignedIn["Variables"] }): Promis
     .innerJoin(commitment, eq(commitment.id, commitmentPayment.commitmentId))
     .where(and(mine(commitmentPayment), mine(commitment), eq(commitment.kind, "savings_payback")))
     .groupBy(commitment.prepaymentId);
+  return prepaymentLinesOf(rows, paid);
+}
+
+/** The rows `prepaymentLines` reads (Today reads the same in its one batch, `today-read.ts`). */
+export type PrepaymentRow = Omit<PrepaymentLine, "paidBackMinor">;
+
+/** Prepayment lines from their rows and the payback paid per prepayment. */
+export function prepaymentLinesOf(
+  rows: PrepaymentRow[],
+  paid: { id: string | null; paidMinor: number }[],
+): PrepaymentLine[] {
   const byId = new Map(paid.map((p) => [p.id, Number(p.paidMinor)]));
   return rows.map((r) => ({ ...r, paidBackMinor: byId.get(r.id) ?? 0 }));
 }

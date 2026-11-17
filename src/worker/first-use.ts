@@ -1,4 +1,3 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
@@ -13,28 +12,23 @@ import {
   todayIn,
   usualDayOf,
 } from "../money";
-import { cardLines } from "./cards";
-import { conversionLines } from "./conversions";
-import { countingRateOf } from "./current";
+import { cardLinesOf } from "./cards";
 import {
   commitment,
-  commitmentPayment,
   countingRate,
   cycle,
-  dayChoice,
   income,
   pot,
   potAllocation,
   recurringCommitment,
   settings,
-  spend,
 } from "./db/schema";
 import { json } from "./json";
-import { personDebtLines } from "./people";
-import { planLines } from "./plans";
-import { prepaymentLines } from "./prepayments";
-import { undoRecord } from "./salary-day";
-import { savingsLines } from "./savings";
+import { personDebtLinesOf } from "./people";
+import { planLinesOf } from "./plans";
+import { prepaymentLinesOf } from "./prepayments";
+import { savingsLinesOf } from "./savings";
+import { bool, readToday } from "./today-read";
 import type { SignedIn } from "./user-check";
 
 const firstUseBody = z.object({
@@ -115,7 +109,20 @@ const settingsBody = z
   .partial();
 
 /** The reminder columns of a `settings` row, as the phone and the rules use them (spec 12). */
-function remindersOf(s: typeof settings.$inferSelect): ReminderSettings {
+function remindersOf(
+  s: Pick<
+    typeof settings.$inferSelect,
+    | "remindDueSoon"
+    | "remindDueToday"
+    | "remindRunningOut"
+    | "remindSalaryLate"
+    | "remindQuestions"
+    | "remindSpendNudge"
+    | "dueSoonDays"
+    | "morningAt"
+    | "nudgeAt"
+  >,
+): ReminderSettings {
   return {
     dueSoon: s.remindDueSoon,
     dueToday: s.remindDueToday,
@@ -130,132 +137,30 @@ function remindersOf(s: typeof settings.$inferSelect): ReminderSettings {
 }
 
 /**
- * Last cycle's spending speeds, free money's and each pot's, over its whole
- * length (spec 7). Worked out here so the phone gets two numbers per speed, not
- * last cycle's rows.
- */
-async function lastCycleSpeeds(
-  c: { var: SignedIn["Variables"] },
-  last: { id: string; startedOn: string },
-  endedBefore: string,
-  spendingCurrency: string,
-) {
-  const { db, mine } = c.var;
-  const spends = await db.query.spend.findMany({
-    where: and(mine(spend), eq(spend.cycleId, last.id)),
-    columns: { spentOn: true, currency: true, amountMinor: true, potId: true, oneOff: true },
-  });
-  const allocations = await db
-    .select({ id: pot.id, currency: pot.currency, amountMinor: potAllocation.amountMinor })
-    .from(potAllocation)
-    .innerJoin(pot, eq(pot.id, potAllocation.potId))
-    .where(and(mine(pot), eq(potAllocation.cycleId, last.id)));
-  return cycleSpeeds(
-    { spendingCurrency, spends, pots: allocations.map((p) => ({ ...p, archived: false })) },
-    last.startedOn,
-    endedBefore,
-  );
-}
-
-/**
  * Settings, the current cycle and its entries: everything Today needs (GET /api/current).
  * The reminder cron (item 26) reads the same for each user it sends to.
+ * All of it is one D1 batch (`readToday`, ticket SAB-41): a read Today needs later goes there.
  */
-export async function currentData(c: { var: SignedIn["Variables"] }) {
-  const { db, mine } = c.var;
-  const s = await db.query.settings.findFirst({ where: mine(settings) });
-  // The current cycle and the one before it (its speed is used in the first 3 days, item 8).
-  const [current, last] = await db.query.cycle.findMany({
-    where: mine(cycle),
-    orderBy: [desc(cycle.startedOn), desc(cycle.createdAt)],
-    limit: 2,
-  });
-  const incomes = current
-    ? await db.query.income.findMany({ where: and(mine(income), eq(income.cycleId, current.id)) })
-    : [];
-  const spends = current
-    ? await db.query.spend.findMany({
-        where: and(mine(spend), eq(spend.cycleId, current.id)),
-        orderBy: [desc(spend.spentOn), desc(spend.id)],
-      })
-    : [];
-  const commitments = current
-    ? await db.query.commitment.findMany({
-        where: and(mine(commitment), eq(commitment.cycleId, current.id)),
-        orderBy: [commitment.dueOn, commitment.name],
-      })
-    : [];
-  // Payments of this cycle's commitments (a subquery: D1 caps bound values at 100).
-  const payments = current
-    ? await db.query.commitmentPayment.findMany({
-        where: and(
-          mine(commitmentPayment),
-          inArray(
-            commitmentPayment.commitmentId,
-            db
-              .select({ id: commitment.id })
-              .from(commitment)
-              .where(and(mine(commitment), eq(commitment.cycleId, current.id))),
-          ),
-        ),
-        orderBy: [commitmentPayment.paidOn, commitmentPayment.id],
-      })
-    : [];
-  // Every pot (they last across cycles) with this cycle's amount, if it has one.
-  const pots = await db
-    .select({
-      id: pot.id,
-      name: pot.name,
-      currency: pot.currency,
-      usualAmountMinor: pot.usualAmountMinor,
-      archived: pot.archived,
-      amountMinor: potAllocation.amountMinor,
-    })
-    .from(pot)
-    .leftJoin(
-      potAllocation,
-      and(eq(potAllocation.potId, pot.id), eq(potAllocation.cycleId, current?.id ?? "")),
-    )
-    .where(mine(pot))
-    .orderBy(pot.createdAt, pot.id);
-  const dayChoices = current
-    ? await db.query.dayChoice.findMany({
-        where: and(mine(dayChoice), eq(dayChoice.cycleId, current.id)),
-        columns: { dayOn: true, choice: true },
-        orderBy: [dayChoice.dayOn],
-      })
-    : [];
-  // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
-  const savings = current ? await savingsLines(c) : [];
-  // Prepayments from savings with their payback so far (item 14).
-  const prepayments = current ? await prepaymentLines(c) : [];
-  // The "Every cycle" templates, paused ones too (item 11).
-  const recurring = await db.query.recurringCommitment.findMany({
-    where: mine(recurringCommitment),
-    columns: {
-      id: true,
-      name: true,
-      kind: true,
-      currency: true,
-      usualAmountMinor: true,
-      usualDay: true,
-      active: true,
-      cardId: true,
-    },
-    orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
-  });
-  // Undo salary day is offered while nothing new is entered (item 13).
-  const undoSalaryDay = current ? (await undoRecord(c, current)) !== null : false;
+export async function currentData(c: { var: Pick<SignedIn["Variables"], "db" | "userId"> }) {
+  const r = await readToday(c);
+  const s = r.settings[0];
+  const [current, last] = r.cycles;
+  // Entries of the user's other cycles only count once there is a current cycle.
+  const now = <T>(rows: T[]) => (current ? rows : []);
+  // Last cycle's spending speeds, free money's and each pot's, over its whole length
+  // (spec 7): worked out here so the phone gets two numbers per speed, not last cycle's rows.
   const lastCycle =
-    current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
-  // This cycle's conversions (item 16): free money and Change dollars' list.
-  const conversions = current ? await conversionLines(c, current.id) : [];
-  // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
-  const cards = current ? await cardLines(c, current.id) : [];
-  // Instalment plans with what is paid so far and their extra payments (item 19).
-  const plans = current ? await planLines(c) : [];
-  // People: lent and borrowed, with what is back so far (item 20).
-  const people = current ? await personDebtLines(c) : [];
+    current && last && s
+      ? cycleSpeeds(
+          {
+            spendingCurrency: s.spendingCurrency,
+            spends: r.lastSpends.map((x) => ({ ...x, oneOff: bool(x.oneOff) })),
+            pots: r.lastPots.map((p) => ({ ...p, archived: false })),
+          },
+          last.startedOn,
+          current.startedOn,
+        )
+      : null;
   return {
     settings: s
       ? {
@@ -265,9 +170,19 @@ export async function currentData(c: { var: SignedIn["Variables"] }) {
           usualPayDay: s.usualPayDay,
           askedTimeZone: s.askedTimeZone,
           // Two currencies (spec 8): the newest counting rate; null with one currency.
-          countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
-          reminders: remindersOf(s),
-          reminderBannerDismissed: s.bannerDismissed,
+          countingRate: s.salaryCurrency !== s.spendingCurrency ? (r.countingRate[0]?.rate ?? null) : null,
+          reminders: remindersOf({
+            remindDueSoon: bool(s.remindDueSoon),
+            remindDueToday: bool(s.remindDueToday),
+            remindRunningOut: bool(s.remindRunningOut),
+            remindSalaryLate: bool(s.remindSalaryLate),
+            remindQuestions: bool(s.remindQuestions),
+            remindSpendNudge: bool(s.remindSpendNudge),
+            dueSoonDays: s.dueSoonDays,
+            morningAt: s.morningAt,
+            nudgeAt: s.nudgeAt,
+          }),
+          reminderBannerDismissed: bool(s.bannerDismissed),
         }
       : null,
     cycle: current
@@ -278,50 +193,49 @@ export async function currentData(c: { var: SignedIn["Variables"] }) {
           reserveRate: current.reserveRate,
         }
       : null,
-    incomes: incomes.map((i) => ({
-      id: i.id,
-      kind: i.kind,
-      currency: i.currency,
-      amountMinor: i.amountMinor,
-      toSavingsMinor: i.toSavingsMinor,
-      receivedOn: i.receivedOn,
-    })),
-    spends: spends.map((s) => ({
-      id: s.id,
-      spentOn: s.spentOn,
-      currency: s.currency,
-      amountMinor: s.amountMinor,
-      note: s.note,
-      potId: s.potId,
-      cardId: s.cardId,
-      oneOff: s.oneOff,
-    })),
-    pots,
-    cards,
-    plans,
-    people,
-    conversions,
+    incomes: r.incomes,
+    spends: r.spends.map((x) => ({ ...x, oneOff: bool(x.oneOff) })),
+    // Every pot (they last across cycles) with this cycle's amount, if it has one.
+    pots: r.pots.map((p) => ({ ...p, archived: bool(p.archived) })),
+    // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
+    cards: cardLinesOf(
+      now(r.cards).map((k) => ({ ...k, archived: bool(k.archived) })),
+      r.cardsSpent,
+      r.cardsPaid,
+    ),
+    // Instalment plans with what is paid so far and their extra payments (item 19).
+    plans: planLinesOf({
+      plans: now(r.plans),
+      paid: r.plansPaid,
+      extras: r.planExtras.map((x) => ({ ...x, paysOff: bool(x.paysOff) })),
+    }),
+    // People: lent and borrowed, with what is back so far (item 20).
+    people: personDebtLinesOf({ debts: now(r.debts), incomes: r.debtIncomes, paid: r.debtsPaid }),
+    // This cycle's conversions (item 16): free money and Change dollars' list.
+    conversions: r.conversions,
     lastCycle,
-    undoSalaryDay,
-    dayChoices,
-    savings,
-    prepayments,
-    recurring,
-    commitments: commitments.map((k) => ({
-      id: k.id,
-      name: k.name,
-      kind: k.kind,
-      currency: k.currency,
-      plannedMinor: k.plannedMinor,
-      dueOn: k.dueOn,
-      state: k.state,
-      recurringId: k.recurringId,
-      carriedFromId: k.carriedFromId,
-      prepaymentId: k.prepaymentId,
-      cardId: k.cardId,
-      planId: k.planId,
-      personDebtId: k.personDebtId,
-      payments: payments
+    // Undo salary day is offered while nothing new is entered (item 13).
+    undoSalaryDay: current ? bool(r.undo[0]?.offered ?? 0) : false,
+    dayChoices: r.dayChoices,
+    // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
+    savings: current
+      ? savingsLinesOf(
+          {
+            moves: r.savingsMoves,
+            incomes: r.savingsIncomes,
+            setAsides: r.savingsSetAsides,
+            gains: r.savingsGains,
+          },
+          s?.spendingCurrency,
+        )
+      : [],
+    // Prepayments from savings with their payback so far (item 14).
+    prepayments: prepaymentLinesOf(now(r.prepayments), r.prepaymentsPaid),
+    // The "Every cycle" templates, paused ones too (item 11).
+    recurring: r.recurring.map((t) => ({ ...t, active: bool(t.active) })),
+    commitments: r.commitments.map((k) => ({
+      ...k,
+      payments: r.payments
         .filter((p) => p.commitmentId === k.id)
         .map((p) => ({
           id: p.id,
