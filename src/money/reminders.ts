@@ -75,14 +75,32 @@ type NamedPot = PotEntry & { name: string };
 
 export type Reminder =
   /** 2 · Bill due today or overdue (`lateDays` 0: today). */
-  | { kind: "due_today"; id: string; name: string; dueOn: Day; lateDays: number; stillMinor: Minor; currency: string }
+  | {
+      kind: "due_today";
+      id: string;
+      name: string;
+      dueOn: Day;
+      lateDays: number;
+      stillMinor: Minor;
+      currency: string;
+    }
   /** 1 · Bill due soon: in 1 to N days. */
-  | { kind: "due_soon"; id: string; name: string; dueOn: Day; inDays: number; stillMinor: Minor; currency: string }
+  | {
+      kind: "due_soon";
+      id: string;
+      name: string;
+      dueOn: Day;
+      inDays: number;
+      stillMinor: Minor;
+      currency: string;
+    }
   /** 3 · Free money (`potId` null) or a pot is Tight (on the day it changed), runs out, or is over. */
   | {
       kind: "running_out";
       potId: string | null;
       name: string | null;
+      /** The spending currency, or the pot's: an "over by" amount is in it. */
+      currency: string;
       verdict: Extract<Verdict, { kind: "tight" | "runs_out" | "over" }>;
     }
   /** 4 · Salary late, from the morning after the expected salary day. */
@@ -168,7 +186,7 @@ export function reminders(input: ReminderInput): Reminder[] {
     const v = view.verdict;
     const tightIsNew = () => firstDay || todayView(entries, yesterday).verdict.kind !== "tight";
     if (v.kind === "runs_out" || v.kind === "over" || (v.kind === "tight" && tightIsNew())) {
-      out.push({ kind: "running_out", potId: null, name: null, verdict: v });
+      out.push({ kind: "running_out", potId: null, name: null, currency: view.currency, verdict: v });
     }
     for (const p of input.pots) {
       if (p.archived) continue;
@@ -182,7 +200,7 @@ export function reminders(input: ReminderInput): Reminder[] {
       const pv = verdictOn(today);
       const potTightIsNew = () => firstDay || verdictOn(yesterday).kind !== "tight";
       if (pv.kind === "runs_out" || (pv.kind === "tight" && potTightIsNew())) {
-        out.push({ kind: "running_out", potId: p.id, name: p.name, verdict: pv });
+        out.push({ kind: "running_out", potId: p.id, name: p.name, currency: p.currency, verdict: pv });
       }
     }
   }

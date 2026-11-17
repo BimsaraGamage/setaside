@@ -15,6 +15,7 @@ import { CommitmentPage, Plan } from "./Plan";
 import { PlanPage, planActions } from "./Plans";
 import { PotPage } from "./Pots";
 import { potActions } from "./pot-actions";
+import { reminderActions } from "./Reminders";
 import { SalaryDayPage, salaryDayActions } from "./SalaryDay";
 import { AddIncomePage, SavingsMovePage, SavingsPage, savingsActions } from "./Savings";
 import { Settings } from "./Settings";
@@ -127,6 +128,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   const everyCycle = everyCycleActions(toaster);
   const thisCycle = cycleActions(toaster);
   const zone = zoneActions(toaster);
+  const reminders = reminderActions(toaster);
   /** The spend sheet: open for a new spend, or for one being changed. */
   const [sheet, setSheet] = useState<{ today: string; editing?: Spend } | null>(null);
 
@@ -195,6 +197,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
             dayChoices={dayChoices}
             cycle={thisCycle}
             zone={zone}
+            reminders={reminders}
             offlineSince={offlineSince}
           >
             <UnsentCards

@@ -123,6 +123,19 @@ export const settings = sqliteTable("settings", {
   usualPayDay: integer("usual_pay_day").notNull(),
   /** The phone's time zone last asked about switching to, whatever the answer (item 22); null: never asked. */
   askedTimeZone: text("asked_time_zone"),
+  // Reminders (spec 12, item 25): six switches, all on at first; two times in the home zone; days ahead.
+  remindDueSoon: integer("remind_due_soon", { mode: "boolean" }).notNull().default(true),
+  remindDueToday: integer("remind_due_today", { mode: "boolean" }).notNull().default(true),
+  remindRunningOut: integer("remind_running_out", { mode: "boolean" }).notNull().default(true),
+  remindSalaryLate: integer("remind_salary_late", { mode: "boolean" }).notNull().default(true),
+  remindQuestions: integer("remind_questions", { mode: "boolean" }).notNull().default(true),
+  remindSpendNudge: integer("remind_spend_nudge", { mode: "boolean" }).notNull().default(true),
+  /** HH:MM, 15-minute steps. */
+  morningAt: text("morning_at").notNull().default("08:00"),
+  nudgeAt: text("nudge_at").notNull().default("21:00"),
+  dueSoonDays: integer("due_soon_days").notNull().default(3),
+  /** The turn-on banner above Today's reminders was dismissed. */
+  bannerDismissed: integer("banner_dismissed", { mode: "boolean" }).notNull().default(false),
   ...appTimestamps,
 });
 

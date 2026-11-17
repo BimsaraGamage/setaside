@@ -69,18 +69,38 @@ describe("bill due today or overdue (spec 12, reminder 2)", () => {
     const i = input();
     i.commitments = [
       bill("c1", "Rent", "2026-11-10"),
-      bill("c2", "Water", "2026-11-08", { payments: [{ amountMinor: 200_000, currency: "LKR", paidOn: "2026-11-08" }] }),
+      bill("c2", "Water", "2026-11-08", {
+        payments: [{ amountMinor: 200_000, currency: "LKR", paidOn: "2026-11-08" }],
+      }),
     ];
     expect(reminders(i)).toEqual([
-      { kind: "due_today", id: "c2", name: "Water", dueOn: "2026-11-08", lateDays: 2, stillMinor: 300_000, currency: "LKR" },
-      { kind: "due_today", id: "c1", name: "Rent", dueOn: "2026-11-10", lateDays: 0, stillMinor: 500_000, currency: "LKR" },
+      {
+        kind: "due_today",
+        id: "c2",
+        name: "Water",
+        dueOn: "2026-11-08",
+        lateDays: 2,
+        stillMinor: 300_000,
+        currency: "LKR",
+      },
+      {
+        kind: "due_today",
+        id: "c1",
+        name: "Rent",
+        dueOn: "2026-11-10",
+        lateDays: 0,
+        stillMinor: 500_000,
+        currency: "LKR",
+      },
     ]);
   });
 
   it("stops once paid in full or finished", () => {
     const i = input();
     i.commitments = [
-      bill("c1", "Rent", "2026-11-09", { payments: [{ amountMinor: 500_000, currency: "LKR", paidOn: "2026-11-09" }] }),
+      bill("c1", "Rent", "2026-11-09", {
+        payments: [{ amountMinor: 500_000, currency: "LKR", paidOn: "2026-11-09" }],
+      }),
       bill("c2", "Water", "2026-11-09", { state: "finished" }),
     ];
     expect(reminders(i)).toEqual([]);
@@ -88,7 +108,10 @@ describe("bill due today or overdue (spec 12, reminder 2)", () => {
 
   it("counts card bills and plan payments like any bill", () => {
     const i = input();
-    i.commitments = [bill("c1", "Visa bill", "2026-11-10", { kind: "card_bill" }), bill("c2", "Phone 3 of 12", "2026-11-10", { kind: "plan_payment" })];
+    i.commitments = [
+      bill("c1", "Visa bill", "2026-11-10", { kind: "card_bill" }),
+      bill("c2", "Phone 3 of 12", "2026-11-10", { kind: "plan_payment" }),
+    ];
     expect(kinds(reminders(i))).toEqual(["due_today", "due_today"]);
   });
 });
@@ -102,8 +125,24 @@ describe("bill due soon (spec 12, reminder 1: due in N days, N = 3 and changeabl
       bill("c3", "Water", "2026-11-14"),
     ];
     expect(reminders(i)).toEqual([
-      { kind: "due_soon", id: "c2", name: "Rent", dueOn: "2026-11-11", inDays: 1, stillMinor: 500_000, currency: "LKR" },
-      { kind: "due_soon", id: "c1", name: "Phone", dueOn: "2026-11-13", inDays: 3, stillMinor: 500_000, currency: "LKR" },
+      {
+        kind: "due_soon",
+        id: "c2",
+        name: "Rent",
+        dueOn: "2026-11-11",
+        inDays: 1,
+        stillMinor: 500_000,
+        currency: "LKR",
+      },
+      {
+        kind: "due_soon",
+        id: "c1",
+        name: "Phone",
+        dueOn: "2026-11-13",
+        inDays: 3,
+        stillMinor: 500_000,
+        currency: "LKR",
+      },
     ]);
   });
 
@@ -118,7 +157,11 @@ describe("running out (spec 12, reminder 3: Tight on the day it changes, Runs ou
   // Rs 30,000 for 24 days, Rs 1,250 a day. Spends set the speed from finished days.
   const spendEach = (perDay: number, from: string, to: string) => {
     const list = [];
-    for (let d = new Date(`${from}T00:00:00Z`); d <= new Date(`${to}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1)) {
+    for (
+      let d = new Date(`${from}T00:00:00Z`);
+      d <= new Date(`${to}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
       list.push({ spentOn: d.toISOString().slice(0, 10), currency: "LKR", amountMinor: perDay });
     }
     return list;
@@ -127,7 +170,13 @@ describe("running out (spec 12, reminder 3: Tight on the day it changes, Runs ou
   it("says when free money runs out, every day it holds", () => {
     const i = input({ spends: spendEach(200_000, "2026-11-01", "2026-11-09") });
     const r = reminders(i).find((x) => x.kind === "running_out");
-    expect(r).toEqual({ kind: "running_out", potId: null, name: null, verdict: { kind: "runs_out", on: "2026-11-16" } });
+    expect(r).toEqual({
+      kind: "running_out",
+      potId: null,
+      name: null,
+      currency: "LKR",
+      verdict: { kind: "runs_out", on: "2026-11-16" },
+    });
   });
 
   it("says Tight only on the day it changes to Tight", () => {
@@ -157,7 +206,13 @@ describe("running out (spec 12, reminder 3: Tight on the day it changes, Runs ou
     ];
     const i = input({ spends, pots }, { pots, today: "2026-11-06" });
     expect(reminders(i).filter((x) => x.kind === "running_out")).toEqual([
-      { kind: "running_out", potId: "p1", name: "Groceries", verdict: { kind: "runs_out", on: "2026-11-09" } },
+      {
+        kind: "running_out",
+        potId: "p1",
+        name: "Groceries",
+        currency: "LKR",
+        verdict: { kind: "runs_out", on: "2026-11-09" },
+      },
     ]);
   });
 });
@@ -176,8 +231,16 @@ describe("salary late (spec 12, reminder 4: from the morning after the expected 
 describe("questions waiting (spec 12, reminder 5)", () => {
   it("names an unanswered underspend question", () => {
     // Day 2: yesterday's Rs 1,250 not spent.
-    const r = reminders(input({ dayChoices: [] }, { today: "2026-11-02" })).find((x) => x.kind === "questions");
-    expect(r).toMatchObject({ kind: "questions", unspentMinor: 125_000, unspentDays: 1, unpaid: 0, overMinor: 0 });
+    const r = reminders(input({ dayChoices: [] }, { today: "2026-11-02" })).find(
+      (x) => x.kind === "questions",
+    );
+    expect(r).toMatchObject({
+      kind: "questions",
+      unspentMinor: 125_000,
+      unspentDays: 1,
+      unpaid: 0,
+      overMinor: 0,
+    });
   });
 
   it("is quiet once the underspend question is answered", () => {
@@ -210,7 +273,10 @@ describe("spend nudge (spec 12, reminder 6: in the evening, skipped on a day wit
   });
 
   it("is skipped once a spend is logged today, a pot or card one too", () => {
-    const i = input({ spends: [{ spentOn: "2026-11-10", currency: "LKR", amountMinor: 100, potId: "p1" }] }, { time: "22:00" });
+    const i = input(
+      { spends: [{ spentOn: "2026-11-10", currency: "LKR", amountMinor: 100, potId: "p1" }] },
+      { time: "22:00" },
+    );
     expect(kinds(reminders(i))).not.toContain("spend_nudge");
   });
 });
@@ -244,7 +310,10 @@ describe("switches and order (spec 12: six switches, all on at first)", () => {
       "questions",
       "spend_nudge",
     ]);
-    const off = { ...i, settings: { ...DEFAULT_REMINDERS, dueToday: false, salaryLate: false, spendNudge: false } };
+    const off = {
+      ...i,
+      settings: { ...DEFAULT_REMINDERS, dueToday: false, salaryLate: false, spendNudge: false },
+    };
     expect(kinds(reminders(off))).toEqual(["due_soon", "running_out", "questions"]);
   });
 });

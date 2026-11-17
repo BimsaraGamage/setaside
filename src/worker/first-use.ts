@@ -2,7 +2,17 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkFirstUse, cycleSpeeds, isRate, isTimeZone, todayIn, usualDayOf } from "../money";
+import {
+  checkFirstUse,
+  cycleSpeeds,
+  DUE_SOON_DAYS_MAX,
+  isRate,
+  isReminderTime,
+  isTimeZone,
+  type ReminderSettings,
+  todayIn,
+  usualDayOf,
+} from "../money";
 import { cardLines } from "./cards";
 import { conversionLines } from "./conversions";
 import { countingRateOf } from "./current";
@@ -84,8 +94,40 @@ const settingsBody = z
     homeTimeZone: z.string().refine(isTimeZone),
     /** The phone's zone the switch question was answered for (item 22). */
     askedTimeZone: z.string().refine(isTimeZone),
+    /** Settings → Reminders (spec 12, item 25): any of the switches, times and days ahead. */
+    reminders: z
+      .object({
+        dueSoon: z.boolean(),
+        dueToday: z.boolean(),
+        runningOut: z.boolean(),
+        salaryLate: z.boolean(),
+        questions: z.boolean(),
+        spendNudge: z.boolean(),
+        dueSoonDays: z.number().int().min(1).max(DUE_SOON_DAYS_MAX),
+        morningAt: z.string().refine(isReminderTime),
+        nudgeAt: z.string().refine(isReminderTime),
+      })
+      .partial()
+      .refine((r) => Object.keys(r).length > 0),
+    /** The turn-on banner above Today's reminders was dismissed. */
+    reminderBannerDismissed: z.boolean(),
   })
   .partial();
+
+/** The reminder columns of a `settings` row, as the phone and the rules use them (spec 12). */
+function remindersOf(s: typeof settings.$inferSelect): ReminderSettings {
+  return {
+    dueSoon: s.remindDueSoon,
+    dueToday: s.remindDueToday,
+    runningOut: s.remindRunningOut,
+    salaryLate: s.remindSalaryLate,
+    questions: s.remindQuestions,
+    spendNudge: s.remindSpendNudge,
+    dueSoonDays: s.dueSoonDays,
+    morningAt: s.morningAt,
+    nudgeAt: s.nudgeAt,
+  };
+}
 
 /**
  * Last cycle's spending speeds, free money's and each pot's, over its whole
@@ -226,6 +268,8 @@ export const firstUse = new Hono<SignedIn>()
             askedTimeZone: s.askedTimeZone,
             // Two currencies (spec 8): the newest counting rate; null with one currency.
             countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
+            reminders: remindersOf(s),
+            reminderBannerDismissed: s.bannerDismissed,
           }
         : null,
       cycle: current
@@ -425,16 +469,32 @@ export const firstUse = new Hono<SignedIn>()
     return c.json({ ok: true as const }, 201);
   })
   /**
-   * Settings: usual pay day and home time zone (spec 10). Currencies are set once.
+   * Settings: usual pay day, home time zone and reminders (spec 10, 12). Currencies are set once.
    * The switch question (item 22): Keep sends `askedTimeZone`; Switch sends it and `homeTimeZone`.
    */
   .patch("/settings", json(settingsBody), async (c) => {
     const { db, mine } = c.var;
     const b = c.req.valid("json");
-    if (b.usualPayDay === undefined && b.homeTimeZone === undefined && b.askedTimeZone === undefined) {
+    const r = b.reminders ?? {};
+    const change = {
+      usualPayDay: b.usualPayDay,
+      homeTimeZone: b.homeTimeZone,
+      askedTimeZone: b.askedTimeZone,
+      remindDueSoon: r.dueSoon,
+      remindDueToday: r.dueToday,
+      remindRunningOut: r.runningOut,
+      remindSalaryLate: r.salaryLate,
+      remindQuestions: r.questions,
+      remindSpendNudge: r.spendNudge,
+      dueSoonDays: r.dueSoonDays,
+      morningAt: r.morningAt,
+      nudgeAt: r.nudgeAt,
+      bannerDismissed: b.reminderBannerDismissed,
+    };
+    if (Object.values(change).every((v) => v === undefined)) {
       return c.json({ error: "bad_request" as const }, 400);
     }
-    const done = await db.update(settings).set(b).where(mine(settings)).returning({ id: settings.id });
+    const done = await db.update(settings).set(change).where(mine(settings)).returning({ id: settings.id });
     if (!done.length) return c.json({ error: "not_set_up" as const }, 404);
     return c.json({ ok: true as const });
   });

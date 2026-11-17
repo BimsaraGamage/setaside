@@ -5,7 +5,9 @@ import {
   type DayChoiceEntry,
   formatMoney,
   type IncomeKind,
+  type ReminderSettings,
   type Speed,
+  timeIn,
   todayIn,
   type Verdict,
 } from "../money";
@@ -22,6 +24,10 @@ export interface Current {
     askedTimeZone: string | null;
     /** The counting rate (spec 8); null with one currency or none set. */
     countingRate: string | null;
+    /** Settings → Reminders (spec 12, item 25). */
+    reminders: ReminderSettings;
+    /** The turn-on banner above Today's reminders was dismissed. */
+    reminderBannerDismissed: boolean;
   } | null;
   cycle: {
     id: string;
@@ -399,6 +405,22 @@ export function useToday(timeZone: string): string {
     };
   }, [timeZone]);
   return today;
+}
+
+/** The time of day in `timeZone`, "HH:MM", kept current like `useToday`. */
+export function useTimeOfDay(timeZone: string): string {
+  const [time, setTime] = useState(() => timeIn(timeZone, Date.now()));
+  useEffect(() => {
+    const tick = () => setTime(timeIn(timeZone, Date.now()));
+    tick();
+    const t = setInterval(tick, 30_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [timeZone]);
+  return time;
 }
 
 /** The phone's own time zone, as a name the app lists. */

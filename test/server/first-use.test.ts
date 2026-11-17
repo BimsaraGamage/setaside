@@ -73,6 +73,18 @@ describe("first use (item 3, spec 2)", () => {
         usualPayDay: 25,
         askedTimeZone: null,
         countingRate: null,
+        reminders: {
+          dueSoon: true,
+          dueToday: true,
+          runningOut: true,
+          salaryLate: true,
+          questions: true,
+          spendNudge: true,
+          dueSoonDays: 3,
+          morningAt: "08:00",
+          nudgeAt: "21:00",
+        },
+        reminderBannerDismissed: false,
       },
       cycle: { id: b.cycleId, startedOn: today, expectedSalaryOn: b.expectedSalaryOn, reserveRate: null },
       incomes: [
@@ -289,6 +301,43 @@ describe("settings (spec 10)", () => {
       cookie,
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("reminder settings (spec 12, item 25)", () => {
+  const patch = (b: unknown, cookie: string) =>
+    call("/api/settings", { method: "PATCH", body: JSON.stringify(b) }, cookie);
+  const settingsOf = async (cookie: string) =>
+    (await (await call("/api/current", {}, cookie)).json<{ settings: Record<string, unknown> }>()).settings;
+
+  it("changes switches, times and days ahead, leaving the rest as it was", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    const res = await patch({ reminders: { spendNudge: false, morningAt: "07:45", dueSoonDays: 5 } }, cookie);
+    expect(res.status).toBe(200);
+    expect(await settingsOf(cookie)).toMatchObject({
+      reminders: { spendNudge: false, dueToday: true, morningAt: "07:45", nudgeAt: "21:00", dueSoonDays: 5 },
+    });
+  });
+
+  it("keeps the banner dismissed", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    expect((await patch({ reminderBannerDismissed: true }, cookie)).status).toBe(200);
+    expect(await settingsOf(cookie)).toMatchObject({ reminderBannerDismissed: true });
+  });
+
+  it("refuses a time off the quarter hour, days ahead out of range, or nothing to change", async () => {
+    const { cookie } = await freshUser();
+    await post(body(), cookie);
+    for (const b of [
+      { reminders: { nudgeAt: "21:10" } },
+      { reminders: { dueSoonDays: 0 } },
+      { reminders: { dueSoonDays: 15 } },
+      { reminders: {} },
+    ]) {
+      expect((await patch(b, cookie)).status).toBe(400);
+    }
   });
 });
 
