@@ -34,19 +34,13 @@ Settings → Secrets and variables → Actions:
 
 Create an environment named `production` (Settings → Environments). While the repo is private the token stays a repo secret; once public, move it into `production`.
 
-## 4. First release
+## 4. Sign-in and Worker secrets
 
-Merge a PR into `main`. release-please opens a Release PR; merging it runs the release: quick checks, Time Travel bookmark, migrations, deploy. Open `https://setaside.<name>.workers.dev`.
-
-After the first deploy, check in the Cloudflare dashboard that **preview URLs are off** for the `setaside` Worker (`wrangler.jsonc` sets `preview_urls: false`).
-
-## 5. Sign-in
-
-Sign-in is bound to your address, so do this after picking the workers.dev name (1.2).
+Sign-in is bound to your address, so do this after picking the workers.dev name (1.2). Do it **before the first release**: the deploy refuses to run until the four sign-in secrets are on the Worker (`secrets.required` in `wrangler.jsonc`).
 
 1. **Set the address**: in `wrangler.jsonc`, set `vars.APP_URL` to `https://setaside.<name>.workers.dev` (not a secret).
 2. **Google OAuth client** (Google Cloud console → APIs & Services):
-   - OAuth consent screen: External, basic scopes only (`openid`, `email`, `profile`), then **Publish app** so it is "In production", not "Testing". Basic scopes need no verification.
+   - OAuth consent screen: External, basic scopes only (`openid`, `email`, `profile`). Leave it in **"Testing"** and add each address from `ALLOWED_EMAILS` (4.3) as a **test user**: only test users can sign in, which matches the allowed-email list. Publishing ("In production") needs a privacy policy link, which comes with public sign-up later.
    - Credentials → Create OAuth client ID → Web application. Authorised JavaScript origin `https://setaside.<name>.workers.dev`; authorised redirect URI `https://setaside.<name>.workers.dev/api/auth/callback/google`.
    - Keep the client ID and secret for the next step.
 3. **Worker secrets**, set once by hand (never in files or GitHub; releases leave them alone):
@@ -55,20 +49,28 @@ Sign-in is bound to your address, so do this after picking the workers.dev name 
    | ---------------------- | ------------------------------------------------------------ |
    | `BETTER_AUTH_SECRET`   | a long random string, e.g. `openssl rand -base64 32`         |
    | `ALLOWED_EMAILS`       | Google addresses allowed to make an account, comma separated |
-   | `GOOGLE_CLIENT_ID`     | from 5.2                                                     |
-   | `GOOGLE_CLIENT_SECRET` | from 5.2                                                     |
+   | `GOOGLE_CLIENT_ID`     | from 4.2                                                     |
+   | `GOOGLE_CLIENT_SECRET` | from 4.2                                                     |
+
+   Before the first release the Worker doesn't exist yet; `wrangler secret bulk` creates it. Put the four lines (`NAME=value`) in a file **outside the repo**, then:
 
    ```sh
-   npx wrangler secret put BETTER_AUTH_SECRET
-   npx wrangler secret put ALLOWED_EMAILS
-   npx wrangler secret put GOOGLE_CLIENT_ID
-   npx wrangler secret put GOOGLE_CLIENT_SECRET
+   npx wrangler secret bulk ~/setaside-secrets.env
+   rm ~/setaside-secrets.env
    ```
 
-4. After the next release: open the app, **Sign in with Google**, then Settings → Passkeys → **+ Add**. From then on sign in with the passkey; Google stays as backup. Losing both the passkey and the Google account means losing access.
+   Later changes to one secret: `npx wrangler secret put <NAME>`.
+
+4. After the first release (5): open the app, **Sign in with Google** (Google may say the app is unverified or in testing: continue), then Settings → Passkeys → **+ Add**. From then on sign in with the passkey; Google stays as backup. Losing both the passkey and the Google account means losing access.
 5. Check CPU per sign-in once: Cloudflare dashboard → Workers → `setaside` → Observability, filter `/api/auth/`; CPU time should stay under 10 ms.
 
 Changing who may sign up later means changing `ALLOWED_EMAILS` only.
+
+## 5. First release
+
+Merge a PR into `main`. release-please opens a Release PR; merging it runs the release: quick checks, Time Travel bookmark, migrations, deploy. Open `https://setaside.<name>.workers.dev`.
+
+After the first deploy, check in the Cloudflare dashboard that **preview URLs are off** for the `setaside` Worker (`wrangler.jsonc` sets `preview_urls: false`).
 
 ## Phone reminders
 

@@ -409,11 +409,11 @@ See [ADR 0001](adr/0001-browser-app-thin-api-one-worker.md), [ADR 0002](adr/0002
 - **Cloudflare API token**: Workers Scripts edit and D1 edit, this account only. A repo secret while private; a `production` environment secret once public. Account ID is a repo variable.
 - **Migrations are additive only** (new tables or columns). Removing something takes two releases, so old code keeps working on the new schema during a release.
 - **Failed migration**: the release run stops before the new code goes live; the old app keeps running; fix forward in a new release. Restore with D1 Time Travel only if data looks wrong.
-- **App settings** (Google client ID and secret, Better Auth secret, allowed-email list, Web Push keys) are **Worker secrets set once by hand** with `wrangler secret put`. Never in files or GitHub; releases leave them untouched.
-- **Google sign-in**: one OAuth client for the live address only, basic scopes (`openid email profile`), consent screen published ("In production"), not "Testing". The allowed-email list is the gate.
-- **First-time setup** (once, at repo creation): pick the workers.dev name, create the D1 database, make the Google OAuth client, make the Web Push keys, set the Worker secrets, make the release GitHub App, add the token, account ID and App details to GitHub.
+- **App settings** (Google client ID and secret, Better Auth secret, allowed-email list, Web Push keys) are **Worker secrets set once by hand** with wrangler (`secret bulk` the first time, `secret put` after). Never in files or GitHub; releases leave them untouched.
+- **Google sign-in**: one OAuth client for the live address only, basic scopes (`openid email profile`). The consent screen stays in "Testing" with each allowed address as a test user: publishing needs a privacy policy link, which comes with public sign-up. The allowed-email list is the gate.
+- **First-time setup** (once, at repo creation): pick the workers.dev name, create the D1 database, make the Google OAuth client, make the Web Push keys, set the Worker secrets (before the first release: the deploy needs them), make the release GitHub App, add the token, account ID and App details to GitHub.
 - **Self-hosting**: a written guide in the repo with those same first-time steps, then "pull, run one command" for updates. No Deploy to Cloudflare button for now.
-- **To confirm at setup**: D1 Time Travel keeps 7 days on the free plan; preview URLs share the live bindings; GitHub Free environments are public-repo only; basic-scope Google apps need no verification.
+- **To confirm at setup**: D1 Time Travel keeps 7 days on the free plan; preview URLs share the live bindings; GitHub Free environments are public-repo only.
 
 ## 19. Not in v0.1
 
