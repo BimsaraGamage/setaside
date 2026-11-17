@@ -6,6 +6,7 @@ import { cards } from "./cards";
 import { commitments } from "./commitments";
 import { conversions } from "./conversions";
 import { dayChoices } from "./day-choices";
+import { deleteAccount } from "./delete-account";
 import { dataExport } from "./export";
 import { firstUse } from "./first-use";
 import { past } from "./past";
@@ -45,6 +46,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", past)
   .route("/", push)
   .route("/", dataExport)
+  .route("/", deleteAccount)
   .route("/", salaryDay);
 
 const app = new Hono<{ Bindings: Bindings }>()

@@ -52,6 +52,13 @@ export async function turnOffPushHere(): Promise<void> {
   await sub.unsubscribe().catch(() => false);
 }
 
+/** Delete account (item 28): the server's rows are gone already; this browser stops listening too. */
+export async function forgetPushHere(): Promise<void> {
+  if (!supported()) return;
+  const sub = await currentSubscription().catch(() => null);
+  await sub?.unsubscribe().catch(() => false);
+}
+
 /** Sign out everywhere: alerts go off on every device of the user, this one included. */
 export async function turnOffPushEverywhere(): Promise<void> {
   await turnOffPushHere();
