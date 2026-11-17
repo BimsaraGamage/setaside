@@ -624,3 +624,42 @@ export const cycleClose = sqliteTable(
     uniqueIndex("cycle_close_cycle_currency_idx").on(t.cycleId, t.currency),
   ],
 );
+
+/**
+ * One device with phone alerts on (item 26, spec 12): its push subscription.
+ * The endpoint is a secret URL; it is deleted when the push service answers 404 or 410.
+ */
+export const pushSubscription = sqliteTable(
+  "push_subscription",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** The push service last took a push for it. */
+    lastOkAt: integer("last_ok_at", { mode: "timestamp_ms" }),
+    ...appTimestamps,
+  },
+  (t) => [index("push_subscription_user_id_idx").on(t.userId)],
+);
+
+/**
+ * One reminder sent to the phone (item 26, spec 12): makes "sent once" and "once a
+ * day" work. Kinds: `morning` and `spend_nudge` (once a day), `due_soon` (once per
+ * commitment), `running_out` (which pot, or free money, it was about).
+ */
+export const reminderSent = sqliteTable(
+  "reminder_sent",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    kind: text("kind", { enum: ["morning", "spend_nudge", "due_soon", "running_out"] }).notNull(),
+    /** The commitment, the pot (or `free` for free money); null for a whole notification. */
+    subjectId: text("subject_id"),
+    /** The day in the home time zone it was sent on. */
+    sentOn: text("sent_on").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [index("reminder_sent_user_kind_idx").on(t.userId, t.kind, t.sentOn)],
+);

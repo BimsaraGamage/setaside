@@ -158,183 +158,189 @@ async function lastCycleSpeeds(
 }
 
 /**
+ * Settings, the current cycle and its entries: everything Today needs (GET /api/current).
+ * The reminder cron (item 26) reads the same for each user it sends to.
+ */
+export async function currentData(c: { var: SignedIn["Variables"] }) {
+  const { db, mine } = c.var;
+  const s = await db.query.settings.findFirst({ where: mine(settings) });
+  // The current cycle and the one before it (its speed is used in the first 3 days, item 8).
+  const [current, last] = await db.query.cycle.findMany({
+    where: mine(cycle),
+    orderBy: [desc(cycle.startedOn), desc(cycle.createdAt)],
+    limit: 2,
+  });
+  const incomes = current
+    ? await db.query.income.findMany({ where: and(mine(income), eq(income.cycleId, current.id)) })
+    : [];
+  const spends = current
+    ? await db.query.spend.findMany({
+        where: and(mine(spend), eq(spend.cycleId, current.id)),
+        orderBy: [desc(spend.spentOn), desc(spend.id)],
+      })
+    : [];
+  const commitments = current
+    ? await db.query.commitment.findMany({
+        where: and(mine(commitment), eq(commitment.cycleId, current.id)),
+        orderBy: [commitment.dueOn, commitment.name],
+      })
+    : [];
+  // Payments of this cycle's commitments (a subquery: D1 caps bound values at 100).
+  const payments = current
+    ? await db.query.commitmentPayment.findMany({
+        where: and(
+          mine(commitmentPayment),
+          inArray(
+            commitmentPayment.commitmentId,
+            db
+              .select({ id: commitment.id })
+              .from(commitment)
+              .where(and(mine(commitment), eq(commitment.cycleId, current.id))),
+          ),
+        ),
+        orderBy: [commitmentPayment.paidOn, commitmentPayment.id],
+      })
+    : [];
+  // Every pot (they last across cycles) with this cycle's amount, if it has one.
+  const pots = await db
+    .select({
+      id: pot.id,
+      name: pot.name,
+      currency: pot.currency,
+      usualAmountMinor: pot.usualAmountMinor,
+      archived: pot.archived,
+      amountMinor: potAllocation.amountMinor,
+    })
+    .from(pot)
+    .leftJoin(
+      potAllocation,
+      and(eq(potAllocation.potId, pot.id), eq(potAllocation.cycleId, current?.id ?? "")),
+    )
+    .where(mine(pot))
+    .orderBy(pot.createdAt, pot.id);
+  const dayChoices = current
+    ? await db.query.dayChoice.findMany({
+        where: and(mine(dayChoice), eq(dayChoice.cycleId, current.id)),
+        columns: { dayOn: true, choice: true },
+        orderBy: [dayChoice.dayOn],
+      })
+    : [];
+  // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
+  const savings = current ? await savingsLines(c) : [];
+  // Prepayments from savings with their payback so far (item 14).
+  const prepayments = current ? await prepaymentLines(c) : [];
+  // The "Every cycle" templates, paused ones too (item 11).
+  const recurring = await db.query.recurringCommitment.findMany({
+    where: mine(recurringCommitment),
+    columns: {
+      id: true,
+      name: true,
+      kind: true,
+      currency: true,
+      usualAmountMinor: true,
+      usualDay: true,
+      active: true,
+      cardId: true,
+    },
+    orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
+  });
+  // Undo salary day is offered while nothing new is entered (item 13).
+  const undoSalaryDay = current ? (await undoRecord(c, current)) !== null : false;
+  const lastCycle =
+    current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
+  // This cycle's conversions (item 16): free money and Change dollars' list.
+  const conversions = current ? await conversionLines(c, current.id) : [];
+  // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
+  const cards = current ? await cardLines(c, current.id) : [];
+  // Instalment plans with what is paid so far and their extra payments (item 19).
+  const plans = current ? await planLines(c) : [];
+  // People: lent and borrowed, with what is back so far (item 20).
+  const people = current ? await personDebtLines(c) : [];
+  return {
+    settings: s
+      ? {
+          salaryCurrency: s.salaryCurrency,
+          spendingCurrency: s.spendingCurrency,
+          homeTimeZone: s.homeTimeZone,
+          usualPayDay: s.usualPayDay,
+          askedTimeZone: s.askedTimeZone,
+          // Two currencies (spec 8): the newest counting rate; null with one currency.
+          countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
+          reminders: remindersOf(s),
+          reminderBannerDismissed: s.bannerDismissed,
+        }
+      : null,
+    cycle: current
+      ? {
+          id: current.id,
+          startedOn: current.startedOn,
+          expectedSalaryOn: current.expectedSalaryOn,
+          reserveRate: current.reserveRate,
+        }
+      : null,
+    incomes: incomes.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      currency: i.currency,
+      amountMinor: i.amountMinor,
+      toSavingsMinor: i.toSavingsMinor,
+      receivedOn: i.receivedOn,
+    })),
+    spends: spends.map((s) => ({
+      id: s.id,
+      spentOn: s.spentOn,
+      currency: s.currency,
+      amountMinor: s.amountMinor,
+      note: s.note,
+      potId: s.potId,
+      cardId: s.cardId,
+      oneOff: s.oneOff,
+    })),
+    pots,
+    cards,
+    plans,
+    people,
+    conversions,
+    lastCycle,
+    undoSalaryDay,
+    dayChoices,
+    savings,
+    prepayments,
+    recurring,
+    commitments: commitments.map((k) => ({
+      id: k.id,
+      name: k.name,
+      kind: k.kind,
+      currency: k.currency,
+      plannedMinor: k.plannedMinor,
+      dueOn: k.dueOn,
+      state: k.state,
+      recurringId: k.recurringId,
+      carriedFromId: k.carriedFromId,
+      prepaymentId: k.prepaymentId,
+      cardId: k.cardId,
+      planId: k.planId,
+      personDebtId: k.personDebtId,
+      payments: payments
+        .filter((p) => p.commitmentId === k.id)
+        .map((p) => ({
+          id: p.id,
+          amountMinor: p.amountMinor,
+          currency: p.currency,
+          coversMinor: p.coversMinor,
+          paidOn: p.paidOn,
+        })),
+    })),
+  };
+}
+
+/**
  * First use and the Today numbers' entries (backlog item 3, spec 2 and 10).
  * The phone works out every number with the money rules; this only reads and saves.
  */
 export const firstUse = new Hono<SignedIn>()
   /** Settings, the current cycle and its entries: everything Today needs. */
-  .get("/current", async (c) => {
-    const { db, mine } = c.var;
-    const s = await db.query.settings.findFirst({ where: mine(settings) });
-    // The current cycle and the one before it (its speed is used in the first 3 days, item 8).
-    const [current, last] = await db.query.cycle.findMany({
-      where: mine(cycle),
-      orderBy: [desc(cycle.startedOn), desc(cycle.createdAt)],
-      limit: 2,
-    });
-    const incomes = current
-      ? await db.query.income.findMany({ where: and(mine(income), eq(income.cycleId, current.id)) })
-      : [];
-    const spends = current
-      ? await db.query.spend.findMany({
-          where: and(mine(spend), eq(spend.cycleId, current.id)),
-          orderBy: [desc(spend.spentOn), desc(spend.id)],
-        })
-      : [];
-    const commitments = current
-      ? await db.query.commitment.findMany({
-          where: and(mine(commitment), eq(commitment.cycleId, current.id)),
-          orderBy: [commitment.dueOn, commitment.name],
-        })
-      : [];
-    // Payments of this cycle's commitments (a subquery: D1 caps bound values at 100).
-    const payments = current
-      ? await db.query.commitmentPayment.findMany({
-          where: and(
-            mine(commitmentPayment),
-            inArray(
-              commitmentPayment.commitmentId,
-              db
-                .select({ id: commitment.id })
-                .from(commitment)
-                .where(and(mine(commitment), eq(commitment.cycleId, current.id))),
-            ),
-          ),
-          orderBy: [commitmentPayment.paidOn, commitmentPayment.id],
-        })
-      : [];
-    // Every pot (they last across cycles) with this cycle's amount, if it has one.
-    const pots = await db
-      .select({
-        id: pot.id,
-        name: pot.name,
-        currency: pot.currency,
-        usualAmountMinor: pot.usualAmountMinor,
-        archived: pot.archived,
-        amountMinor: potAllocation.amountMinor,
-      })
-      .from(pot)
-      .leftJoin(
-        potAllocation,
-        and(eq(potAllocation.potId, pot.id), eq(potAllocation.cycleId, current?.id ?? "")),
-      )
-      .where(mine(pot))
-      .orderBy(pot.createdAt, pot.id);
-    const dayChoices = current
-      ? await db.query.dayChoice.findMany({
-          where: and(mine(dayChoice), eq(dayChoice.cycleId, current.id)),
-          columns: { dayOn: true, choice: true },
-          orderBy: [dayChoice.dayOn],
-        })
-      : [];
-    // Savings movements of every cycle (spec 5); this cycle's take-outs are free money.
-    const savings = current ? await savingsLines(c) : [];
-    // Prepayments from savings with their payback so far (item 14).
-    const prepayments = current ? await prepaymentLines(c) : [];
-    // The "Every cycle" templates, paused ones too (item 11).
-    const recurring = await db.query.recurringCommitment.findMany({
-      where: mine(recurringCommitment),
-      columns: {
-        id: true,
-        name: true,
-        kind: true,
-        currency: true,
-        usualAmountMinor: true,
-        usualDay: true,
-        active: true,
-        cardId: true,
-      },
-      orderBy: [recurringCommitment.usualDay, recurringCommitment.name],
-    });
-    // Undo salary day is offered while nothing new is entered (item 13).
-    const undoSalaryDay = current ? (await undoRecord(c, current)) !== null : false;
-    const lastCycle =
-      current && last && s ? await lastCycleSpeeds(c, last, current.startedOn, s.spendingCurrency) : null;
-    // This cycle's conversions (item 16): free money and Change dollars' list.
-    const conversions = current ? await conversionLines(c, current.id) : [];
-    // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.
-    const cards = current ? await cardLines(c, current.id) : [];
-    // Instalment plans with what is paid so far and their extra payments (item 19).
-    const plans = current ? await planLines(c) : [];
-    // People: lent and borrowed, with what is back so far (item 20).
-    const people = current ? await personDebtLines(c) : [];
-    return c.json({
-      settings: s
-        ? {
-            salaryCurrency: s.salaryCurrency,
-            spendingCurrency: s.spendingCurrency,
-            homeTimeZone: s.homeTimeZone,
-            usualPayDay: s.usualPayDay,
-            askedTimeZone: s.askedTimeZone,
-            // Two currencies (spec 8): the newest counting rate; null with one currency.
-            countingRate: s.salaryCurrency !== s.spendingCurrency ? await countingRateOf(c) : null,
-            reminders: remindersOf(s),
-            reminderBannerDismissed: s.bannerDismissed,
-          }
-        : null,
-      cycle: current
-        ? {
-            id: current.id,
-            startedOn: current.startedOn,
-            expectedSalaryOn: current.expectedSalaryOn,
-            reserveRate: current.reserveRate,
-          }
-        : null,
-      incomes: incomes.map((i) => ({
-        id: i.id,
-        kind: i.kind,
-        currency: i.currency,
-        amountMinor: i.amountMinor,
-        toSavingsMinor: i.toSavingsMinor,
-        receivedOn: i.receivedOn,
-      })),
-      spends: spends.map((s) => ({
-        id: s.id,
-        spentOn: s.spentOn,
-        currency: s.currency,
-        amountMinor: s.amountMinor,
-        note: s.note,
-        potId: s.potId,
-        cardId: s.cardId,
-        oneOff: s.oneOff,
-      })),
-      pots,
-      cards,
-      plans,
-      people,
-      conversions,
-      lastCycle,
-      undoSalaryDay,
-      dayChoices,
-      savings,
-      prepayments,
-      recurring,
-      commitments: commitments.map((k) => ({
-        id: k.id,
-        name: k.name,
-        kind: k.kind,
-        currency: k.currency,
-        plannedMinor: k.plannedMinor,
-        dueOn: k.dueOn,
-        state: k.state,
-        recurringId: k.recurringId,
-        carriedFromId: k.carriedFromId,
-        prepaymentId: k.prepaymentId,
-        cardId: k.cardId,
-        planId: k.planId,
-        personDebtId: k.personDebtId,
-        payments: payments
-          .filter((p) => p.commitmentId === k.id)
-          .map((p) => ({
-            id: p.id,
-            amountMinor: p.amountMinor,
-            currency: p.currency,
-            coversMinor: p.coversMinor,
-            paidOn: p.paidOn,
-          })),
-      })),
-    });
-  })
+  .get("/current", async (c) => c.json(await currentData(c)))
   /**
    * First use: settings row, the first cycle, its opening income, bills (with
    * their Every cycle templates), pots and their amounts, in one write.

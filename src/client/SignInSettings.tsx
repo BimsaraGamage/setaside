@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { authClient } from "./auth";
+import { turnOffPushEverywhere, turnOffPushHere } from "./push";
 
 const dateFmt = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
@@ -23,11 +24,15 @@ export function SignInSettings({ onSignedOut }: { onSignedOut: () => void }) {
   }
 
   async function signOut() {
+    // This device's phone alerts go off, so the next person to sign in here starts clean (item 26).
+    await turnOffPushHere();
     await authClient.signOut();
     onSignedOut();
   }
 
   async function signOutEverywhere() {
+    // Every device's phone alerts go off with every sign-in (item 26).
+    await turnOffPushEverywhere();
     await authClient.revokeSessions();
     onSignedOut();
   }

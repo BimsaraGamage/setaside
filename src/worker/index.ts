@@ -13,6 +13,8 @@ import { people } from "./people";
 import { plans } from "./plans";
 import { pots } from "./pots";
 import { prepayments } from "./prepayments";
+import { push } from "./push";
+import { sendReminders } from "./reminders-cron";
 import { salaryDay } from "./salary-day";
 import { savings } from "./savings";
 import { spends } from "./spends";
@@ -40,6 +42,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", plans)
   .route("/", people)
   .route("/", past)
+  .route("/", push)
   .route("/", salaryDay);
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -54,4 +57,14 @@ const app = new Hono<{ Bindings: Bindings }>()
   .route("/", signedIn);
 
 export type AppType = typeof app;
-export default app;
+export { app };
+
+export default {
+  fetch: app.fetch,
+  /** The reminder cron (item 26, spec 12): every 15 minutes, see wrangler.jsonc. */
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      sendReminders(env, controller.scheduledTime).then((r) => console.log(JSON.stringify({ reminders: r }))),
+    );
+  },
+} satisfies ExportedHandler<Bindings>;

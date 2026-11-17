@@ -4,6 +4,7 @@ import { api } from "./api";
 import type { Current } from "./data";
 import { phoneTimeZone, timeZones } from "./data";
 import { newId } from "./id";
+import { type PushState, type TurnOnProblem, usePush } from "./push";
 import { SignInSettings } from "./SignInSettings";
 
 /** The six reminders' switches (spec 12), in the order of the spec. */
@@ -16,7 +17,58 @@ const SWITCHES: { key: keyof ReminderSettings; label: string; hint: string }[] =
   { key: "spendNudge", label: "Spend nudge", hint: "In the evening, if nothing was added today" },
 ];
 
-/** Settings → Reminders (spec 12, item 25): six switches, the two times, the days-ahead number. */
+const DEVICE_NOTE: Record<Exclude<PushState, "loading">, string> = {
+  on: "Phone alerts are on for this device.",
+  off: "Phone alerts are off for this device.",
+  home_screen:
+    "For phone alerts on iPhone, add the app to your Home Screen (Share › Add to Home Screen), open it from there, then tap Turn on reminders here.",
+  blocked:
+    "Notifications are blocked for this app. Allow them in your phone's settings, then come back here.",
+  unsupported: "This browser can't show phone alerts.",
+};
+
+const PROBLEM_NOTE: Record<TurnOnProblem, string> = {
+  blocked: "Notifications were not allowed.",
+  not_set_up: "Phone alerts aren't set up on this server yet.",
+  failed: "Couldn't turn on phone alerts. Try again.",
+};
+
+/** This device's phone alerts (item 26, spec 12): on or off, and a Turn on reminders button. */
+function ThisDevice() {
+  const { state, turnOn, turnOff } = usePush();
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<TurnOnProblem | null>(null);
+  if (state === "loading") return null;
+
+  async function run(action: () => Promise<TurnOnProblem | null | void>) {
+    setBusy(true);
+    setProblem((await action()) ?? null);
+    setBusy(false);
+  }
+
+  return (
+    <div className="stack" data-testid="this-device" data-state={state}>
+      <p className="small">{DEVICE_NOTE[state]}</p>
+      {state === "off" && (
+        <button type="button" className="btn" disabled={busy} onClick={() => run(turnOn)}>
+          Turn on reminders
+        </button>
+      )}
+      {state === "on" && (
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => run(turnOff)}>
+          Turn off on this device
+        </button>
+      )}
+      {problem && (
+        <p className="tiny" role="alert">
+          {PROBLEM_NOTE[problem]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Settings → Reminders (spec 12, items 25 and 26): this device's alerts, six switches, the two times, the days-ahead number. */
 function RemindersSettings({
   reminders,
   save,
@@ -28,6 +80,7 @@ function RemindersSettings({
   return (
     <section className="card" aria-labelledby="reminders-settings-h">
       <h3 id="reminders-settings-h">Reminders</h3>
+      <ThisDevice />
       {SWITCHES.map(({ key, label, hint }) => (
         <label key={key} className="li">
           <span className="grow">
@@ -80,7 +133,10 @@ function RemindersSettings({
           ))}
         </select>
       </label>
-      <p className="tiny mute">Times are in your home time zone. Reminders show at the top of Today.</p>
+      <p className="tiny mute">
+        Times are in your home time zone. While phone alerts are off on a device, reminders show at the top of
+        Today.
+      </p>
     </section>
   );
 }

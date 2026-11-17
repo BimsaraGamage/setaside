@@ -26,8 +26,11 @@
     "APP_URL": "https://setaside.dragantravica269.workers.dev"
   },
   // Set once by hand with `wrangler secret put` (spec 18). Locally: optional, see .dev.vars.example.
+  // Phone alerts add two optional secrets, VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY (docs/self-hosting.md).
   "secrets": {
     "required": ["BETTER_AUTH_SECRET", "ALLOWED_EMAILS", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]
   },
+  // Reminders (spec 12, item 26): one run every 15 minutes (UTC) sends what is due.
+  "triggers": { "crons": ["*/15 * * * *"] },
   "observability": { "enabled": true }
 }

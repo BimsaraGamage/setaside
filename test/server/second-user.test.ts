@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, it } from "vitest";
-import app, { PUBLIC_ROUTES } from "../../src/worker";
+import { app, PUBLIC_ROUTES } from "../../src/worker";
 import { userCheck } from "../../src/worker/user-check";
 import { call, signIn } from "./helpers";
 
@@ -24,6 +24,9 @@ interface Owner {
 }
 
 type Probe = (owner: Owner) => { path: string; init?: RequestInit };
+
+/** The first user's device with alerts on (item 26). */
+const OWNER_ENDPOINT = "https://fcm.googleapis.com/fcm/send/owner-device";
 
 const firstRow = (o: Owner, table: string) => o.rows[table]?.[0]?.id ?? "missing";
 
@@ -251,6 +254,19 @@ const probes: Record<string, Probe> = {
   // Past (item 21): must not list or open the first user's cycles.
   "GET /api/past": () => ({ path: "/api/past" }),
   "GET /api/past/:id": (o) => ({ path: `/api/past/${firstRow(o, "cycle")}` }),
+  // Phone alerts (item 26): aimed at the first user's device, which must stay theirs.
+  "GET /api/push/key": () => ({ path: "/api/push/key" }),
+  "POST /api/push-subscriptions": () => ({
+    path: "/api/push-subscriptions",
+    init: {
+      body: JSON.stringify({ endpoint: OWNER_ENDPOINT, p256dh: "B".repeat(87), auth: "A".repeat(22) }),
+    },
+  }),
+  "POST /api/push-subscriptions/remove": () => ({
+    path: "/api/push-subscriptions/remove",
+    init: { body: JSON.stringify({ endpoint: OWNER_ENDPOINT }) },
+  }),
+  "POST /api/push-subscriptions/remove-all": () => ({ path: "/api/push-subscriptions/remove-all" }),
   "POST /api/salary-day": (o) => ({
     path: "/api/salary-day",
     init: {
@@ -408,6 +424,12 @@ async function seedOwnerData(ownerId: string) {
     env.DB.prepare(
       "insert into person_debt (id, user_id, cycle_id, person_name, direction, currency, amount_minor, made_on, created_at, updated_at) values (?, ?, ?, 'Nimal', 'lent', 'LKR', 500000, '2026-11-12', ?, ?)",
     ).bind(pd, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into push_subscription (id, user_id, endpoint, p256dh, auth, created_at, updated_at) values (?, ?, ?, 'p', 'a', ?, ?)",
+    ).bind(crypto.randomUUID(), ownerId, OWNER_ENDPOINT, now, now),
+    env.DB.prepare(
+      "insert into reminder_sent (id, user_id, kind, subject_id, sent_on, created_at, updated_at) values (?, ?, 'due_soon', ?, '2026-11-17', ?, ?)",
+    ).bind(crypto.randomUUID(), ownerId, k, now, now),
   ]);
 }
 
