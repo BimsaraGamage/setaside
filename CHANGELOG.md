@@ -1,0 +1,36 @@
+# Changelog
+
+## 0.0.1 (2026-11-17)
+
+
+### Features
+
+* add a spend ([#31](https://github.com/BimsaraGamage/setaside/issues/31)) ([6a46f3f](https://github.com/BimsaraGamage/setaside/commit/6a46f3f446d6fbb95e13a76020a2e752dcb2029c))
+* cards and card balance ([#49](https://github.com/BimsaraGamage/setaside/issues/49)) ([827e89e](https://github.com/BimsaraGamage/setaside/commit/827e89ef878d5717cc947f4283f86e0ac089e78a)), closes [#18](https://github.com/BimsaraGamage/setaside/issues/18)
+* change dollars ([#45](https://github.com/BimsaraGamage/setaside/issues/45)) ([adcf502](https://github.com/BimsaraGamage/setaside/commit/adcf502703da1728785e9526ac99a68cdcf739c0)), closes [#16](https://github.com/BimsaraGamage/setaside/issues/16)
+* commitments and Next up ([#32](https://github.com/BimsaraGamage/setaside/issues/32)) ([b35539a](https://github.com/BimsaraGamage/setaside/commit/b35539a6f51ebd2c24fa17c59bdd461509c3bccd)), closes [#5](https://github.com/BimsaraGamage/setaside/issues/5)
+* counting rate in salary day step 6 ([#47](https://github.com/BimsaraGamage/setaside/issues/47)) ([0a1479b](https://github.com/BimsaraGamage/setaside/commit/0a1479b0ba78f2d82af5e99a2ad6525a229fb99b))
+* delete account ([#59](https://github.com/BimsaraGamage/setaside/issues/59)) ([14b1aed](https://github.com/BimsaraGamage/setaside/commit/14b1aed556ee726363d136991687f90337f04859)), closes [#28](https://github.com/BimsaraGamage/setaside/issues/28)
+* download my data ([#58](https://github.com/BimsaraGamage/setaside/issues/58)) ([3838c4d](https://github.com/BimsaraGamage/setaside/commit/3838c4d2c6893d000ca86bb36db3ae442933bcc4)), closes [#27](https://github.com/BimsaraGamage/setaside/issues/27)
+* first use and Today with free money ([#30](https://github.com/BimsaraGamage/setaside/issues/30)) ([6b21a8b](https://github.com/BimsaraGamage/setaside/commit/6b21a8b616e4ad251dbcb46becd2bbc26068d3a1))
+* first use bills and pots step ([#41](https://github.com/BimsaraGamage/setaside/issues/41)) ([1bf7003](https://github.com/BimsaraGamage/setaside/commit/1bf7003a8786b354c137fbdeca2a407984264f82))
+* home time zone switch ([#53](https://github.com/BimsaraGamage/setaside/issues/53)) ([5f76dd7](https://github.com/BimsaraGamage/setaside/commit/5f76dd790ec741f75e3fa40bf73ca807eea1e1f5))
+* installable app ([#54](https://github.com/BimsaraGamage/setaside/issues/54)) ([2914437](https://github.com/BimsaraGamage/setaside/commit/2914437c559aad3459ccac1440963ce4105b7011)), closes [#23](https://github.com/BimsaraGamage/setaside/issues/23)
+* instalment plans ([#50](https://github.com/BimsaraGamage/setaside/issues/50)) ([b581fba](https://github.com/BimsaraGamage/setaside/commit/b581fbabb2f27aa03bc0009d588b10b7271ce370)), closes [#19](https://github.com/BimsaraGamage/setaside/issues/19)
+* login with passkeys and Google, per-user check ([6eef113](https://github.com/BimsaraGamage/setaside/commit/6eef1139a880689aac39c3291050cb2c28b6e10d))
+* offline spends and payments ([#55](https://github.com/BimsaraGamage/setaside/issues/55)) ([deabe04](https://github.com/BimsaraGamage/setaside/commit/deabe0447b761e3608a7b5af981f1f5046db6e2d)), closes [#24](https://github.com/BimsaraGamage/setaside/issues/24)
+* paid in the other currency ([#48](https://github.com/BimsaraGamage/setaside/issues/48)) ([63e0c67](https://github.com/BimsaraGamage/setaside/commit/63e0c67103c252b54d607f2a3e76e8d88b9c50ca))
+* past cycles ([#52](https://github.com/BimsaraGamage/setaside/issues/52)) ([c6ed59c](https://github.com/BimsaraGamage/setaside/commit/c6ed59cc6c953ff1e17a806cbd4b8ad6cbe846ba))
+* pay a commitment ([#33](https://github.com/BimsaraGamage/setaside/issues/33)) ([c21795a](https://github.com/BimsaraGamage/setaside/commit/c21795ac5be03271374e9a64aba6a7690e6ca011)), closes [#6](https://github.com/BimsaraGamage/setaside/issues/6)
+* people ([#51](https://github.com/BimsaraGamage/setaside/issues/51)) ([5206a22](https://github.com/BimsaraGamage/setaside/commit/5206a2228d2bf37ac4630926cc03af7519b5eea0)), closes [#20](https://github.com/BimsaraGamage/setaside/issues/20)
+* phone notifications ([#57](https://github.com/BimsaraGamage/setaside/issues/57)) ([1d4341d](https://github.com/BimsaraGamage/setaside/commit/1d4341d4493b9a6cdf062bd3725a2d848e360232)), closes [#26](https://github.com/BimsaraGamage/setaside/issues/26)
+* pots ([#34](https://github.com/BimsaraGamage/setaside/issues/34)) ([28c4cb7](https://github.com/BimsaraGamage/setaside/commit/28c4cb73db953b2c824bc9e098eda478b636111f)), closes [#7](https://github.com/BimsaraGamage/setaside/issues/7)
+* prepayment from savings ([#43](https://github.com/BimsaraGamage/setaside/issues/43)) ([c314cd1](https://github.com/BimsaraGamage/setaside/commit/c314cd18acef2d3897be5dfcec53017c5a224b64))
+* reminders in the app ([#56](https://github.com/BimsaraGamage/setaside/issues/56)) ([ac41147](https://github.com/BimsaraGamage/setaside/commit/ac41147cb4c00a3a016010f8c877fa294508b2d7))
+* salary and spending currency ([#44](https://github.com/BimsaraGamage/setaside/issues/44)) ([7167375](https://github.com/BimsaraGamage/setaside/commit/7167375a042f9a80ddb1739f1a66be3cf8cee625)), closes [#15](https://github.com/BimsaraGamage/setaside/issues/15)
+* salary day closing the old cycle ([#39](https://github.com/BimsaraGamage/setaside/issues/39)) ([11a831c](https://github.com/BimsaraGamage/setaside/commit/11a831cf54102f172b4514706565f2d229405336)), closes [#12](https://github.com/BimsaraGamage/setaside/issues/12)
+* salary day new cycle ([#38](https://github.com/BimsaraGamage/setaside/issues/38)) ([a043ee7](https://github.com/BimsaraGamage/setaside/commit/a043ee7519547ba00ff7bbc4c3febda2d7e68dea)), closes [#11](https://github.com/BimsaraGamage/setaside/issues/11)
+* savings and extra income ([#37](https://github.com/BimsaraGamage/setaside/issues/37)) ([4d59916](https://github.com/BimsaraGamage/setaside/commit/4d599161f0956f684df91e608f4fbd2b7f5c9328))
+* spending speed and verdict ([#35](https://github.com/BimsaraGamage/setaside/issues/35)) ([cbccc95](https://github.com/BimsaraGamage/setaside/commit/cbccc95ab4336cde8333d47152ce8af4bfacf51a)), closes [#8](https://github.com/BimsaraGamage/setaside/issues/8)
+* underspend question ([#36](https://github.com/BimsaraGamage/setaside/issues/36)) ([c359aed](https://github.com/BimsaraGamage/setaside/commit/c359aed0d090ec6f084ea8446335d659f830ed56))
+* undo salary day and late salary ([#42](https://github.com/BimsaraGamage/setaside/issues/42)) ([6177100](https://github.com/BimsaraGamage/setaside/commit/61771008f89ea8067297c7583ed213fe43b039ea)), closes [#13](https://github.com/BimsaraGamage/setaside/issues/13)
