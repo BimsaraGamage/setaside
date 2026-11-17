@@ -3,6 +3,7 @@ import { DUE_SOON_DAYS_MAX, parseRate, type ReminderSettings, reminderTimes } fr
 import { api } from "./api";
 import type { Current } from "./data";
 import { phoneTimeZone, timeZones } from "./data";
+import { type Download, download } from "./download";
 import { newId } from "./id";
 import { type PushState, type TurnOnProblem, usePush } from "./push";
 import { SignInSettings } from "./SignInSettings";
@@ -141,7 +142,46 @@ function RemindersSettings({
   );
 }
 
-/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; reminders; sign-in. */
+/** Settings → Your data (item 27, spec 14): every record as one JSON file, or spends as a CSV. */
+function YourData() {
+  const [busy, setBusy] = useState<Download | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  async function get(what: Download) {
+    setFailed(false);
+    setBusy(what);
+    const ok = await download(what);
+    setBusy(null);
+    setFailed(!ok);
+  }
+
+  return (
+    <section className="card" aria-labelledby="your-data-h">
+      <h3 id="your-data-h">Your data</h3>
+      <button type="button" className="li tap" disabled={busy !== null} onClick={() => get("data")}>
+        <span className="grow">
+          Download my data
+          <span className="tiny mute block">Everything you saved, as one JSON file</span>
+        </span>
+        {busy === "data" && <span className="small">…</span>}
+      </button>
+      <button type="button" className="li tap" disabled={busy !== null} onClick={() => get("spends")}>
+        <span className="grow">
+          Download spends
+          <span className="tiny mute block">Every spend, as a CSV for a spreadsheet</span>
+        </span>
+        {busy === "spends" && <span className="small">…</span>}
+      </button>
+      {failed && (
+        <p className="tiny bad" role="alert">
+          Not downloaded. Check the connection and try again.
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; reminders; your data; sign-in. */
 export function Settings({
   settings,
   onChanged,
@@ -262,6 +302,7 @@ export function Settings({
         )}
       </section>
       <RemindersSettings reminders={settings.reminders} save={(reminders) => save({ reminders })} />
+      <YourData />
       <SignInSettings onSignedOut={onSignedOut} />
     </>
   );

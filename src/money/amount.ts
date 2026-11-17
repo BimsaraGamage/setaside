@@ -38,6 +38,15 @@ export function minorDigits(currency: string): number {
   return d;
 }
 
+/** "1850.50", "1500" (JPY): a plain decimal for files and spreadsheets, no symbol or commas, no floats. */
+export function plainAmount(minor: Minor, currency: string): string {
+  const digits = minorDigits(currency);
+  const text = String(Math.abs(minor)).padStart(digits + 1, "0");
+  const whole = text.slice(0, text.length - digits);
+  const sign = minor < 0 ? "-" : "";
+  return digits ? `${sign}${whole}.${text.slice(-digits)}` : `${sign}${whole}`;
+}
+
 /** One whole unit of the currency, in minor units (LKR 100, JPY 1). */
 export function unitMinor(currency: string): Minor {
   return 10 ** minorDigits(currency);
