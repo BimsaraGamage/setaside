@@ -125,6 +125,16 @@ function save(userId: string, next: UnsentState): void {
   for (const l of listeners) l();
 }
 
+/** Delete account (item 28): the user's unsent items can never be sent, so they go from this phone. */
+export function forgetUnsent(userId: string): void {
+  states.delete(userId);
+  try {
+    localStorage.removeItem(keyOf(userId));
+  } catch {
+    // Nothing to remove.
+  }
+}
+
 const byQueued = (a: UnsentItem, b: UnsentItem) => a.queuedAt - b.queuedAt;
 
 /** The queue of one user: add, change, remove, send. */

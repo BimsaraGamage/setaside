@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { DUE_SOON_DAYS_MAX, parseRate, type ReminderSettings, reminderTimes } from "../money";
 import { api } from "./api";
+import { DeleteAccount } from "./DeleteAccount";
 import type { Current } from "./data";
 import { phoneTimeZone, timeZones } from "./data";
 import { type Download, download } from "./download";
@@ -181,12 +182,14 @@ function YourData() {
   );
 }
 
-/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; reminders; your data; sign-in. */
+/** Settings (spec 10): salary and spending currency, counting rate, usual pay day, home time zone; reminders; your data; sign-in; delete account. */
 export function Settings({
+  userId,
   settings,
   onChanged,
   onSignedOut,
 }: {
+  userId: string;
   settings: NonNullable<Current["settings"]>;
   onChanged: () => void;
   onSignedOut: () => void;
@@ -304,6 +307,7 @@ export function Settings({
       <RemindersSettings reminders={settings.reminders} save={(reminders) => save({ reminders })} />
       <YourData />
       <SignInSettings onSignedOut={onSignedOut} />
+      <DeleteAccount userId={userId} onDeleted={onSignedOut} />
     </>
   );
 }

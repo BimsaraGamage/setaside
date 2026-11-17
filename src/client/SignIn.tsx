@@ -15,8 +15,18 @@ function errorFromUrl(): string | null {
   return errors[code] ?? "Sign-in didn't work. Try again.";
 }
 
+/** `?deleted=1`, set after Delete account (item 28): said once, then taken off the address. */
+export const DELETED_PARAM = "deleted";
+
+function deletedFromUrl(): boolean {
+  if (!new URLSearchParams(window.location.search).has(DELETED_PARAM)) return false;
+  window.history.replaceState(null, "", window.location.pathname);
+  return true;
+}
+
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [options, setOptions] = useState({ google: true, demo: false });
+  const [deleted] = useState(deletedFromUrl);
   const [error, setError] = useState<string | null>(errorFromUrl);
   const [busy, setBusy] = useState(false);
 
@@ -82,6 +92,11 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           </button>
         )}
       </div>
+      {deleted && (
+        <p className="small" role="status">
+          Your account and all its data were deleted.
+        </p>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}

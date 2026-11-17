@@ -326,7 +326,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
           ))}
         {tab === "ChangeDollars" && <ChangeDollarsPage data={ready} actions={conversions} onRate={reload} />}
         {tab === "Settings" && (
-          <Settings settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
+          <Settings userId={userId} settings={data.settings} onChanged={reload} onSignedOut={onSignedOut} />
         )}
         {tab === "Past" && <PastList data={ready} />}
         {tab === "PastCycle" && id && <PastCyclePage key={id} data={ready} id={id} />}
