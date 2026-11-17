@@ -50,17 +50,19 @@ const bill = (id: string, name: string, dueOn: string, more: object = {}) => ({
 
 const kinds = (list: Reminder[]) => list.map((r) => r.kind);
 
-describe("when reminders start (spec 12: no reminders before the first salary is entered)", () => {
-  it("gives none in the first cycle, which started with money held, not a salary", () => {
+describe("when reminders start (spec 12: with the first cycle)", () => {
+  it("gives them in the first cycle, which started with money held, not a salary", () => {
     const i = input({ incomes: [{ ...salary, kind: "opening", receivedOn: "2026-11-01" }] });
     i.commitments = [bill("c1", "Rent", "2026-11-10")];
-    expect(reminders(i)).toEqual([]);
+    expect(kinds(reminders(i))).toEqual(["due_today"]);
   });
 
-  it("gives them once a salary is in", () => {
-    const i = input();
-    i.commitments = [bill("c1", "Rent", "2026-11-10")];
-    expect(kinds(reminders(i))).toEqual(["due_today"]);
+  it("gives salary late in the first cycle too, from its expected salary day", () => {
+    const i = input(
+      { incomes: [{ ...salary, kind: "opening", receivedOn: "2026-11-01" }] },
+      { today: "2026-11-26" },
+    );
+    expect(kinds(reminders(i))).toContain("salary_late");
   });
 });
 
