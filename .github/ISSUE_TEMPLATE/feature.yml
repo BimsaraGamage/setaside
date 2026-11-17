@@ -1,0 +1,27 @@
+name: Feature
+description: An idea for something Setaside should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check "Not in v0.1" in docs/spec.md first: some things are already planned for later or ruled out.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you're trying to do with your money, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What the app could do. Rough is fine.
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Other ways you've considered, screenshots, examples.

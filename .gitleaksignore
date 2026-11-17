@@ -1,0 +1,10 @@
+# RFC 8291 (Web Push) published example keys in tests, not secrets.
+1d4341d4493b9a6cdf062bd3725a2d848e360232:e2e/reminders.spec.ts:generic-api-key:108
+1d4341d4493b9a6cdf062bd3725a2d848e360232:e2e/reminders.spec.ts:generic-api-key:144
+1d4341d4493b9a6cdf062bd3725a2d848e360232:test/server/push-phone.ts:generic-api-key:13
+24b1b1f41e93863ea4e9c04f64d900da44839ab7:e2e/reminders.spec.ts:generic-api-key:108
+24b1b1f41e93863ea4e9c04f64d900da44839ab7:e2e/reminders.spec.ts:generic-api-key:144
+24b1b1f41e93863ea4e9c04f64d900da44839ab7:test/server/push-phone.ts:generic-api-key:13
+e2e/reminders.spec.ts:generic-api-key:108
+e2e/reminders.spec.ts:generic-api-key:144
+test/server/push-phone.ts:generic-api-key:13

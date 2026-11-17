@@ -4,6 +4,12 @@ Everything here fits Cloudflare's and GitHub's free plans. Do these steps once; 
 
 Secrets never go into files or GitHub variables. Each step says **where** a value lives.
 
+## 0. Your copy
+
+1. **Fork** this repo (forks of a public repo are public; that's fine, no secret ever lives in it).
+2. In your fork, **Actions → enable workflows** (forks start with Actions off).
+3. Clone it and install: Node 24 (`nvm use`), then `npm ci`. Every `npx wrangler …` below runs inside the clone.
+
 ## 1. Cloudflare
 
 1. Sign up at Cloudflare (free plan, no card).
@@ -30,9 +36,14 @@ Settings → Secrets and variables → Actions:
 | Variable | `CLOUDFLARE_ACCOUNT_ID`   | account ID (1.6)           |
 | Variable | `RELEASE_APP_CLIENT_ID`   | App Client ID (2.3)        |
 | Secret   | `RELEASE_APP_PRIVATE_KEY` | contents of the .pem (2.3) |
-| Secret   | `CLOUDFLARE_API_TOKEN`    | API token (1.5)            |
 
-Create an environment named `production` (Settings → Environments). While the repo is private the token stays a repo secret; once public, move it into `production`.
+Then the Cloudflare token, used only by the release run:
+
+1. Settings → Environments → **New environment** `production`.
+2. Deployment branches and tags → **Selected branches and tags** → add `main`.
+3. Environment secrets → `CLOUDFLARE_API_TOKEN` = API token (1.5).
+
+GitHub Free has environments on **public** repos only (in a private repo on Free, environment secrets are ignored). If your copy is private, add `CLOUDFLARE_API_TOKEN` as a repo secret instead.
 
 ## 4. Sign-in and Worker secrets
 
@@ -61,7 +72,7 @@ Sign-in is bound to your address, so do this after picking the workers.dev name 
 
    Later changes to one secret: `npx wrangler secret put <NAME>`.
 
-4. After the first release (5): open the app, **Sign in with Google** (Google may say the app is unverified or in testing: continue), then Settings → Passkeys → **+ Add**. From then on sign in with the passkey; Google stays as backup. Losing both the passkey and the Google account means losing access.
+4. After the first release (5): open the app, **Sign in with Google** (Google may say the app is unverified or in testing: continue), then Settings → Sign-in → **+ Add**. From then on sign in with the passkey; Google stays as backup. Losing both the passkey and the Google account means losing access.
 5. Check CPU per sign-in once: Cloudflare dashboard → Workers → `setaside` → Observability, filter `/api/auth/`; CPU time should stay under 10 ms.
 
 Changing who may sign up later means changing `ALLOWED_EMAILS` only.
@@ -96,4 +107,4 @@ Changing the key pair later turns alerts off on every phone: each one taps Turn 
 
 ## Updates
 
-Pull the latest code into your fork, merge the Release PR. Migrations are additive only. A release that needs a manual step is marked breaking in `CHANGELOG.md`.
+On GitHub, **Sync fork** (or pull upstream's `main` into yours), then merge the Release PR. Keep your own `database_id` and `APP_URL` in `wrangler.jsonc` if a sync touches them. Migrations are additive only. A release that needs a manual step is marked breaking in `CHANGELOG.md`.
