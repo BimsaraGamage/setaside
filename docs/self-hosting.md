@@ -70,9 +70,27 @@ Sign-in is bound to your address, so do this after picking the workers.dev name 
 
 Changing who may sign up later means changing `ALLOWED_EMAILS` only.
 
-## Later steps
+## Phone reminders
 
-Phone reminders (Web Push keys) add Worker secrets with `npx wrangler secret put <NAME>`. That step is added here by the backlog item that needs it.
+Phone notifications (spec 12) need a VAPID key pair as two more Worker secrets. Without them the app works the same, except Settings says phone alerts aren't set up and reminders only show at the top of Today.
+
+1. Make the key pair on your computer (keep the private key to yourself):
+
+   ```sh
+   npx web-push generate-vapid-keys
+   ```
+
+2. Set both as Worker secrets (paste each key when asked):
+
+   ```sh
+   npx wrangler secret put VAPID_PUBLIC_KEY
+   npx wrangler secret put VAPID_PRIVATE_KEY
+   ```
+
+3. On each phone: add the app to the Home Screen (on iPhone, iOS 16.4 or later: Share › Add to Home Screen), open it from there, then Settings → Reminders → **Turn on reminders**.
+4. The cron runs every 15 minutes (`triggers` in `wrangler.jsonc`). Check CPU per run once: Cloudflare dashboard → Workers → `setaside` → Observability, filter the scheduled runs; each logs `{"reminders": {users, pushes, gone, failed}}`. CPU time should stay under 10 ms.
+
+Changing the key pair later turns alerts off on every phone: each one taps Turn on reminders again.
 
 ## Updates
 

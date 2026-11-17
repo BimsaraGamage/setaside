@@ -11,3 +11,8 @@ ALLOWED_EMAILS=
 # http://localhost:5173/api/auth/callback/google as a redirect URI.
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Only to try phone alerts locally (item 26): a VAPID key pair from
+# `npx web-push generate-vapid-keys`. Without it reminders show on Today only.
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=

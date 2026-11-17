@@ -71,3 +71,40 @@ async function file(request, url) {
     throw error;
   }
 }
+
+// Phone notifications (item 26, spec 12): the cron's push is always shown as a visible notification
+// (Safari stops pushes to a page that shows none). Tapping it opens Today, or brings the open app forward.
+self.addEventListener("push", (event) => {
+  let message = { title: "Setaside", body: "", url: "/" };
+  try {
+    message = { ...message, ...event.data?.json() };
+  } catch {
+    message.body = event.data?.text() ?? "";
+  }
+  event.waitUntil(
+    self.registration.showNotification(message.title, {
+      body: message.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: "setaside-reminders",
+      data: { url: message.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url ?? "/", self.location.origin).href;
+  event.waitUntil(
+    (async () => {
+      const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const app = open.find((c) => new URL(c.url).origin === self.location.origin);
+      if (app) {
+        await app.focus();
+        if ("navigate" in app) await app.navigate(url).catch(() => null);
+        return;
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});

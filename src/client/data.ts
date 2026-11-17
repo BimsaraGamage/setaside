@@ -3,6 +3,7 @@ import {
   type CommitmentState,
   cardBalanceMinor,
   type DayChoiceEntry,
+  dayLabel,
   formatMoney,
   type IncomeKind,
   type ReminderSettings,
@@ -12,6 +13,17 @@ import {
   type Verdict,
 } from "../money";
 import { api } from "./api";
+
+export {
+  dayLabel,
+  entriesOf,
+  inDaysLabel,
+  lentNow,
+  planExtras,
+  potEntry,
+  takenOut,
+} from "../money";
+
 import { clearCopy, readCopy, saveCopy } from "./offline-copy";
 
 export interface Current {
@@ -267,59 +279,9 @@ export type Ready = Current & {
   cycle: NonNullable<Current["cycle"]>;
 };
 
-/** The money rules' entries for the current cycle. */
-export function entriesOf(data: Ready) {
-  return {
-    spendingCurrency: data.settings.spendingCurrency,
-    salaryCurrency: data.settings.salaryCurrency,
-    countingRate: data.settings.countingRate,
-    reserveRate: data.cycle.reserveRate,
-    conversions: data.conversions,
-    startedOn: data.cycle.startedOn,
-    expectedSalaryOn: data.cycle.expectedSalaryOn,
-    lastSpeed: data.lastCycle?.speed ?? null,
-    dayChoices: data.dayChoices,
-    incomes: data.incomes,
-    spends: data.spends,
-    commitments: data.commitments,
-    pots: data.pots.map(potEntry),
-    takenOut: takenOut(data),
-    planExtras: planExtras(data),
-    lent: lentNow(data),
-  };
-}
-
-/** Money lent to people this cycle (item 20): out of free money at once. */
-export function lentNow(data: Pick<Ready, "people" | "cycle">) {
-  return data.people
-    .filter((p) => p.direction === "lent" && p.cycleId === data.cycle.id)
-    .map((p) => ({ currency: p.currency, amountMinor: p.amountMinor }));
-}
-
-/** This cycle's Pay extra from free money (item 19): out of free money at once. */
-export function planExtras(data: Pick<Ready, "plans" | "cycle">) {
-  return data.plans.flatMap((p) =>
-    p.extras
-      .filter((x) => x.paidFrom === "free" && x.cycleId === data.cycle.id)
-      .map((x) => ({ currency: p.currency, amountMinor: x.amountMinor })),
-  );
-}
-
-/** This cycle's take-outs from savings, as the money rules need them (they are free money). */
-export function takenOut(data: Pick<Ready, "savings" | "cycle">) {
-  return data.savings
-    .filter((l) => l.kind === "take_out" && l.cycleId === data.cycle.id)
-    .map((l) => ({ currency: l.currency, amountMinor: -l.amountMinor, movedOn: l.on }));
-}
-
 /** A card's balance now (spec 9): what it owed before this cycle, plus this cycle's card spends, less its bills' payments. */
 export function cardBalance(data: Pick<Ready, "spends" | "commitments">, card: Card): number {
   return cardBalanceMinor(card, data.spends, data.commitments);
-}
-
-/** A pot as the money rules need it. */
-export function potEntry(p: Pot) {
-  return { id: p.id, currency: p.currency, amountMinor: p.amountMinor ?? 0, archived: p.archived };
 }
 
 /** The verdict chip's words (spec 7): "On track", "Runs out on Tue 24 Nov", "Over by Rs 1,000". */
@@ -338,13 +300,6 @@ export function verdictLabel(v: Verdict, currency: string): string {
     case "used_up":
       return "Used up";
   }
-}
-
-/** "today", "in 3 days", "2 days late". */
-export function inDaysLabel(n: number): string {
-  if (n === 0) return "today";
-  if (n < 0) return `${-n} day${n === -1 ? "" : "s"} late`;
-  return `in ${n} day${n === 1 ? "" : "s"}`;
 }
 
 /**
@@ -431,18 +386,4 @@ export function phoneTimeZone(): string {
 export function timeZones(current: string): string[] {
   const all = Intl.supportedValuesOf("timeZone");
   return all.includes(current) ? all : [current, ...all];
-}
-
-const longDay = new Intl.DateTimeFormat("en-GB", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  timeZone: "UTC",
-});
-const shortDay = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-
-/** "Mon 30 Nov" from a plain day. */
-export function dayLabel(day: string, weekday = true): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  return (weekday ? longDay : shortDay).format(d).replace(",", "");
 }
