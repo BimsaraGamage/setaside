@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.0](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.0.1...setaside-v0.1.0) (2026-11-17)
+
+
+### Features
+
+* reminders from the first cycle ([#69](https://github.com/BimsaraGamage/setaside/issues/69)) ([e50d1bd](https://github.com/BimsaraGamage/setaside/commit/e50d1bdf2fb85cdeb8bf198385e0221bdc011557))
+
+
+### Bug Fixes
+
+* send reminder pushes at high urgency ([#68](https://github.com/BimsaraGamage/setaside/issues/68)) ([2e1ecf2](https://github.com/BimsaraGamage/setaside/commit/2e1ecf2231340b0801dd562ca1c328cc489b9a50))
+
+
+### Performance Improvements
+
+* read Today's data in one database batch ([#67](https://github.com/BimsaraGamage/setaside/issues/67)) ([ae44a1e](https://github.com/BimsaraGamage/setaside/commit/ae44a1ed84c89e5610e9ed266fe89677c794fdd7))
+
+
+### Miscellaneous Chores
+
+* community files and going-public setup ([#64](https://github.com/BimsaraGamage/setaside/issues/64)) ([ee66cf3](https://github.com/BimsaraGamage/setaside/commit/ee66cf3d94d247ee41d20f15a875e47649600b3a)), closes [#29](https://github.com/BimsaraGamage/setaside/issues/29)
+
 ## 0.0.1 (2026-11-17)
 
 
