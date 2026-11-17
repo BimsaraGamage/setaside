@@ -1,0 +1,45 @@
+name: Bug
+description: Something works differently from docs/spec.md, or breaks.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Don't file it here: see SECURITY.md. Please leave out real amounts or personal details you don't want public.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead (the spec section, if you know it).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to show it
+      placeholder: |
+        1. On Today, tap + …
+        2. …
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - Installed app (Home Screen)
+        - Phone browser
+        - Computer browser
+        - Local development
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release (e.g. 0.1.0) or commit.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Device and browser, screenshots, logs.
