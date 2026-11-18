@@ -143,6 +143,10 @@ Started from **Salary arrived** (Today header or Plan tab). Seven steps, one per
 
 After starting, an **Undo salary day** button shows on Plan (and in the toast right after starting) for as long as undo is allowed (section 2).
 
+### Next cycle preview
+
+Before salary day, Plan shows what the next cycle will need, worked out as if the salary came on the expected day and this cycle's open commitments were paid as planned: the rows step 4 would fill (coming-up commitments with what is still to pay, active Every cycle ones, prepayment paybacks, plan payments) and the pots in use at their usual amounts. Grouped as **Bills**, **Pots**, **Savings** (savings set-asides and paybacks), **People** and **Plans**, each with its items; card bills are left out (their money is already held, as in the gap). Against **this cycle's salary** it shows the free money left (salary less the total) and a chip: **Within budget**, or **Over by** the amount. With two currencies everything is counted in the spending currency, the salary currency's at the counting rate. Before the first salary there is no salary to compare: only the total shows. What is left of this cycle is not counted (it is not known until salary day). It is a preview only: salary day's steps decide the real amounts.
+
 ## 7. Daily allowance, spending speed and verdict
 
 ### Daily allowance
@@ -258,7 +262,7 @@ A bottom sheet: date chip (Today, changeable within the current cycle); amount o
 
 ### Plan
 
-This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; **This cycle**: the salary (Change), the expected salary day (Change) and **Undo salary day** while it is allowed (section 2); an **Every cycle** link; **Salary arrived**.
+This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; **This cycle**: the salary (Change), the expected salary day (Change) and **Undo salary day** while it is allowed (section 2); an **Every cycle** link; **Salary arrived**; the **Next cycle** card (section 6, Next cycle preview).
 
 - **Commitment** (new or edit): name, currency and amount, due date, "Every cycle" switch; card bills and plan payments show what they are linked to. Payments list, still to pay, **Pay** (amount, currency, date; a note when paid more, less or in the other currency), **Mark finished**, Delete.
 - **Pot** (new or edit): name, currency and amount this cycle, usual amount, the new allowance shown; amount left with its bar and the spends from the pot; Stop using this pot (or Use this pot again); Delete while it has no spends. Pots not in use are listed under Plan's pots.
