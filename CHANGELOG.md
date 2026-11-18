@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.1...setaside-v0.1.2) (2026-11-18)
+
+
+### Features
+
+* next cycle preview on Plan ([#72](https://github.com/BimsaraGamage/setaside/issues/72)) ([11a401e](https://github.com/BimsaraGamage/setaside/commit/11a401e59fdd068f01a150ec96a211874815feb3))
+
 ## [0.1.1](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.0...setaside-v0.1.1) (2026-11-18)
 
 
