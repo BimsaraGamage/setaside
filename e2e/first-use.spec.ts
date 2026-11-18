@@ -49,7 +49,7 @@ test("first use: a bill with Every cycle and a starter pot are set aside in the 
   // Plan › Every cycle has Rent.
   const tabs = page.getByRole("navigation", { name: "Main" });
   await tabs.getByRole("link", { name: "Plan" }).click();
-  await expect(page.getByText("Groceries")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Pots", exact: true }).getByText("Groceries")).toBeVisible();
   await page.getByRole("link", { name: "Every cycle" }).click();
   await expect(page.getByText("Rs 40,000 on the")).toBeVisible();
 });
