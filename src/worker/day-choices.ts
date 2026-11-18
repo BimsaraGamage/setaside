@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import * as z from "zod";
-import { current } from "./current";
 import { dayChoice } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
+import { readForWrite } from "./write-read";
 
 const newDayChoice = z.object({
   id: z.uuid(),
@@ -19,7 +19,7 @@ const newDayChoice = z.object({
 export const dayChoices = new Hono<SignedIn>().post("/day-choices", json(newDayChoice), async (c) => {
   const { db, userId } = c.var;
   const b = c.req.valid("json");
-  const now = await current(c);
+  const { now } = await readForWrite(c, {});
   if (!now) return c.json({ error: "not_set_up" as const }, 404);
   // Only today's question can be answered; an earlier day is already counted.
   if (b.dayOn !== now.today) return c.json({ error: "invalid" as const, problems: ["day_on"] }, 400);

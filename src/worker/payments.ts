@@ -2,10 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkPayment, paymentCovers } from "../money";
-import { countingRateOf, current } from "./current";
 import { commitment, commitmentPayment } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
+import { readForWrite, type WriteNow } from "./write-read";
 
 const newPayment = z.object({
   id: z.uuid(),
@@ -21,7 +21,36 @@ const changePayment = z
   .object({ amountMinor: z.number().int(), paidOn: z.string(), currency: z.string() })
   .partial();
 
-type Now = NonNullable<Awaited<ReturnType<typeof current>>>;
+type Now = WriteNow;
+
+/** The signed-in user's payment with this id. */
+const PAYMENT = `select id, commitment_id as commitmentId, amount_minor as amountMinor, currency,
+    covers_minor as coversMinor, paid_on as paidOn
+  from commitment_payment where user_id = ?1 and id = ?2`;
+
+/** The signed-in user's commitment with this id. */
+const OWNER = `select cycle_id as cycleId, state, currency, kind from commitment where user_id = ?1 and id = ?2`;
+
+/** The commitment of the signed-in user's payment `?2`. */
+const OWNER_OF_PAYMENT = `select k.cycle_id as cycleId, k.state, k.currency, k.kind
+  from commitment k join commitment_payment cp on cp.commitment_id = k.id
+  where k.user_id = ?1 and cp.user_id = ?1 and cp.id = ?2`;
+
+interface PaymentRow {
+  id: string;
+  commitmentId: string;
+  amountMinor: number;
+  currency: string;
+  coversMinor: number | null;
+  paidOn: string;
+}
+
+interface OwnerRow {
+  cycleId: string;
+  state: string;
+  currency: string;
+  kind: string;
+}
 
 /**
  * The currency a commitment may also be paid in (spec 8): the user's other one,
@@ -36,15 +65,13 @@ function otherCurrencyFor(now: Now, owner: { currency: string; kind: string }): 
 }
 
 /** What a payment covers of its commitment, kept on the row when in the other currency. */
-async function coversOf(
-  c: { var: SignedIn["Variables"] },
+function coversOf(
   now: Now,
   row: { amountMinor: number; currency: string },
   commitmentCurrency: string,
-): Promise<number | null> {
+): number | null {
   if (row.currency === commitmentCurrency) return null;
-  const countingRate = await countingRateOf(c);
-  const rates = { spendingCurrency: now.currencies.spendingCurrency, countingRate };
+  const rates = { spendingCurrency: now.currencies.spendingCurrency, countingRate: now.countingRate };
   return paymentCovers(row.amountMinor, row.currency, commitmentCurrency, rates);
 }
 
@@ -62,17 +89,15 @@ export const payments = new Hono<SignedIn>()
     const id = c.req.param("id");
     // Saved once (item 24, spec 11): a resend of this payment is answered as saved, even if its commitment
     // was finished by it (pay and finish) or its cycle has ended since.
-    const saved = await db.query.commitmentPayment.findFirst({
-      where: and(mine(commitmentPayment), eq(commitmentPayment.id, b.id)),
-      columns: { commitmentId: true },
+    // One D1 batch for every read (SAB-45).
+    const { now, ...r } = await readForWrite<{ saved: PaymentRow[]; owners: OwnerRow[] }>(c, {
+      saved: [PAYMENT, b.id],
+      owners: [OWNER, id],
     });
+    const saved = r.saved[0];
     if (saved?.commitmentId === id) return c.json({ ok: true as const, already: true as const }, 200);
     if (saved) return c.json({ error: "conflict" as const }, 409);
-    const now = await current(c);
-    const owner = await db.query.commitment.findFirst({
-      where: and(mine(commitment), eq(commitment.id, id)),
-      columns: { cycleId: true, state: true, currency: true, kind: true },
-    });
+    const owner = r.owners[0];
     if (!now || !owner) return c.json({ error: "not_found" as const }, 404);
     if (owner.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     if (owner.state !== "open") return c.json({ error: "not_open" as const }, 409);
@@ -84,7 +109,7 @@ export const payments = new Hono<SignedIn>()
       otherCurrency: otherCurrencyFor(now, owner),
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
-    const coversMinor = await coversOf(c, now, row, owner.currency);
+    const coversMinor = coversOf(now, row, owner.currency);
     const insert = db.insert(commitmentPayment).values({ ...row, coversMinor, userId, commitmentId: id });
     try {
       if (finish) {
@@ -108,16 +133,12 @@ export const payments = new Hono<SignedIn>()
     const { db, mine } = c.var;
     const b = c.req.valid("json");
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.commitmentPayment.findFirst({
-      where: and(mine(commitmentPayment), eq(commitmentPayment.id, id)),
+    const { now, ...r } = await readForWrite<{ found: PaymentRow[]; owners: OwnerRow[] }>(c, {
+      found: [PAYMENT, id],
+      owners: [OWNER_OF_PAYMENT, id],
     });
-    const owner = old
-      ? await db.query.commitment.findFirst({
-          where: and(mine(commitment), eq(commitment.id, old.commitmentId)),
-          columns: { cycleId: true, currency: true, kind: true },
-        })
-      : undefined;
+    const old = r.found[0];
+    const owner = r.owners[0];
     if (!now || !old || !owner) return c.json({ error: "not_found" as const }, 404);
     if (owner.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     const next = { ...old, ...b };
@@ -131,7 +152,7 @@ export const payments = new Hono<SignedIn>()
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     // Covers again at today's counting rate only when the amount or currency changed.
     const same = next.amountMinor === old.amountMinor && next.currency === old.currency;
-    const coversMinor = same ? old.coversMinor : await coversOf(c, now, next, owner.currency);
+    const coversMinor = same ? old.coversMinor : coversOf(now, next, owner.currency);
     await db
       .update(commitmentPayment)
       .set({ amountMinor: next.amountMinor, paidOn: next.paidOn, currency: next.currency, coversMinor })
@@ -141,18 +162,9 @@ export const payments = new Hono<SignedIn>()
   .delete("/payments/:id", async (c) => {
     const { db, mine } = c.var;
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.commitmentPayment.findFirst({
-      where: and(mine(commitmentPayment), eq(commitmentPayment.id, id)),
-      columns: { commitmentId: true },
-    });
-    const owner = old
-      ? await db.query.commitment.findFirst({
-          where: and(mine(commitment), eq(commitment.id, old.commitmentId)),
-          columns: { cycleId: true, currency: true },
-        })
-      : undefined;
-    if (!now || !old || !owner) return c.json({ error: "not_found" as const }, 404);
+    const { now, owners } = await readForWrite<{ owners: OwnerRow[] }>(c, { owners: [OWNER_OF_PAYMENT, id] });
+    const owner = owners[0];
+    if (!now || !owner) return c.json({ error: "not_found" as const }, 404);
     if (owner.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     await db.delete(commitmentPayment).where(and(mine(commitmentPayment), eq(commitmentPayment.id, id)));
     return c.json({ ok: true as const });

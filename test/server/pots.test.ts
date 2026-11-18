@@ -209,6 +209,22 @@ describe("a spend's pot (item 7, spec 4)", () => {
     expect((await send("PATCH", `/api/spends/${s.id}`, { amountMinor: 1_000 }, cookie)).status).toBe(200);
   });
 
+  it("a spend leaving a stopped pot can move to a pot in use, but not back", async () => {
+    const { cookie } = await setUp();
+    const stopped = newPot();
+    const inUse = newPot();
+    await send("POST", "/api/pots", stopped, cookie);
+    await send("POST", "/api/pots", inUse, cookie);
+    const s = newSpend(stopped.id);
+    await send("POST", "/api/spends", s, cookie);
+    await send("PATCH", `/api/pots/${stopped.id}`, { archived: true }, cookie);
+    expect((await send("PATCH", `/api/spends/${s.id}`, { potId: inUse.id }, cookie)).status).toBe(200);
+    expect((await listed(cookie)).spends).toMatchObject([{ id: s.id, potId: inUse.id }]);
+    const back = await send("PATCH", `/api/spends/${s.id}`, { potId: stopped.id }, cookie);
+    expect(back.status).toBe(400);
+    expect(await back.json()).toEqual({ error: "invalid", problems: ["pot"] });
+  });
+
   it("refuses another user's pot", async () => {
     const other = await setUp("demo");
     const theirs = newPot();

@@ -2,10 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkSpend, moveIntoCycle } from "../money";
-import { current } from "./current";
-import { card, pot, spend } from "./db/schema";
+import { spend } from "./db/schema";
 import { json } from "./json";
+import { bool } from "./today-read";
 import type { SignedIn } from "./user-check";
+import { readForWrite } from "./write-read";
 
 const note = z
   .string()
@@ -35,26 +36,43 @@ const changeSpend = z
   .object({ spentOn: z.string(), amountMinor: z.number().int(), note, potId, cardId, oneOff: z.boolean() })
   .partial();
 
-/** The signed-in user's pot with this id, as `checkSpend` needs it; none when there is no such pot. */
-async function potsFor(c: { var: SignedIn["Variables"] }, id: string | null | undefined) {
-  if (!id) return [];
-  const { db, mine } = c.var;
-  const found = await db.query.pot.findFirst({
-    where: and(mine(pot), eq(pot.id, id)),
-    columns: { id: true, currency: true, archived: true },
-  });
-  return found ? [found] : [];
+/** A pot or card as `checkSpend` needs it (0/1 `archived` as stored). */
+interface Holder {
+  id: string;
+  currency: string;
+  archived: number;
 }
 
-/** The signed-in user's card with this id, as `checkSpend` needs it; none when there is no such card. */
-async function cardsFor(c: { var: SignedIn["Variables"] }, id: string | null | undefined) {
-  if (!id) return [];
-  const { db, mine } = c.var;
-  const found = await db.query.card.findFirst({
-    where: and(mine(card), eq(card.id, id)),
-    columns: { id: true, currency: true, archived: true },
-  });
-  return found ? [found] : [];
+/**
+ * The signed-in user's pot or card `?2` and, on a change, the one spend `?3` has now
+ * (null ids match none).
+ */
+const HOLDERS = (table: "pot" | "card", also = "?3") =>
+  `select id, currency, archived from ${table} where user_id = ?1 and id in (?2, ${also})`;
+const HOLDERS_OF_SPEND = (table: "pot" | "card") =>
+  HOLDERS(table, `(select ${table}_id from spend where user_id = ?1 and id = ?3)`);
+
+/** The signed-in user's spend with this id. */
+const SPEND = `select id, cycle_id as cycleId, spent_on as spentOn, amount_minor as amountMinor, currency, note,
+    pot_id as potId, card_id as cardId, one_off as oneOff
+  from spend where user_id = ?1 and id = ?2`;
+
+interface SpendRow {
+  id: string;
+  cycleId: string;
+  spentOn: string;
+  amountMinor: number;
+  currency: string;
+  note: string | null;
+  potId: string | null;
+  cardId: string | null;
+  oneOff: number;
+}
+
+/** The holder with this id, as the one-item list `checkSpend` takes; none when there is no such one. */
+function only(rows: Holder[], id: string | null | undefined) {
+  const found = id ? rows.find((r) => r.id === id) : undefined;
+  return found ? [{ id: found.id, currency: found.currency, archived: bool(found.archived) }] : [];
 }
 
 /**
@@ -64,17 +82,23 @@ async function cardsFor(c: { var: SignedIn["Variables"] }, id: string | null | u
  */
 export const spends = new Hono<SignedIn>()
   .post("/spends", json(newSpend), async (c) => {
-    const { db, mine, userId } = c.var;
+    const { db, userId } = c.var;
     const { queued, ...b } = c.req.valid("json");
-    // Saved once (item 24, spec 11): a resend of this user's spend is answered as saved, whatever its cycle now.
-    const saved = await db.query.spend.findFirst({
-      where: and(mine(spend), eq(spend.id, b.id)),
-      columns: { cycleId: true },
+    // One D1 batch for every read (SAB-45).
+    const { now, saved, pots, cards } = await readForWrite<{
+      saved: SpendRow[];
+      pots: Holder[];
+      cards: Holder[];
+    }>(c, {
+      saved: [SPEND, b.id],
+      pots: [HOLDERS("pot"), b.potId ?? null, null],
+      cards: [HOLDERS("card"), b.cardId ?? null, null],
     });
-    if (saved) return c.json({ ok: true as const, cycleId: saved.cycleId, already: true as const }, 200);
-    const now = await current(c);
+    // Saved once (item 24, spec 11): a resend of this user's spend is answered as saved, whatever its cycle now.
+    if (saved[0])
+      return c.json({ ok: true as const, cycleId: saved[0].cycleId, already: true as const }, 200);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const inPot = await potsFor(c, b.potId);
+    const inPot = only(pots, b.potId);
     const moved = queued
       ? moveIntoCycle(b.spentOn, now.cycle.startedOn)
       : { spentOn: b.spentOn, movedFrom: null };
@@ -92,7 +116,7 @@ export const spends = new Hono<SignedIn>()
       cycleStartedOn: now.cycle.startedOn,
       ...now.currencies,
       pots: inPot,
-      cards: await cardsFor(c, row.cardId),
+      cards: only(cards, row.cardId),
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
@@ -114,12 +138,22 @@ export const spends = new Hono<SignedIn>()
     const { db, mine } = c.var;
     const b = c.req.valid("json");
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.spend.findFirst({ where: and(mine(spend), eq(spend.id, id)) });
-    if (!now || !old) return c.json({ error: "not_found" as const }, 404);
-    if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
+    // One D1 batch for every read (SAB-45): the pot and card it moves to and the ones it has now.
+    const { now, found, pots, cards } = await readForWrite<{
+      found: SpendRow[];
+      pots: Holder[];
+      cards: Holder[];
+    }>(c, {
+      found: [SPEND, id],
+      pots: [HOLDERS_OF_SPEND("pot"), b.potId ?? null, id],
+      cards: [HOLDERS_OF_SPEND("card"), b.cardId ?? null, id],
+    });
+    const row = found[0];
+    if (!now || !row) return c.json({ error: "not_found" as const }, 404);
+    if (row.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
+    const old = { ...row, oneOff: bool(row.oneOff) };
     const nextPotId = b.potId === undefined ? old.potId : b.potId;
-    const inPot = await potsFor(c, nextPotId);
+    const inPot = only(pots, nextPotId);
     const nextCardId = b.cardId === undefined ? old.cardId : b.cardId;
     const next = {
       ...old,
@@ -134,7 +168,7 @@ export const spends = new Hono<SignedIn>()
       ...now.currencies,
       pots: inPot,
       keepPotId: old.potId,
-      cards: await cardsFor(c, nextCardId),
+      cards: only(cards, nextCardId),
       keepCardId: old.cardId,
     });
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
@@ -155,11 +189,8 @@ export const spends = new Hono<SignedIn>()
   .delete("/spends/:id", async (c) => {
     const { db, mine } = c.var;
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.spend.findFirst({
-      where: and(mine(spend), eq(spend.id, id)),
-      columns: { cycleId: true },
-    });
+    const { now, found } = await readForWrite<{ found: SpendRow[] }>(c, { found: [SPEND, id] });
+    const old = found[0];
     if (!now || !old) return c.json({ error: "not_found" as const }, 404);
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
     await db.delete(spend).where(and(mine(spend), eq(spend.id, id)));
