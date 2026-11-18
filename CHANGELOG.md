@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.0...setaside-v0.1.1) (2026-11-18)
+
+
+### Performance Improvements
+
+* read money writes' checks in one database batch ([#70](https://github.com/BimsaraGamage/setaside/issues/70)) ([3b42b6d](https://github.com/BimsaraGamage/setaside/commit/3b42b6dabb483acfd24b3cc252f6fbcb7254497f))
+
 ## [0.1.0](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.0.1...setaside-v0.1.0) (2026-11-17)
 
 
