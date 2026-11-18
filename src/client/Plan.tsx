@@ -13,6 +13,7 @@ import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice"
 import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
 import { type Commitment, cardBalance, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { NextCycleCard } from "./NextCycle";
 import { plannedGap } from "./Pay";
 import { paybackNote } from "./People";
 import { planPaymentNote } from "./Plans";
@@ -137,6 +138,7 @@ export function Plan({ data, actions }: { data: Ready; actions: CycleActions }) 
         </section>
       )}
       <PlanPots data={data} />
+      <NextCycleCard data={data} />
       <ThisCycleCard data={data} today={today} actions={actions} />
       <div className="row">
         <a className="btn link grow" href="#EveryCycle">
