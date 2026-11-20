@@ -663,3 +663,50 @@ export const reminderSent = sqliteTable(
   },
   (t) => [index("reminder_sent_user_kind_idx").on(t.userId, t.kind, t.sentOn)],
 );
+
+/**
+ * A place money sits in (ticket SAB-50, spec 6): a bank account or cash, in one
+ * of the user's currencies (fixed once made). `kind`: money for spending, or
+ * kept aside (free money is shared out to it last). The list is ordered by
+ * `sort_order`. "Stop using this place": `archived`, counted nowhere.
+ * Places are not part of any cycle: salary day and its undo leave them alone.
+ */
+export const place = sqliteTable(
+  "place",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    currency: text("currency").notNull(),
+    kind: text("kind", { enum: ["spending", "kept"] })
+      .notNull()
+      .default("spending"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    ...appTimestamps,
+  },
+  (t) => [index("place_user_id_idx").on(t.userId, t.sortOrder)],
+);
+
+/**
+ * A place's balance as the user typed it at one moment (Set balance). The
+ * newest one is the balance; older ones stay, so Undo puts the one before back.
+ */
+export const placeCheck = sqliteTable(
+  "place_check",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => place.id, { onDelete: "cascade" }),
+    amountMinor: integer("amount_minor").notNull(),
+    /** When it was typed (set by the server). */
+    checkedAt: integer("checked_at", { mode: "timestamp_ms" }).notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("place_check_user_id_idx").on(t.userId),
+    index("place_check_place_id_idx").on(t.placeId, t.checkedAt),
+  ],
+);

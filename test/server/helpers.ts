@@ -50,6 +50,7 @@ export async function seedEveryTable(ownerId: string, endpoint: string) {
   const pl = crypto.randomUUID();
   const px = crypto.randomUUID();
   const pd = crypto.randomUUID();
+  const plc = crypto.randomUUID();
   const now = Date.now();
   await env.DB.batch([
     env.DB.prepare(
@@ -112,6 +113,12 @@ export async function seedEveryTable(ownerId: string, endpoint: string) {
     env.DB.prepare(
       "insert into person_debt (id, user_id, cycle_id, person_name, direction, currency, amount_minor, made_on, created_at, updated_at) values (?, ?, ?, 'Nimal', 'lent', 'LKR', 500000, '2026-11-12', ?, ?)",
     ).bind(pd, ownerId, c, now, now),
+    env.DB.prepare(
+      "insert into place (id, user_id, name, currency, kind, sort_order, archived, created_at, updated_at) values (?, ?, 'In hand', 'LKR', 'spending', 0, 0, ?, ?)",
+    ).bind(plc, ownerId, now, now),
+    env.DB.prepare(
+      "insert into place_check (id, user_id, place_id, amount_minor, checked_at, created_at, updated_at) values (?, ?, ?, 1200000, ?, ?, ?)",
+    ).bind(crypto.randomUUID(), ownerId, plc, now, now, now),
     env.DB.prepare(
       "insert into push_subscription (id, user_id, endpoint, p256dh, auth, created_at, updated_at) values (?, ?, ?, 'p', 'a', ?, ?)",
     ).bind(crypto.randomUUID(), ownerId, endpoint, now, now),

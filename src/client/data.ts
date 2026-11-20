@@ -6,6 +6,7 @@ import {
   dayLabel,
   formatMoney,
   type IncomeKind,
+  type PlaceKind,
   type ReminderSettings,
   type Speed,
   timeIn,
@@ -66,6 +67,8 @@ export interface Current {
   plans: Plan[];
   /** Money lent to and borrowed from people, oldest first, with what is back so far (item 20). */
   people: Person[];
+  /** Places money sits in, in list order, with the balance last typed (ticket SAB-50). */
+  places: Place[];
   /** This cycle's conversions, newest first (item 16). */
   conversions: Conversion[];
   /** Last cycle's speeds, used in a cycle's first 3 days; null on the very first cycle (item 8). */
@@ -94,6 +97,21 @@ export interface Conversion {
   /** The rate gain (to rupee savings) or, below zero, the loss (out of free money). */
   gainMinor: number;
   doneOn: string;
+}
+
+/** A place money sits in (spec 6): a bank account or cash, in one currency. */
+export interface Place {
+  id: string;
+  name: string;
+  currency: string;
+  /** Money for spending, or kept aside (free money is shared out to it last). */
+  kind: PlaceKind;
+  /** "Stop using this place": counted nowhere. */
+  archived: boolean;
+  /** The balance last typed; null while none was. */
+  balanceMinor: number | null;
+  /** When it was typed (ms since 1970). */
+  checkedAt: number | null;
 }
 
 /** A credit card (item 18, spec 9). */

@@ -211,6 +211,8 @@ export async function currentData(c: { var: Pick<SignedIn["Variables"], "db" | "
     }),
     // People: lent and borrowed, with what is back so far (item 20).
     people: personDebtLinesOf({ debts: now(r.debts), incomes: r.debtIncomes, paid: r.debtsPaid }),
+    // Places in list order, each with the balance last typed and when (ticket SAB-50).
+    places: now(r.places).map((p) => ({ ...p, archived: bool(p.archived) })),
     // This cycle's conversions (item 16): free money and Change dollars' list.
     conversions: r.conversions,
     lastCycle,

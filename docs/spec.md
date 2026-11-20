@@ -38,6 +38,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - daily allowance, spending speed and run-out verdict (7);
 - two currencies: salary in one, spending in another (8);
 - card spends and card balances, instalment plans with their progress page, money lent to or borrowed from people (9);
+- places: where the money is, with what can be spent from each (6, Where my money is);
 - every screen in section 10, including past cycles;
 - offline spend entry (11), reminders (12), login (13), data download and delete account (14).
 
@@ -45,7 +46,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 
 **Spend entry** is manual and phone first: an amount and an optional note, in a few seconds.
 
-**Core model: set aside up front.** On salary day every commitment, pot and savings set-aside of the cycle is reserved; only free money is tracked day to day. There is no cash-flow or bank-balance view.
+**Core model: set aside up front.** On salary day every commitment, pot and savings set-aside of the cycle is reserved; only free money is tracked day to day. There is no cash-flow view and no balance projection; **places** (section 6, Where my money is) only show where the money is now, from balances the user types.
 
 **Locale.** English only. Numbers in Sri Lanka style (`Rs 1,850`, `$1,200`). Dates and "today" follow the user's **home time zone**.
 
@@ -146,6 +147,19 @@ After starting, an **Undo salary day** button shows on Plan (and in the toast ri
 ### Next cycle preview
 
 Before salary day, Plan shows what the next cycle will need, worked out as if the salary came on the expected day and this cycle's open commitments were paid as planned: the rows step 4 would fill (coming-up commitments with what is still to pay, active Every cycle ones, prepayment paybacks, plan payments) and the pots in use at their usual amounts. Grouped as **Bills**, **Pots**, **Savings** (savings set-asides and paybacks), **People** and **Plans**, each with its items; card bills are left out (their money is already held, as in the gap). Against **this cycle's salary** it shows the free money left (salary less the total) and a chip: **Within budget**, or **Over by** the amount. With two currencies everything is counted in the spending currency, the salary currency's at the counting rate. Before the first salary there is no salary to compare: only the total shows. What is left of this cycle is not counted (it is not known until salary day). It is a preview only: salary day's steps decide the real amounts.
+
+### Where my money is
+
+Free money says how much can be spent, not where it is. A **place** is somewhere money sits: a bank account or cash in hand ("Pan Asia Bank", "People's Bank", "In hand", "Dollar account"). The user makes their own places; with none, nothing about places shows anywhere.
+
+- A place has a **name**, a **currency** (one of the user's two, fixed once made), a kind and a spot in the list. The kind is **For spending** (day-to-day money) or **Kept aside** (money left alone). At most 20 places.
+- **Balance**: what the user last typed with **Set balance** (a bank app's or wallet's number), shown with the day it was set. Each Set balance is kept, so its Undo puts the balance before it back. A place with no balance yet counts as nothing. The app never moves a balance by itself in this version: after spending, the user types it again.
+- **Dollars in rupees**: a salary-currency place also shows its balance in the spending currency at the counting rate, rounded down ("$420 · Rs 126,000"); without a counting rate only its own amount shows.
+- **Totals**: one per currency, and with two currencies all of it in the spending currency (the other currency's total at the counting rate, rounded down).
+- **Can spend**, per place: the part of its balance that is free money. Each currency's free money is shared out to that currency's places: For spending places first, in list order, each up to its balance, then Kept aside places the same way. With two currencies each currency's own free money is shared (section 8): the dollars reserved for rupee set-asides are not free, and no rupees are free while rupee set-asides are past the rupees held. At zero free money or below, nothing can be spent anywhere. A dollar place shows Can spend in dollars and in rupees. When the balances match what the app counts, the parts add up to free money.
+- **Difference**: per currency, the places' total against **what the app counts** as held in that currency: free money + money still set aside for commitments + what is left in the pots in use + savings + money held for card balances. "Matches what the app counts", "Rs 3,200 less than the app counts: spends not entered?" or "Rs 500 more than the app counts: balances out of date, or income not entered?". It is shown once every place of that currency in use has a balance; it changes nothing. Salary day's "actually have in hand" (step 3) stays where the app's numbers are corrected.
+- **Stop using this place** leaves it out of the totals, Can spend and the difference; its balance stays and it can be used again. **Delete** removes a place; one with a balance asks once more first, and its balances go with it.
+- Places belong to no cycle: salary day, Undo salary day and ended cycles leave them alone.
 
 ## 7. Daily allowance, spending speed and verdict
 
@@ -251,7 +265,7 @@ Top to bottom:
 - **Reminders list and turn-on banner** when phone alerts are off (section 12).
 - **Salary late card** from the expected salary day with no salary entered (section 2): a new expected day and Set; It arrived opens salary day.
 - **Underspend card** when there is a question to answer (section 7): "Rs 6,000 not spent yesterday" (or "in the last N days") and the two answers, each with what it makes today's allowance ("Rs 10,666 a day", "Rs 16,000 today").
-- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money and days to salary; a small line with spending speed per day and tomorrow's amount ("Speed Rs 2,300 a day · Tomorrow Rs 4,800"; "(last cycle)" after the speed in a cycle's first 3 days).
+- **Main card**: "You can spend today" and the daily allowance, large; the verdict chip; a bar of today's spends against the allowance; today's spends, each opening the spend sheet; free money, with a line of what can be spent from each place once there is one ("In hand Rs 12,000 · Pan Asia Rs 48,000", opens Where my money is), and days to salary; a small line with spending speed per day and tomorrow's amount ("Speed Rs 2,300 a day · Tomorrow Rs 4,800"; "(last cycle)" after the speed in a cycle's first 3 days).
 - **Next up · already set aside**: open commitments from today to the expected salary day, each with date, weekday, "in N days", a note (card balance, "7 of 12"), and amount; total at the top; ends with "Salary expected" on its day. This is the timeline; there is no chart.
 - **Pots**: amount left, a bar, each pot's verdict.
 - Floating **+** button.
@@ -270,11 +284,13 @@ This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit pag
 
 ### Money
 
-Rows for Spends, Savings, Change dollars, Add income, each card, each instalment plan, People.
+Rows for Spends, Savings, Where my money is, Change dollars, Add income, each card, each instalment plan, People.
 
 - **Spends**: this cycle's spends by day, newest first, with each day's total; each opens the spend sheet to change or delete it.
 
 - **Savings**: dollar and rupee totals, combined in the header; Take out, Put in; prepayments with payback progress; movements list.
+- **Where my money is** (section 6): each place with its kind, the day its balance was set, its balance (a dollar place in rupees too) and Can spend; totals; the difference line per currency; places not in use; + Add a place. Money's row shows the total.
+- **Place** (new or open): name, currency and kind, "It holds now"; open: the balance and Can spend, **Set balance**, name and kind, Move up / Move down, Stop using this place (or Use this place again), Delete.
 - **Take out of savings**: currency, amount, new allowance shown; "For a prepayment? No · Yes, pay back"; Yes asks what for and the payback each cycle, and shows the cycles it takes.
 - **Change dollars**: dollars given, rupees received, date; live rate; how much covers rupee bills and how much goes to free money; rate gain (→ savings) or loss (← free money). Counting rate field with Set. This cycle's conversions.
 - **Add income**: kind (extra income, loan money, borrowed, paid back to me), currency and amount, split to savings and free money, new allowance shown.
@@ -424,7 +440,7 @@ See [ADR 0001](adr/0001-browser-app-thin-api-one-worker.md), [ADR 0002](adr/0002
 - **Public sign-up.** Before it: a privacy note, and a Turnstile bot check on sign-up.
 - Automatic spend capture (bank SMS, email, bank API) and statement file import.
 - Native mobile apps.
-- Cash-flow or bank-balance projection.
+- Cash-flow or bank-balance projection (what a place will hold on a later day); bank import; a place per bill, pot or saving. Places show today's typed balances only (section 6).
 - More than two currencies per user; live exchange rates.
 - Other languages.
 - Telegram or other reminder channels.

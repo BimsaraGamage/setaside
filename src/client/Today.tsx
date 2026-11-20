@@ -12,6 +12,7 @@ import {
 } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
 import { agoLabel } from "./offline-copy";
+import { TodayPlacesLine } from "./Places";
 import { commitmentNote } from "./Plan";
 import { PotRow } from "./Pots";
 import { type ReminderActions, RemindersCard } from "./Reminders";
@@ -183,6 +184,7 @@ export function Today({
           <span className="grow mute">Free money</span>
           <b data-testid="free-money">{money(view.freeMinor)}</b>
         </div>
+        <TodayPlacesLine data={data} />
         <div className="li">
           <span className="grow mute">Days to salary</span>
           <b data-testid="days-left">{view.daysLeft}</b>

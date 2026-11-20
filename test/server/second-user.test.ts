@@ -179,6 +179,33 @@ const probes: Record<string, Probe> = {
     init: { body: JSON.stringify({ name: "x", archived: true }) },
   }),
   "DELETE /api/cards/:id": (o) => ({ path: `/api/cards/${firstRow(o, "card")}` }),
+  // Aimed at the first user's place and its balance: must not take over, change, reorder, set or delete.
+  "POST /api/places": (o) => ({
+    path: "/api/places",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "place"),
+        name: "x",
+        balance: { id: firstRow(o, "place_check"), amountMinor: 1 },
+      }),
+    },
+  }),
+  "PUT /api/places/order": (o) => ({
+    path: "/api/places/order",
+    init: { body: JSON.stringify({ ids: [firstRow(o, "place")] }) },
+  }),
+  "PATCH /api/places/:id": (o) => ({
+    path: `/api/places/${firstRow(o, "place")}`,
+    init: { body: JSON.stringify({ name: "x", kind: "kept", archived: true }) },
+  }),
+  "DELETE /api/places/:id": (o) => ({ path: `/api/places/${firstRow(o, "place")}?balances=delete` }),
+  "POST /api/places/:id/checks": (o) => ({
+    path: `/api/places/${firstRow(o, "place")}/checks`,
+    init: { body: JSON.stringify({ id: firstRow(o, "place_check"), amountMinor: 1 }) },
+  }),
+  "DELETE /api/places/:id/checks/:checkId": (o) => ({
+    path: `/api/places/${firstRow(o, "place")}/checks/${firstRow(o, "place_check")}`,
+  }),
   // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
   "POST /api/prepayments": (o) => ({
     path: "/api/prepayments",
