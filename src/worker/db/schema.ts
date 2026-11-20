@@ -196,9 +196,15 @@ export const spend = sqliteTable(
     cardId: text("card_id"),
     /** Left out of the spending speed (item 8). */
     oneOff: integer("one_off", { mode: "boolean" }).notNull().default(false),
+    /** The place the money came out of (SAB-51); none moves no place. Never set on a card spend. */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
-  (t) => [index("spend_user_id_idx").on(t.userId), index("spend_cycle_id_idx").on(t.cycleId, t.spentOn)],
+  (t) => [
+    index("spend_user_id_idx").on(t.userId),
+    index("spend_cycle_id_idx").on(t.cycleId, t.spentOn),
+    index("spend_place_id_idx").on(t.placeId, t.createdAt),
+  ],
 );
 
 /**
@@ -261,11 +267,14 @@ export const commitmentPayment = sqliteTable(
      */
     coversMinor: integer("covers_minor"),
     paidOn: text("paid_on").notNull(),
+    /** The place the money came out of (SAB-51), in the currency paid in; none moves no place. */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
   (t) => [
     index("commitment_payment_user_id_idx").on(t.userId),
     index("commitment_payment_commitment_id_idx").on(t.commitmentId, t.paidOn),
+    index("commitment_payment_place_id_idx").on(t.placeId, t.createdAt),
   ],
 );
 
@@ -708,5 +717,31 @@ export const placeCheck = sqliteTable(
   (t) => [
     index("place_check_user_id_idx").on(t.userId),
     index("place_check_place_id_idx").on(t.placeId, t.checkedAt),
+  ],
+);
+
+/**
+ * Move money (ticket SAB-51, spec 6): an amount moved from one place to another
+ * of the same currency (cash from an ATM). It changes no free money and belongs
+ * to no cycle. Removed with either place.
+ */
+export const placeMove = sqliteTable(
+  "place_move",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    fromPlaceId: text("from_place_id")
+      .notNull()
+      .references(() => place.id, { onDelete: "cascade" }),
+    toPlaceId: text("to_place_id")
+      .notNull()
+      .references(() => place.id, { onDelete: "cascade" }),
+    amountMinor: integer("amount_minor").notNull(),
+    ...appTimestamps,
+  },
+  (t) => [
+    index("place_move_user_id_idx").on(t.userId),
+    index("place_move_from_idx").on(t.fromPlaceId, t.createdAt),
+    index("place_move_to_idx").on(t.toPlaceId, t.createdAt),
   ],
 );

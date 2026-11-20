@@ -18,6 +18,8 @@ export interface SpendDraft {
   potId: string | null;
   /** The card it was paid with; null means cash (item 18). */
   cardId: string | null;
+  /** The place the money came out of (SAB-51); null or none moves no place. */
+  placeId?: string | null;
   /** Left out of the spending speed (item 8). */
   oneOff: boolean;
 }
@@ -27,6 +29,8 @@ export interface PaymentDraft {
   paidOn: string;
   /** Either currency (item 17); none: the commitment's own. */
   currency?: string;
+  /** The place the money came out of (SAB-51); null or none moves no place. */
+  placeId?: string | null;
 }
 
 /**
@@ -189,6 +193,7 @@ export function outbox(userId: string) {
               amountMinor: item.draft.amountMinor,
               paidOn: item.draft.paidOn,
               currency: item.draft.currency,
+              placeId: item.draft.placeId ?? null,
             },
           }),
     );
@@ -375,6 +380,7 @@ export function withUnsent(data: Current, all: UnsentItem[]): Current {
                 ? null
                 : paymentCovers(i.draft.amountMinor, currency, c.currency, rates),
             paidOn: i.draft.paidOn,
+            placeId: i.draft.placeId ?? null,
             unsent: true,
           };
         }),

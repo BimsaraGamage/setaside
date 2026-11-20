@@ -12,6 +12,7 @@ import {
 import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, potEntry, type Ready, type Spend } from "./data";
 import { newId } from "./id";
+import { lastPlace, placesFor, rememberPlace } from "./last-place";
 import type { SpendActions } from "./spend-actions";
 
 /** Days a spend can be dated: today back to the cycle's first day (spec 2). */
@@ -41,7 +42,8 @@ export function toText(minor: number, currency: string): string {
 
 /**
  * The spend sheet (spec 10): date chip, amount on a number pad, the live
- * "left today" (or "from <pot> pot") line, note, Free money or a pot, Card
+ * "left today" (or "from <pot> pot") line, the place it is paid from (starts on
+ * the one used last; hidden without places and on a card), note, Free money or a pot, Card
  * (with the card choice when there are several, item 18), One-off, Save.
  * Opened with a spend, it edits it and can delete it.
  */
@@ -88,7 +90,29 @@ export function SpendSheet({
   const cards = data.cards.filter((k) => k.currency === cur && (!k.archived || k.id === editing?.cardId));
   const [cardChoice, setCardChoice] = useState<string | null>(editing?.cardId ?? null);
   const cardId = cards.some((k) => k.id === cardChoice) ? cardChoice : null;
-  const draft = { spentOn, amountMinor, note: note.trim() || null, currency: cur, potId, cardId, oneOff };
+  // The place it is paid from (spec 6): the one used last, no extra tap. A card spend moves no place.
+  const placeChoices = placesFor(data.places, cur, editing?.placeId);
+  const [placeChoice, setPlaceChoice] = useState<string | null | undefined>(
+    editing ? (editing.placeId ?? null) : undefined,
+  );
+  const placePicked =
+    placeChoice === null || placeChoices.some((p) => p.id === placeChoice)
+      ? placeChoice
+      : editing
+        ? null
+        : undefined;
+  const placeId =
+    cardId !== null ? null : placePicked === undefined ? lastPlace(data.places, cur) : placePicked;
+  const draft = {
+    spentOn,
+    amountMinor,
+    note: note.trim() || null,
+    currency: cur,
+    potId,
+    cardId,
+    placeId,
+    oneOff,
+  };
   const problems = checkSpend(draft, {
     today,
     cycleStartedOn: data.cycle.startedOn,
@@ -97,6 +121,8 @@ export function SpendSheet({
     keepPotId: editing?.potId,
     cards: data.cards,
     keepCardId: editing?.cardId,
+    places: data.places,
+    keepPlaceId: editing?.placeId,
   });
 
   // The live line: today's numbers as they will be after this spend is saved.
@@ -133,12 +159,12 @@ export function SpendSheet({
     else setFailed(true);
   }
 
-  const save = () =>
-    run(() =>
-      editing
-        ? actions.change(editing, cur, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff })
-        : actions.add(newId(), cur, { spentOn, amountMinor, note: draft.note, potId, cardId, oneOff }),
-    );
+  const save = () => {
+    const d = { spentOn, amountMinor, note: draft.note, potId, cardId, placeId, oneOff };
+    // The next spend starts on this place (a card spend leaves the choice as it was).
+    if (cardId === null && placeChoices.length > 0) rememberPlace(cur, placeId);
+    return run(() => (editing ? actions.change(editing, cur, d) : actions.add(newId(), cur, d)));
+  };
 
   return (
     <div className="sheet-back" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()}>
@@ -159,16 +185,35 @@ export function SpendSheet({
           </button>
         </div>
 
-        <label className="chip">
-          <span className="sr">Date</span>
-          <select value={spentOn} onChange={(e) => setSpentOn(e.target.value)} aria-label="Date">
-            {days.map((d) => (
-              <option key={d} value={d}>
-                {dayName(d, today)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="row">
+          <label className="chip">
+            <span className="sr">Date</span>
+            <select value={spentOn} onChange={(e) => setSpentOn(e.target.value)} aria-label="Date">
+              {days.map((d) => (
+                <option key={d} value={d}>
+                  {dayName(d, today)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {placeChoices.length > 0 && cardId === null && (
+            <label className="chip">
+              <span className="sr">Paid from</span>
+              <select
+                value={placeId ?? ""}
+                onChange={(e) => setPlaceChoice(e.target.value || null)}
+                aria-label="Paid from"
+              >
+                {placeChoices.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+                <option value="">No place</option>
+              </select>
+            </label>
+          )}
+        </div>
 
         <p className="amount" data-testid="sheet-amount">
           {text ? money(amountMinor) : <span className="mute">{money(0)}</span>}

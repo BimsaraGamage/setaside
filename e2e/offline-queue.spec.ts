@@ -87,6 +87,39 @@ test("a spend made offline is counted at once, kept through a reload, and sent w
   await context.setOffline(false);
 });
 
+test("a spend made offline comes out of its place at once, and only once when it is sent", async ({
+  page,
+  context,
+}) => {
+  // Ticket SAB-51: the place's balance is worked out on the phone from the unsent spend, then by the server.
+  await signInFreshToToday(page);
+  const place = {
+    id: crypto.randomUUID(),
+    name: "In hand",
+    balance: { id: crypto.randomUUID(), amountMinor: 2_000_000 },
+  };
+  expect((await page.request.post("/api/places", { data: place })).ok()).toBe(true);
+  await keepForOffline(page);
+  await expect(page.getByTestId("places-line")).toHaveText("In hand Rs 20,000");
+
+  await context.setOffline(true);
+  await addSpend(page, "500", "Bus");
+  await expect(page.getByRole("status")).toContainText("Spend saved on this phone");
+  await expect(page.getByTestId("places-line")).toHaveText("In hand Rs 19,500");
+  await page.reload();
+  await expect(page.getByTestId("places-line")).toHaveText("In hand Rs 19,500");
+
+  await context.setOffline(false);
+  await expect(page.getByTestId("offline")).toHaveCount(0);
+  await expect(page.getByTestId("places-line")).toHaveText("In hand Rs 19,500");
+  const cur = (await (await page.request.get("/api/current")).json()) as {
+    spends: { placeId: string | null }[];
+    places: { movedMinor: number }[];
+  };
+  expect(cur.spends).toMatchObject([{ placeId: place.id }]);
+  expect(cur.places).toMatchObject([{ movedMinor: -50_000 }]);
+});
+
 test("a payment made offline is sent when back online", async ({ page, context }) => {
   await signInFreshToToday(page);
   const name = "Water";

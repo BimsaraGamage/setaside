@@ -112,6 +112,11 @@ export interface Place {
   balanceMinor: number | null;
   /** When it was typed (ms since 1970). */
   checkedAt: number | null;
+  /**
+   * What the entries saved since it was typed moved (ticket SAB-51): spends and payments out of it,
+   * Move money in and out. Below zero: money out. The balance now is `placeBalanceMinor`.
+   */
+  movedMinor?: number;
 }
 
 /** A credit card (item 18, spec 9). */
@@ -271,6 +276,8 @@ export interface Payment {
   /** Paid in the other currency (item 17): what it covers of the commitment; null in its own. */
   coversMinor: number | null;
   paidOn: string;
+  /** The place the money came out of (SAB-51); null or none moves no place. */
+  placeId?: string | null;
   /** Made on this phone and not sent yet (item 24). */
   unsent?: boolean;
 }
@@ -287,6 +294,8 @@ export interface Spend {
   oneOff: boolean;
   /** The card it was paid with; null means cash (item 18). */
   cardId: string | null;
+  /** The place the money came out of (SAB-51); null or none moves no place. */
+  placeId?: string | null;
   /** Made on this phone and not sent yet (item 24). */
   unsent?: boolean;
 }

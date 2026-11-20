@@ -319,7 +319,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
               <p className="mute">This card is no longer here.</p>
             </>
           ))}
-        {tab === "Places" && <PlacesPage data={ready} />}
+        {tab === "Places" && <PlacesPage data={ready} actions={places} />}
         {tab === "Place" &&
           (!id || place ? (
             <PlacePage key={id ?? "new"} data={ready} editing={place} actions={places} />

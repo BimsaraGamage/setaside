@@ -17,6 +17,7 @@ interface Place {
   archived: boolean;
   balanceMinor: number | null;
   checkedAt: number | null;
+  movedMinor: number;
 }
 
 const send = (method: string, path: string, body: unknown, cookie: string) =>
@@ -80,6 +81,7 @@ describe("places (ticket SAB-50)", () => {
         archived: false,
         balanceMinor: null,
         checkedAt: null,
+        movedMinor: 0,
       },
     ]);
   });

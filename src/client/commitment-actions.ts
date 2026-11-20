@@ -78,6 +78,7 @@ const paymentDraftOf = (p: Payment): PaymentDraft => ({
   amountMinor: p.amountMinor,
   paidOn: p.paidOn,
   currency: p.currency,
+  placeId: p.placeId ?? null,
 });
 
 /** Steps in order; stops at the first that fails. */

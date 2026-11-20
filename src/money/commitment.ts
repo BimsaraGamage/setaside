@@ -1,5 +1,6 @@
 import { type Currencies, isUsersCurrency, type Minor } from "./amount";
 import { type Day, daysBetween, isDay } from "./days";
+import { type PlaceRef, placeUsable } from "./place";
 import { atRate, fromRate, type Rate } from "./rate";
 
 /** `commitment.state` (data-model.md). Only open ones are set aside. */
@@ -179,6 +180,8 @@ export interface PaymentInput {
   amountMinor: number;
   paidOn: string;
   currency: string;
+  /** The place the money came out of (spec 6); none moves no place. */
+  placeId?: string | null;
 }
 
 export interface PaymentContext {
@@ -192,9 +195,18 @@ export interface PaymentContext {
    * a savings set-aside or payback, which move money within one savings total.
    */
   otherCurrency?: string | null;
+  /** The user's places; a payment comes out of one in use, in the currency paid in (spec 6). */
+  places?: PlaceRef[];
+  /** A changed payment may stay in the stopped place it already has. */
+  keepPlaceId?: string | null;
+  /** A savings set-aside or payback moved to savings leaves no place: it takes none. */
+  noPlace?: boolean;
 }
 
-export type PaymentProblem = "amount" | "paid_on" | "currency";
+/** A savings set-aside or payback is moved to savings, not paid out: its money stays where it is (spec 5, 6). */
+export const staysInPlaces = (kind: string) => kind === "savings" || kind === "savings_payback";
+
+export type PaymentProblem = "amount" | "paid_on" | "currency" | "place";
 
 /** Checks a new or changed payment (spec 3). Paid more or less than planned is fine. */
 export function checkPayment(input: PaymentInput, ctx: PaymentContext): PaymentProblem[] {
@@ -204,5 +216,10 @@ export function checkPayment(input: PaymentInput, ctx: PaymentContext): PaymentP
     out.push("paid_on");
   }
   if (input.currency !== ctx.currency && input.currency !== ctx.otherCurrency) out.push("currency");
+  if (input.placeId != null) {
+    if (ctx.noPlace || !placeUsable(input.placeId, input.currency, ctx.places, ctx.keepPlaceId)) {
+      out.push("place");
+    }
+  }
   return out;
 }

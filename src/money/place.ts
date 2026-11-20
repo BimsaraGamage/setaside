@@ -20,7 +20,7 @@ export interface PlaceEntry {
   kind: PlaceKind;
   /** "Stop using this place": left out of the totals and of Can spend. */
   archived: boolean;
-  /** The balance last typed (Set balance); null while none was typed. */
+  /** The balance now (`placeBalanceMinor`); null while none was typed. */
   balanceMinor: Minor | null;
 }
 
@@ -50,6 +50,67 @@ export function checkPlace(input: PlaceInput, ctx: Currencies): PlaceProblem[] {
 /** A typed balance (Set balance): zero or more, whole minor units. */
 export function isPlaceBalance(minor: unknown): minor is Minor {
   return typeof minor === "number" && Number.isSafeInteger(minor) && minor >= 0;
+}
+
+/** A place as the check of an entry that moves it needs it. */
+export type PlaceRef = Pick<PlaceEntry, "id" | "currency" | "archived">;
+
+/**
+ * Can an entry in `currency` move this place (spec 6)? The place is the user's,
+ * holds that currency and is in use; a changed entry may keep the stopped place
+ * it already has.
+ */
+export function placeUsable(
+  placeId: string,
+  currency: string,
+  places: PlaceRef[] | undefined,
+  keepPlaceId?: string | null,
+): boolean {
+  const place = places?.find((p) => p.id === placeId);
+  return !!place && place.currency === currency && (!place.archived || place.id === keepPlaceId);
+}
+
+/** Move money (spec 6): from one place to another of the same currency (cash from an ATM). */
+export interface PlaceMoveInput {
+  fromPlaceId: string;
+  toPlaceId: string;
+  amountMinor: number;
+}
+
+export type PlaceMoveProblem = "amount" | "from" | "to";
+
+/** Checks a Move money. Both places are in use and hold one currency; the amount is above zero. */
+export function checkPlaceMove(input: PlaceMoveInput, places: PlaceRef[]): PlaceMoveProblem[] {
+  const out: PlaceMoveProblem[] = [];
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) out.push("amount");
+  const from = places.find((p) => p.id === input.fromPlaceId);
+  if (!from || from.archived) out.push("from");
+  const to = places.find((p) => p.id === input.toPlaceId);
+  if (!to || to.archived || to.id === from?.id || (from && to.currency !== from.currency)) out.push("to");
+  return out;
+}
+
+/** Money out of a place (a spend, a payment) that the server has not added up yet: made offline, not sent. */
+export interface PlaceOut {
+  placeId?: string | null;
+  amountMinor: Minor;
+}
+
+/**
+ * A place's balance now (spec 6): the balance last typed, moved by every entry
+ * saved since it was typed (`movedMinor`, added up by Today's read: below zero
+ * is money out), less the unsent entries out of it. Null while no balance was
+ * typed: entries move nothing then. It can go below zero when entries take more
+ * than the typed balance held.
+ */
+export function placeBalanceMinor(
+  place: { id: string; balanceMinor: Minor | null; movedMinor?: Minor | null },
+  unsent: PlaceOut[] = [],
+): Minor | null {
+  if (place.balanceMinor === null) return null;
+  let balance = place.balanceMinor + (place.movedMinor ?? 0);
+  for (const u of unsent) if (u.placeId === place.id) balance -= u.amountMinor;
+  return balance;
 }
 
 /** What the app knows about the money held: the current cycle, savings of every cycle, the cards. */
@@ -100,7 +161,7 @@ export function freeHeldMinor(entries: CycleEntries, currency: string): Minor {
 /** One place in use, as Where my money is shows it (spec 6). */
 export interface PlaceLine<P> {
   place: P;
-  /** The balance last typed; null: none yet. */
+  /** The balance now; null: none typed yet. */
   balanceMinor: Minor | null;
   /** A salary-currency place's balance in the spending currency, at the counting rate, rounded down; null otherwise. */
   countedMinor: Minor | null;
@@ -161,7 +222,8 @@ export function placesView<P extends PlaceEntry>(places: P[], held: HeldEntries)
     for (const kind of PLACE_KINDS) {
       for (const p of mine) {
         if (p.kind !== kind) continue;
-        const share = Math.min(p.balanceMinor ?? 0, left);
+        // A balance below zero (entries took more than was typed) has nothing to spend.
+        const share = Math.min(Math.max(0, p.balanceMinor ?? 0), left);
         can.set(p.id, share);
         left -= share;
       }

@@ -13,6 +13,7 @@ import { CurrencyChoice } from "./CurrencyChoice";
 import type { CommitmentActions } from "./commitment-actions";
 import { type Commitment, dayLabel, entriesOf, type Payment, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { lastPlace, placesFor, rememberPlace } from "./last-place";
 import { toText } from "./SpendSheet";
 
 /** "Paid Rs 700 more than planned", "Rs 500 less than planned", or "As planned". */
@@ -23,7 +24,8 @@ export function plannedGap(paid: number, planned: number, currency: string): str
 }
 
 /**
- * Pay (spec 3, 10): amount, currency, date, a note when paid more, less or in the
+ * Pay (spec 3, 10): amount, currency, date, the place it is paid from (starts on the
+ * one used last; none for a move to savings), a note when paid more, less or in the
  * other currency, and the new daily allowance before saving. "This finishes it"
  * follows the amount (on when it covers what is still to pay) until the user flips it.
  * Paid in the other currency (spec 8): it covers the commitment at the counting rate.
@@ -68,12 +70,27 @@ export function PayPage({
   const [failed, setFailed] = useState(false);
 
   const amountMinor = parseAmount(text, payCur) ?? 0;
-  const draft = { amountMinor, paidOn, currency: payCur };
+  // The place it is paid from (spec 6), in the currency paid in. Moved to savings, the money stays where it is.
+  const placeChoices = saving ? [] : placesFor(data.places, payCur, editing?.placeId);
+  const [placeChoice, setPlaceChoice] = useState<string | null | undefined>(
+    editing ? (editing.placeId ?? null) : undefined,
+  );
+  const placePicked =
+    placeChoice === null || placeChoices.some((p) => p.id === placeChoice)
+      ? placeChoice
+      : editing
+        ? null
+        : undefined;
+  const placeId = saving ? null : placePicked === undefined ? lastPlace(data.places, payCur) : placePicked;
+  const draft = { amountMinor, paidOn, currency: payCur, placeId };
   const problems = checkPayment(draft, {
     today,
     cycleStartedOn: data.cycle.startedOn,
     currency: cur,
     otherCurrency: editing && editing.currency !== cur ? editing.currency : other,
+    places: data.places,
+    keepPlaceId: editing?.placeId,
+    noPlace: saving,
   });
   const inOther = payCur !== cur;
   const covers = paymentCovers(amountMinor, payCur, cur, { spendingCurrency: spendCur, countingRate });
@@ -155,6 +172,19 @@ export function PayPage({
             onChange={(e) => setPaidOn(e.target.value)}
           />
         </label>
+        {placeChoices.length > 0 && (
+          <label className="field">
+            Paid from
+            <select value={placeId ?? ""} onChange={(e) => setPlaceChoice(e.target.value || null)}>
+              {placeChoices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+              <option value="">No place</option>
+            </select>
+          </label>
+        )}
         {!editing && (
           <label className="row check">
             <input type="checkbox" checked={finish} onChange={(e) => setFinishChoice(e.target.checked)} />
@@ -205,11 +235,13 @@ export function PayPage({
           type="button"
           className="btn pri grow"
           disabled={busy || waits || problems.length > 0}
-          onClick={() =>
+          onClick={() => {
+            // The next payment in this currency starts on this place.
+            if (placeChoices.length > 0) rememberPlace(payCur, placeId);
             run(() =>
               editing ? actions.changePayment(editing, draft) : actions.pay(c, newId(), draft, finish),
-            )
-          }
+            );
+          }}
         >
           {editing ? "Save" : saving ? "Move" : "Pay"}
         </button>

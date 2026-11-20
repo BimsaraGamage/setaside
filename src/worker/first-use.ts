@@ -245,6 +245,7 @@ export async function currentData(c: { var: Pick<SignedIn["Variables"], "db" | "
           currency: p.currency,
           coversMinor: p.coversMinor,
           paidOn: p.paidOn,
+          placeId: p.placeId,
         })),
     })),
   };
