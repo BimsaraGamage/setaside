@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.2...setaside-v0.1.3) (2026-11-20)
+
+
+### Features
+
+* where my money is: places with typed balances ([#75](https://github.com/BimsaraGamage/setaside/issues/75)) ([b330adb](https://github.com/BimsaraGamage/setaside/commit/b330adb68c6fcc3fec9f454ef39de1b28305725c)), closes [#74](https://github.com/BimsaraGamage/setaside/issues/74)
+
 ## [0.1.2](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.1...setaside-v0.1.2) (2026-11-18)
 
 
