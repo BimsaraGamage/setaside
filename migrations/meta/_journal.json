@@ -169,6 +169,13 @@
       "when": 1795162264837,
       "tag": "0023_places",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795206238039,
+      "tag": "0024_place_entries",
+      "breakpoints": true
     }
   ]
 }

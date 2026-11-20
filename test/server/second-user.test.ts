@@ -206,6 +206,19 @@ const probes: Record<string, Probe> = {
   "DELETE /api/places/:id/checks/:checkId": (o) => ({
     path: `/api/places/${firstRow(o, "place")}/checks/${firstRow(o, "place_check")}`,
   }),
+  // Aimed at the first user's places and Move money row: must not move their money or undo their move.
+  "POST /api/places/moves": (o) => ({
+    path: "/api/places/moves",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "place_move"),
+        fromPlaceId: firstRow(o, "place"),
+        toPlaceId: firstRow(o, "place"),
+        amountMinor: 1,
+      }),
+    },
+  }),
+  "DELETE /api/places/moves/:id": (o) => ({ path: `/api/places/moves/${firstRow(o, "place_move")}` }),
   // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
   "POST /api/prepayments": (o) => ({
     path: "/api/prepayments",

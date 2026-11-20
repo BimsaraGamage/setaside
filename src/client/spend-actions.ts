@@ -16,6 +16,7 @@ const draftOf = (s: Spend): SpendDraft => ({
   note: s.note,
   potId: s.potId,
   cardId: s.cardId,
+  placeId: s.placeId ?? null,
   oneOff: s.oneOff,
 });
 

@@ -2,9 +2,9 @@ import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import * as z from "zod";
-import { checkPlace, isPlaceBalance, PLACES_MAX } from "../money";
+import { checkPlace, checkPlaceMove, isPlaceBalance, PLACES_MAX } from "../money";
 import { current } from "./current";
-import { place, placeCheck } from "./db/schema";
+import { commitmentPayment, place, placeCheck, placeMove, spend } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -32,6 +32,14 @@ const changePlace = z
 
 const newCheck = z.object({ id: z.uuid(), amountMinor: z.number() });
 
+/** Move money: from one place to another of the same currency. */
+const newMove = z.object({
+  id: z.uuid(),
+  fromPlaceId: z.uuid(),
+  toPlaceId: z.uuid(),
+  amountMinor: z.number(),
+});
+
 /** The whole list, in its new order. */
 const newOrder = z.object({ ids: z.array(z.uuid()).max(PLACES_MAX) });
 
@@ -40,6 +48,8 @@ const newOrder = z.object({ ids: z.array(z.uuid()).max(PLACES_MAX) });
  * reorder, stop using, delete, and Set balance (a new `place_check`; the newest
  * is the balance). Balances, Can spend and the difference are only ever worked
  * out on the phone (`placesView`); Today's one read brings the rows (`today-read.ts`).
+ * Move money (ticket SAB-51): a `place_move` between two places of one currency,
+ * and its Undo. Entries with a place (spends, payments) are saved by their own routes.
  */
 export const places = new Hono<SignedIn>()
   .post("/places", json(newPlace), async (c) => {
@@ -135,13 +145,51 @@ export const places = new Hono<SignedIn>()
       if (has.length && c.req.valid("query").balances !== "delete") {
         return c.json({ error: "has_balances" as const }, 409);
       }
+      // Its balances and its Move money rows go with it; the spends and payments out of it stay, with no place.
       await db.batch([
+        db
+          .update(spend)
+          .set({ placeId: null })
+          .where(and(mine(spend), eq(spend.placeId, id))),
+        db
+          .update(commitmentPayment)
+          .set({ placeId: null })
+          .where(and(mine(commitmentPayment), eq(commitmentPayment.placeId, id))),
         db.delete(placeCheck).where(checks),
+        db.delete(placeMove).where(and(mine(placeMove), eq(placeMove.fromPlaceId, id))),
+        db.delete(placeMove).where(and(mine(placeMove), eq(placeMove.toPlaceId, id))),
         db.delete(place).where(and(mine(place), eq(place.id, id))),
       ]);
       return c.json({ ok: true as const });
     },
   )
+  /** Move money (spec 6): out of one place, into another of the same currency. Free money stays the same. */
+  .post("/places/moves", json(newMove), async (c) => {
+    const { db, mine, userId } = c.var;
+    const b = c.req.valid("json");
+    const mineNow = await db.query.place.findMany({
+      where: mine(place),
+      columns: { id: true, currency: true, archived: true },
+    });
+    const problems = checkPlaceMove(b, mineNow);
+    if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
+    try {
+      await db.insert(placeMove).values({ ...b, userId });
+    } catch {
+      // The id is already in use.
+      return c.json({ error: "conflict" as const }, 409);
+    }
+    return c.json({ ok: true as const }, 201);
+  })
+  /** Undo of Move money: both balances are as before it. */
+  .delete("/places/moves/:id", async (c) => {
+    const { db, mine } = c.var;
+    const row = and(mine(placeMove), eq(placeMove.id, c.req.param("id")));
+    const old = await db.select({ id: placeMove.id }).from(placeMove).where(row).limit(1);
+    if (!old.length) return c.json({ error: "not_found" as const }, 404);
+    await db.delete(placeMove).where(row);
+    return c.json({ ok: true as const });
+  })
   /** Set balance: what the place holds now, as typed. */
   .post("/places/:id/checks", json(newCheck), async (c) => {
     const { db, mine, userId } = c.var;

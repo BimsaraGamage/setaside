@@ -68,6 +68,7 @@ describe("spends (item 4, spec 7)", () => {
         potId: null,
         cardId: null,
         oneOff: false,
+        placeId: null,
       },
     ]);
   });
@@ -182,6 +183,7 @@ describe("spends (item 4, spec 7)", () => {
         potId: null,
         cardId: null,
         oneOff: false,
+        placeId: null,
       },
     ]);
     const ahead = await send("PATCH", `/api/spends/${id}`, { spentOn: addDays(today(), 1) }, cookie);

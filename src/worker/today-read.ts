@@ -54,6 +54,19 @@ const UNDO_TABLES: [table: string, more?: string][] = [
   ["income", `(cycle_id <> ${CUR_ID} or kind <> 'salary')`],
 ];
 
+/**
+ * What moves a place's balance (ticket SAB-51, spec 6), each with its sign: spends not on a card and
+ * commitment payments out of it, Move money out of it and into it. Only rows saved after the balance was
+ * last typed count (`created_at` against the check's instant): a typed balance already has the older ones.
+ * A later kind of entry with a `place_id` joins this list.
+ */
+const PLACE_MOVED: [sign: "-" | "+", from: string][] = [
+  ["-", "spend where place_id = p.id and card_id is null"],
+  ["-", "commitment_payment where place_id = p.id"],
+  ["-", "place_move where from_place_id = p.id"],
+  ["+", "place_move where to_place_id = p.id"],
+];
+
 const SQL = {
   settings: `select salary_currency as salaryCurrency, spending_currency as spendingCurrency,
       home_time_zone as homeTimeZone, usual_pay_day as usualPayDay, asked_time_zone as askedTimeZone,
@@ -71,14 +84,14 @@ const SQL = {
       received_on as receivedOn
     from income where user_id = ?1 and cycle_id = ${CUR_ID}`,
   spends: `${CUR} select id, spent_on as spentOn, currency, amount_minor as amountMinor, note, pot_id as potId,
-      card_id as cardId, one_off as oneOff
+      card_id as cardId, one_off as oneOff, place_id as placeId
     from spend where user_id = ?1 and cycle_id = ${CUR_ID} order by spent_on desc, id desc`,
   commitments: `${CUR} select id, name, kind, currency, planned_minor as plannedMinor, due_on as dueOn, state,
       recurring_id as recurringId, carried_from_id as carriedFromId, prepayment_id as prepaymentId,
       card_id as cardId, plan_id as planId, person_debt_id as personDebtId
     from commitment where user_id = ?1 and cycle_id = ${CUR_ID} order by due_on, name`,
   payments: `${CUR} select id, commitment_id as commitmentId, amount_minor as amountMinor, currency,
-      covers_minor as coversMinor, paid_on as paidOn
+      covers_minor as coversMinor, paid_on as paidOn, place_id as placeId
     from commitment_payment where user_id = ?1
       and commitment_id in (select id from commitment where user_id = ?1 and cycle_id = ${CUR_ID})
     order by paid_on, id`,
@@ -161,9 +174,12 @@ const SQL = {
     from income where user_id = ?1 and person_debt_id is not null order by received_on, created_at`,
   debtsPaid: `select k.person_debt_id as personDebtId, ${COVERED} as covered ${PAYMENTS_OF("person_payback")}
     group by k.person_debt_id`,
-  // Places with the balance last typed (ticket SAB-50): both tables in one statement.
+  // Places with the balance last typed (ticket SAB-50) and what the entries saved since it was typed
+  // moved (SAB-51; money out is below zero), all in one statement.
   places: `select p.id, p.name, p.currency, p.kind, p.archived, k.amount_minor as balanceMinor,
-      k.checked_at as checkedAt
+      k.checked_at as checkedAt,
+      ${PLACE_MOVED.map(([sign, from]) => `${sign} coalesce((select sum(amount_minor) from ${from} and user_id = ?1 and created_at >= k.checked_at), 0)`).join(" ")}
+        as movedMinor
     from place p left join place_check k on k.id = (select id from place_check
       where user_id = ?1 and place_id = p.id order by checked_at desc, id desc limit 1)
     where p.user_id = ?1 order by p.sort_order, p.created_at, p.id`,
@@ -208,6 +224,7 @@ export interface TodayRows {
     potId: string | null;
     cardId: string | null;
     oneOff: Bit;
+    placeId: string | null;
   };
   commitments: Omit<typeof commitment.$inferSelect, "userId" | "cycleId" | "createdAt" | "updatedAt">;
   payments: {
@@ -217,6 +234,7 @@ export interface TodayRows {
     currency: string;
     coversMinor: number | null;
     paidOn: string;
+    placeId: string | null;
   };
   pots: {
     id: string;
@@ -272,6 +290,7 @@ export interface TodayRows {
     archived: Bit;
     balanceMinor: number | null;
     checkedAt: number | null;
+    movedMinor: number;
   };
 }
 

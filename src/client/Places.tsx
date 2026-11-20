@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   checkPlace,
+  checkPlaceMove,
   formatMoney,
   PLACE_NAME_MAX,
   PLACES_MAX,
@@ -8,6 +9,7 @@ import {
   type PlaceLine,
   type PlaceTotal,
   parseAmount,
+  placeBalanceMinor,
   placesView,
   todayIn,
 } from "../money";
@@ -54,8 +56,14 @@ const check = (id: string, checkId: string, amountMinor: number) =>
   ok(api.api.places[":id"].checks.$post({ param: { id }, json: { id: checkId, amountMinor } }));
 const uncheck = (id: string, checkId: string) =>
   ok(api.api.places[":id"].checks[":checkId"].$delete({ param: { id, checkId } }));
+const move = (id: string, fromPlaceId: string, toPlaceId: string, amountMinor: number) =>
+  ok(api.api.places.moves.$post({ json: { id, fromPlaceId, toPlaceId, amountMinor } }));
+const unmove = (id: string) => ok(api.api.places.moves[":id"].$delete({ param: { id } }));
 
-/** Add, change, reorder, stop using and delete places, and Set balance; each success shows a toast with Undo. */
+/**
+ * Add, change, reorder, stop using and delete places, Set balance and Move money; each success shows a
+ * toast with Undo.
+ */
 export function placeActions({ done }: Toaster) {
   return {
     add: (id: string, d: NewPlace) =>
@@ -71,6 +79,16 @@ export function placeActions({ done }: Toaster) {
         done(ok, {
           text: `${p.name} set to ${formatMoney(amountMinor, p.currency)}`,
           undo: () => uncheck(p.id, checkId),
+        }),
+      );
+    },
+    /** Move money (spec 6): out of one place, into another of the same currency. Undo takes it back. */
+    move: (from: Place, to: Place, amountMinor: number) => {
+      const id = newId();
+      return move(id, from.id, to.id, amountMinor).then((ok) =>
+        done(ok, {
+          text: `Moved ${formatMoney(amountMinor, from.currency)} · ${from.name} → ${to.name}`,
+          undo: () => unmove(id),
         }),
       );
     },
@@ -94,9 +112,25 @@ export function placeActions({ done }: Toaster) {
 
 export type PlaceActions = ReturnType<typeof placeActions>;
 
-/** Where my money is, worked out on the phone (spec 6): each place's balance, Can spend, totals, difference. */
+/** A place as the screens show it: `balanceMinor` is its balance now, `typedMinor` what was last typed. */
+export type PlaceNow = Place & { typedMinor: number | null };
+
+/**
+ * Where my money is, worked out on the phone (spec 6): each place's balance now (the balance typed, moved
+ * by the entries saved since and by the unsent ones on this phone), Can spend, totals, difference.
+ */
 export function placesOf(data: Ready) {
-  return placesView(data.places, { entries: entriesOf(data), savings: data.savings, cards: data.cards });
+  // Not sent yet (spec 11): the server has not added them up. A card spend moves no place.
+  const unsent = [
+    ...data.spends.filter((s) => s.unsent && !s.cardId),
+    ...data.commitments.flatMap((c) => c.payments.filter((p) => p.unsent)),
+  ];
+  const places: PlaceNow[] = data.places.map((p) => ({
+    ...p,
+    typedMinor: p.balanceMinor,
+    balanceMinor: placeBalanceMinor(p, unsent),
+  }));
+  return placesView(places, { entries: entriesOf(data), savings: data.savings, cards: data.cards });
 }
 
 const KIND_LABEL: Record<PlaceKind, string> = { spending: "For spending", kept: "Kept aside" };
@@ -154,9 +188,12 @@ function differenceLine(t: PlaceTotal): { text: string; bad: boolean } {
   if (t.differenceMinor === 0)
     return { text: `Matches what the app counts (${money(t.appMinor)}).`, bad: false };
   return t.differenceMinor < 0
-    ? { text: `${money(-t.differenceMinor)} less than the app counts: spends not entered?`, bad: true }
+    ? {
+        text: `${money(-t.differenceMinor)} less than the app counts: spends not entered, or a balance out of date?`,
+        bad: true,
+      }
     : {
-        text: `${money(t.differenceMinor)} more than the app counts: balances out of date, or income not entered?`,
+        text: `${money(t.differenceMinor)} more than the app counts: income not entered, or a balance out of date?`,
         bad: true,
       };
 }
@@ -165,7 +202,7 @@ function differenceLine(t: PlaceTotal): { text: string; bad: boolean } {
  * Where my money is (spec 6, 10; opened from Money): each place with its
  * balance and Can spend, the totals, the difference against what the app counts.
  */
-export function PlacesPage({ data }: { data: Ready }) {
+export function PlacesPage({ data, actions }: { data: Ready; actions: PlaceActions }) {
   const view = placesOf(data);
   const cur = data.settings.spendingCurrency;
   const tz = data.settings.homeTimeZone;
@@ -192,6 +229,7 @@ export function PlacesPage({ data }: { data: Ready }) {
           ))}
         </section>
       )}
+      <MoveMoney places={view.lines.map((l) => l.place)} actions={actions} />
       {view.totals.length > 0 && (
         <section className="card" aria-labelledby="places-total-h">
           <h3 id="places-total-h">Total</h3>
@@ -244,12 +282,96 @@ export function PlacesPage({ data }: { data: Ready }) {
   );
 }
 
+/**
+ * Move money (spec 6, 10): from one place to another of the same currency, like cash from an ATM. Offered
+ * once two places in use hold one currency. Free money stays the same.
+ */
+function MoveMoney({ places, actions }: { places: PlaceNow[]; actions: PlaceActions }) {
+  const [open, setOpen] = useState(false);
+  const [fromId, setFromId] = useState("");
+  const [toId, setToId] = useState("");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Only places with another of their currency can give or take.
+  const movable = places.filter((p) => places.some((q) => q.id !== p.id && q.currency === p.currency));
+  if (movable.length === 0) return null;
+  const from = movable.find((p) => p.id === fromId) ?? movable[0];
+  if (!from) return null;
+  const targets = movable.filter((p) => p.id !== from.id && p.currency === from.currency);
+  const to = targets.find((p) => p.id === toId) ?? targets[0];
+  const amountMinor = text === "" ? null : parseAmount(text.replace(/\.$/, ""), from.currency);
+  const problems =
+    to && amountMinor !== null
+      ? checkPlaceMove({ fromPlaceId: from.id, toPlaceId: to.id, amountMinor }, places)
+      : ["amount"];
+  if (!open) {
+    return (
+      <button type="button" className="btn" onClick={() => setOpen(true)}>
+        Move money
+      </button>
+    );
+  }
+  return (
+    <section className="card stack" aria-labelledby="move-h">
+      <h3 id="move-h">Move money</h3>
+      <p className="tiny mute">
+        From one place to another, like cash from an ATM. Free money stays the same.
+      </p>
+      <label className="field">
+        From
+        <select value={from.id} onChange={(e) => setFromId(e.target.value)}>
+          {movable.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        To
+        <select value={to?.id ?? ""} onChange={(e) => setToId(e.target.value)}>
+          {targets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <BalanceField label="Amount" currency={from.currency} text={text} onChange={setText} />
+      {failed && <p className="error">Not moved. Check the connection and try again.</p>}
+      <div className="row">
+        <button type="button" className="btn" disabled={busy} onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn pri grow"
+          disabled={busy || problems.length > 0}
+          onClick={async () => {
+            if (!to || amountMinor === null) return;
+            setBusy(true);
+            setFailed(false);
+            const done = await actions.move(from, to, amountMinor);
+            setBusy(false);
+            if (!done) return setFailed(true);
+            setText("");
+            setOpen(false);
+          }}
+        >
+          Move
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function PlaceRow({
   line,
   spendingCurrency,
   timeZone,
 }: {
-  line: PlaceLine<Place>;
+  line: PlaceLine<PlaceNow>;
   spendingCurrency: string;
   timeZone: string;
 }) {
@@ -422,9 +544,13 @@ export function PlacePage({
     );
   }
 
-  const p = editing;
   const view = placesOf(data);
-  const line = view.lines.find((l) => l.place.id === p.id);
+  const line = view.lines.find((l) => l.place.id === editing.id);
+  // The place with its balance now; one not in use has no line.
+  const p: PlaceNow = line?.place ??
+    view.notInUse.find((x) => x.id === editing.id) ?? { ...editing, typedMinor: null };
+  // What the entries since the balance was typed moved: below zero, money out.
+  const sinceMinor = p.balanceMinor !== null && p.typedMinor !== null ? p.balanceMinor - p.typedMinor : 0;
   const spending = data.settings.spendingCurrency;
   const changed = name.trim() !== p.name || kind !== p.kind;
   const inUse = view.lines.map((l) => l.place.id);
@@ -461,6 +587,12 @@ export function PlacePage({
               .filter(Boolean)
               .join(" · ")}
           </p>
+          {sinceMinor !== 0 && p.typedMinor !== null && (
+            <p className="tiny mute" data-testid="place-since">
+              {formatMoney(p.typedMinor, p.currency)} when set ·{" "}
+              {formatMoney(Math.abs(sinceMinor), p.currency)} {sinceMinor < 0 ? "out" : "in"} since
+            </p>
+          )}
         </div>
         {line && p.balanceMinor !== null && (
           <div className="li">
@@ -475,7 +607,7 @@ export function PlacePage({
           currency={p.currency}
           text={text}
           onChange={setText}
-          hint="Type what the bank app or your wallet says now."
+          hint="Spends and payments move it by themselves. Type it when the bank app or your wallet says something else."
         />
         <button
           type="button"

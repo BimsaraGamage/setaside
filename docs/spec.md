@@ -46,7 +46,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 
 **Spend entry** is manual and phone first: an amount and an optional note, in a few seconds.
 
-**Core model: set aside up front.** On salary day every commitment, pot and savings set-aside of the cycle is reserved; only free money is tracked day to day. There is no cash-flow view and no balance projection; **places** (section 6, Where my money is) only show where the money is now, from balances the user types.
+**Core model: set aside up front.** On salary day every commitment, pot and savings set-aside of the cycle is reserved; only free money is tracked day to day. There is no cash-flow view and no balance projection; **places** (section 6, Where my money is) only show where the money is now: balances the user types, moved by the spends and payments entered since.
 
 **Locale.** English only. Numbers in Sri Lanka style (`Rs 1,850`, `$1,200`). Dates and "today" follow the user's **home time zone**.
 
@@ -153,13 +153,17 @@ Before salary day, Plan shows what the next cycle will need, worked out as if th
 Free money says how much can be spent, not where it is. A **place** is somewhere money sits: a bank account or cash in hand ("Pan Asia Bank", "People's Bank", "In hand", "Dollar account"). The user makes their own places; with none, nothing about places shows anywhere.
 
 - A place has a **name**, a **currency** (one of the user's two, fixed once made), a kind and a spot in the list. The kind is **For spending** (day-to-day money) or **Kept aside** (money left alone). At most 20 places.
-- **Balance**: what the user last typed with **Set balance** (a bank app's or wallet's number), shown with the day it was set. Each Set balance is kept, so its Undo puts the balance before it back. A place with no balance yet counts as nothing. The app never moves a balance by itself in this version: after spending, the user types it again.
+- **Balance**: what the user last typed with **Set balance** (a bank app's or wallet's number), moved by every entry saved since it was typed that names the place. It is shown with the day it was set; the place's page also shows what it held when set and what went out or came in since. Each Set balance is kept, so its Undo puts the balance before it back (with the entries since that one). A place with no balance yet counts as nothing, whatever is entered. Set balance stays the fix when real life differs: a balance typed later already has every older entry in it.
+- **Entries that move a balance**: a **spend** and a **commitment payment** can name the place the money came out of, in the entry's currency (a payment's is the currency paid in); the place then holds that much less. Changing the amount or the place, deleting the entry, or Undo moves the balance with it. "No place" moves none. A **card spend** names no place: nothing leaves a place until the card bill is paid, and the card bill's payment names it. A **savings set-aside or payback moved to savings** names none: the money stays where it is. A stopped place takes no new entries; an entry keeps the stopped place it has. Other entries (income, salary day, savings Take out and Put in, people, plan extra payments, Change dollars) move no place yet: Set balance after them.
+- **Move money**: an amount from one place to another of the same currency, like cash from an ATM ("Pan Asia → In hand"). Both places are in use; free money and everything else stay the same; it has Undo. Offered once two places in use hold one currency.
+- **Below zero**: entries can take more than the typed balance held. The balance then shows below zero, nothing can be spent from that place, and the totals count it as it is. Set balance itself takes zero or more.
 - **Dollars in rupees**: a salary-currency place also shows its balance in the spending currency at the counting rate, rounded down ("$420 · Rs 126,000"); without a counting rate only its own amount shows.
 - **Totals**: one per currency, and with two currencies all of it in the spending currency (the other currency's total at the counting rate, rounded down).
 - **Can spend**, per place: the part of its balance that is free money. Each currency's free money is shared out to that currency's places: For spending places first, in list order, each up to its balance, then Kept aside places the same way. With two currencies each currency's own free money is shared (section 8): the dollars reserved for rupee set-asides are not free, and no rupees are free while rupee set-asides are past the rupees held. At zero free money or below, nothing can be spent anywhere. A dollar place shows Can spend in dollars and in rupees. When the balances match what the app counts, the parts add up to free money.
-- **Difference**: per currency, the places' total against **what the app counts** as held in that currency: free money + money still set aside for commitments + what is left in the pots in use + savings + money held for card balances. "Matches what the app counts", "Rs 3,200 less than the app counts: spends not entered?" or "Rs 500 more than the app counts: balances out of date, or income not entered?". It is shown once every place of that currency in use has a balance; it changes nothing. Salary day's "actually have in hand" (step 3) stays where the app's numbers are corrected.
-- **Stop using this place** leaves it out of the totals, Can spend and the difference; its balance stays and it can be used again. **Delete** removes a place; one with a balance asks once more first, and its balances go with it.
-- Places belong to no cycle: salary day, Undo salary day and ended cycles leave them alone.
+- **Difference**: per currency, the places' total against **what the app counts** as held in that currency: free money + money still set aside for commitments + what is left in the pots in use + savings + money held for card balances. "Matches what the app counts", "Rs 3,200 less than the app counts: spends not entered, or a balance out of date?" or "Rs 500 more than the app counts: income not entered, or a balance out of date?". It is shown once every place of that currency in use has a balance; it changes nothing. Salary day's "actually have in hand" (step 3) stays where the app's numbers are corrected.
+- **Stop using this place** leaves it out of the totals, Can spend and the difference; its balance stays and it can be used again. **Delete** removes a place; one with a balance asks once more first, and its balances and its Move money entries go with it. Spends and payments that named it stay, with no place.
+- Places belong to no cycle: salary day, Undo salary day and ended cycles leave them alone. A balance counts the entries of every cycle saved since it was typed. Move money never takes Undo salary day away.
+- **Offline** (section 11): a spend or payment made offline comes out of its place at once on that phone, and once only when it is sent.
 
 ## 7. Daily allowance, spending speed and verdict
 
@@ -272,13 +276,13 @@ Top to bottom:
 
 ### Spend sheet (the + button)
 
-A bottom sheet: date chip (Today, changeable within the current cycle); amount on a number pad; live line "Rs X left today after this" (or "Over today by X", or "from <pot> pot"); optional note; one choice of Free money or a pot; Card toggle (with card choice when there are several); One-off toggle; Save. After saving, a toast with **Undo**. Opened from a spend, the same sheet changes it and has **Delete**; changes and deletes also get the toast with **Undo**.
+A bottom sheet: date chip (Today, changeable within the current cycle); a place chip once there are places in the spend's currency (it starts on the place used last, or the first For spending place; "No place" is a choice; hidden on a card spend); amount on a number pad; live line "Rs X left today after this" (or "Over today by X", or "from <pot> pot"); optional note; one choice of Free money or a pot; Card toggle (with card choice when there are several); One-off toggle; Save. After saving, a toast with **Undo**. Opened from a spend, the same sheet changes it and has **Delete**; changes and deletes also get the toast with **Undo**.
 
 ### Plan
 
 This cycle's commitments (+ Add) and pots (+ New pot), each opening its edit page; **This cycle**: the salary (Change), the expected salary day (Change) and **Undo salary day** while it is allowed (section 2); an **Every cycle** link; **Salary arrived**; the **Next cycle** card (section 6, Next cycle preview).
 
-- **Commitment** (new or edit): name, currency and amount, due date, "Every cycle" switch; card bills and plan payments show what they are linked to. Payments list, still to pay, **Pay** (amount, currency, date; a note when paid more, less or in the other currency), **Mark finished**, Delete.
+- **Commitment** (new or edit): name, currency and amount, due date, "Every cycle" switch; card bills and plan payments show what they are linked to. Payments list, still to pay, **Pay** (amount, currency, date, **Paid from** with the place used last once there are places in that currency; a note when paid more, less or in the other currency), **Mark finished**, Delete.
 - **Pot** (new or edit): name, currency and amount this cycle, usual amount, the new allowance shown; amount left with its bar and the spends from the pot; Stop using this pot (or Use this pot again); Delete while it has no spends. Pots not in use are listed under Plan's pots.
 - **Every cycle**: usual commitments with amount and day, each with an on/off (paused) switch; usual pots.
 
@@ -289,7 +293,7 @@ Rows for Spends, Savings, Where my money is, Change dollars, Add income, each ca
 - **Spends**: this cycle's spends by day, newest first, with each day's total; each opens the spend sheet to change or delete it.
 
 - **Savings**: dollar and rupee totals, combined in the header; Take out, Put in; prepayments with payback progress; movements list.
-- **Where my money is** (section 6): each place with its kind, the day its balance was set, its balance (a dollar place in rupees too) and Can spend; totals; the difference line per currency; places not in use; + Add a place. Money's row shows the total.
+- **Where my money is** (section 6): each place with its kind, the day its balance was set, its balance (a dollar place in rupees too) and Can spend; totals; **Move money** (from, to, amount); the difference line per currency; places not in use; + Add a place. Money's row shows the total.
 - **Place** (new or open): name, currency and kind, "It holds now"; open: the balance and Can spend, **Set balance**, name and kind, Move up / Move down, Stop using this place (or Use this place again), Delete.
 - **Take out of savings**: currency, amount, new allowance shown; "For a prepayment? No · Yes, pay back"; Yes asks what for and the payback each cycle, and shows the cycles it takes.
 - **Change dollars**: dollars given, rupees received, date; live rate; how much covers rupee bills and how much goes to free money; rate gain (→ savings) or loss (← free money). Counting rate field with Set. This cycle's conversions.
