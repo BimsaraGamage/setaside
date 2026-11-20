@@ -12,6 +12,7 @@ import { firstUse } from "./first-use";
 import { past } from "./past";
 import { payments } from "./payments";
 import { people } from "./people";
+import { places } from "./places";
 import { plans } from "./plans";
 import { pots } from "./pots";
 import { prepayments } from "./prepayments";
@@ -43,6 +44,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", cards)
   .route("/", plans)
   .route("/", people)
+  .route("/", places)
   .route("/", past)
   .route("/", push)
   .route("/", dataExport)

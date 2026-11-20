@@ -14,6 +14,7 @@ export * from "./first-use";
 export * from "./next-cycle";
 export * from "./past";
 export * from "./people";
+export * from "./place";
 export * from "./plan";
 export * from "./pot";
 export * from "./prepayment";

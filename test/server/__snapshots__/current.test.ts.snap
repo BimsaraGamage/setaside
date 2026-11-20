@@ -392,6 +392,44 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "settledOn": null,
     },
   ],
+  "places": [
+    {
+      "archived": false,
+      "balanceMinor": 1200000,
+      "checkedAt": 1790000000300,
+      "currency": "LKR",
+      "id": "full-place-hand",
+      "kind": "spending",
+      "name": "In hand",
+    },
+    {
+      "archived": false,
+      "balanceMinor": null,
+      "checkedAt": null,
+      "currency": "LKR",
+      "id": "full-place-bank",
+      "kind": "kept",
+      "name": "Pan Asia",
+    },
+    {
+      "archived": false,
+      "balanceMinor": 41000,
+      "checkedAt": 1790000000100,
+      "currency": "USD",
+      "id": "full-place-usd",
+      "kind": "kept",
+      "name": "Dollar account",
+    },
+    {
+      "archived": true,
+      "balanceMinor": 5000,
+      "checkedAt": 1790000000000,
+      "currency": "LKR",
+      "id": "full-place-old",
+      "kind": "spending",
+      "name": "Old bank",
+    },
+  ],
   "plans": [
     {
       "cardId": "full-card-visa",
@@ -767,6 +805,7 @@ exports[`GET /api/current > returns one cycle with no last cycle, and nothing be
   "incomes": [],
   "lastCycle": null,
   "people": [],
+  "places": [],
   "plans": [],
   "pots": [],
   "prepayments": [],
@@ -802,6 +841,7 @@ exports[`GET /api/current > returns one cycle with no last cycle, and nothing be
   ],
   "lastCycle": null,
   "people": [],
+  "places": [],
   "plans": [],
   "pots": [
     {

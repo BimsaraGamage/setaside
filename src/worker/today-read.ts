@@ -20,7 +20,7 @@ import type { SignedIn } from "./user-check";
  * - D1 caps bound values at 100 a statement: read by subquery, never `in (...ids)`.
  * - Every later read added to Today goes into this same batch (and its row type
  *   into `TodayRows`), not a query of its own. A batch counts each statement
- *   against the 50 queries a request on the free plan; this is 29 (was ~40).
+ *   against the 50 queries a request on the free plan; this is 30 (was ~40).
  */
 const CUR = `with cur as (select id, created_at from cycle where user_id = ?1 order by started_on desc, created_at desc limit 1)`;
 const LAST = `with last as (select id from cycle where user_id = ?1 order by started_on desc, created_at desc limit 1 offset 1)`;
@@ -161,6 +161,12 @@ const SQL = {
     from income where user_id = ?1 and person_debt_id is not null order by received_on, created_at`,
   debtsPaid: `select k.person_debt_id as personDebtId, ${COVERED} as covered ${PAYMENTS_OF("person_payback")}
     group by k.person_debt_id`,
+  // Places with the balance last typed (ticket SAB-50): both tables in one statement.
+  places: `select p.id, p.name, p.currency, p.kind, p.archived, k.amount_minor as balanceMinor,
+      k.checked_at as checkedAt
+    from place p left join place_check k on k.id = (select id from place_check
+      where user_id = ?1 and place_id = p.id order by checked_at desc, id desc limit 1)
+    where p.user_id = ?1 order by p.sort_order, p.created_at, p.id`,
 } as const satisfies Record<keyof TodayRows, string>;
 
 /** D1 gives booleans as 0 and 1. */
@@ -258,6 +264,15 @@ export interface TodayRows {
   debts: PersonDebtRows["debts"][number];
   debtIncomes: PersonDebtRows["incomes"][number];
   debtsPaid: PersonDebtRows["paid"][number];
+  places: {
+    id: string;
+    name: string;
+    currency: string;
+    kind: "spending" | "kept";
+    archived: Bit;
+    balanceMinor: number | null;
+    checkedAt: number | null;
+  };
 }
 
 const NAMES = Object.keys(SQL) as (keyof typeof SQL)[];

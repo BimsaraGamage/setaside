@@ -1,6 +1,6 @@
 # Glossary · Payday budget
 
-Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10 (2026-11-12). Ticket 05 sharpened the allowance and verdict; 13 the pay cycle and conversion; 19 added reminders.
+Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10 (2026-11-12). Ticket 05 sharpened the allowance and verdict; 13 the pay cycle and conversion; 19 added reminders. SAB-49 added places (2026-11-20).
 
 - **Pay cycle**: the period from one salary day to the next salary day. Not a calendar month. It starts when the salary is entered and ends when the next salary is entered. An ended cycle is locked: its entries can't be changed. Salary day can be undone until anything new is entered.
 - **Salary**: the income that starts a pay cycle, entered in the salary currency.
@@ -35,6 +35,8 @@ Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10
 - **Instalment plan**: a debt paid back in fixed payments: a bank loan or a card instalment plan. Each pay cycle gets a commitment for the next payment. It shows payments made and left, amount paid and still owed, interest, and the last payment date; it can be paid off early. Avoid: loan (when card instalments are meant too).
 - **Prepayment saving**: what paying a long period up front saved, against the normal monthly price the user typed, after any instalment interest.
 - **Card balance**: what is owed on one credit card: card spends add to it, card payments take it down. Its money is held, not part of free money or the leftover.
+- **Place**: somewhere the user's money sits: a bank account or cash in hand, in one currency. Its balance is what the user last typed (Set balance). For spending or Kept aside. Avoid: account (that is the person's sign-in account), wallet.
+- **Can spend** (of a place): the part of a place's balance that is free money; free money is shared out to For spending places first.
 - **Person debt**: money lent to or borrowed from a person (not a bank). Lent money lowers free money and is split like extra income when paid back; borrowed money is added like extra income and paid back by a commitment.
 - **Reminder**: a message from the app about something that needs attention: a commitment due soon, due today or overdue, a verdict turning Tight or Runs out, a late salary, a question waiting, or spends not yet logged today. Shown as a phone notification when the user has turned alerts on, and always in the app.
 - **Morning summary**: the one daily notification that gathers all of the morning's reminders. Nothing to say means none is sent.

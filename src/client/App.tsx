@@ -11,6 +11,7 @@ import { agoLabel, clearCopy, readCopy } from "./offline-copy";
 import { PastCyclePage, PastList } from "./Past";
 import { PayPage } from "./Pay";
 import { LendPage, PeoplePage, PersonPage, peopleActions } from "./People";
+import { PlacePage, PlacesPage, placeActions } from "./Places";
 import { CommitmentPage, Plan } from "./Plan";
 import { PlanPage, planActions } from "./Plans";
 import { PotPage } from "./Pots";
@@ -40,6 +41,8 @@ const pages = {
   AddIncome: "Money",
   ChangeDollars: "Money",
   Card: "Money",
+  Places: "Money",
+  Place: "Money",
   Instalments: "Money",
   People: "Money",
   Lend: "Money",
@@ -123,6 +126,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   const conversions = conversionActions(toaster);
   const cards = cardActions(toaster);
   const plans = planActions(toaster);
+  const places = placeActions(toaster);
   const people = peopleActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
@@ -174,6 +178,8 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   const pot = tab === "Pot" && !newPot ? ready.pots.find((p) => p.id === id) : undefined;
   // "#Card" adds a card; "#Card/<id>" opens one (item 18).
   const card = tab === "Card" && id ? ready.cards.find((k) => k.id === id) : undefined;
+  // "#Place" adds a place; "#Place/<id>" opens one (ticket SAB-50).
+  const place = tab === "Place" && id ? ready.places.find((p) => p.id === id) : undefined;
   // "#Instalments" makes a plan; "#Instalments/<id>" opens one (item 19).
   const plan = tab === "Instalments" && id ? ready.plans.find((p) => p.id === id) : undefined;
   // "#Person/<id>" opens one person entry (item 20).
@@ -311,6 +317,18 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
                 ← Back
               </a>
               <p className="mute">This card is no longer here.</p>
+            </>
+          ))}
+        {tab === "Places" && <PlacesPage data={ready} />}
+        {tab === "Place" &&
+          (!id || place ? (
+            <PlacePage key={id ?? "new"} data={ready} editing={place} actions={places} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Places">
+                ← Back
+              </a>
+              <p className="mute">This place is no longer here.</p>
             </>
           ))}
         {tab === "Instalments" &&

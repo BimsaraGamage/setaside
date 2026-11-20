@@ -422,6 +422,22 @@ async function seedFullMonth(userId: string, p: string) {
   rec("rec-visa", "Visa bill", "card_bill", "LKR", 50_000, 15, 1, { card_id: id("card-visa") });
   rec("rec-save", "Holiday", "savings", "LKR", 200_000, 20, 1);
 
+  // Places in list order (not the order made), each with its newest balance; one has none yet.
+  const placeRow = (n: string, name: string, currency: string, kind: string, sort: number, archived = 0) =>
+    add("place", { id: id(n), name, currency, kind, sort_order: sort, archived });
+  placeRow("place-bank", "Pan Asia", "LKR", "kept", 1);
+  placeRow("place-hand", "In hand", "LKR", "spending", 0);
+  placeRow("place-usd", "Dollar account", "USD", "kept", 2);
+  placeRow("place-old", "Old bank", "LKR", "spending", 3, 1);
+  const balance = (n: string, placeN: string, amount: number, at: number) =>
+    add("place_check", { id: id(n), place_id: id(placeN), amount_minor: amount, checked_at: at });
+  balance("check-hand-1", "place-hand", 900_000, T0 + 100);
+  balance("check-hand-2", "place-hand", 1_200_000, T0 + 300);
+  balance("check-hand-0", "place-hand", 100_000, T0 + 200);
+  balance("check-usd-a", "place-usd", 42_033, T0 + 100);
+  // A tie on the time goes to the larger id.
+  balance("check-usd-b", "place-usd", 41_000, T0 + 100);
+  balance("check-old", "place-old", 5_000, T0);
   // Salary day L → C kept its undo record (the spending currency's row); the USD row has none.
   const undo = { templates: [], potsMade: [], reopened: [], payments: [] };
   add("cycle_close", {

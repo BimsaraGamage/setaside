@@ -3,6 +3,7 @@ import { MoneyCards } from "./Cards";
 import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
 import { MoneyPeople } from "./People";
+import { MoneyPlacesRow } from "./Places";
 import { MoneyPlans } from "./Plans";
 
 /** The pot a spend came from, by name; none for free money. */
@@ -41,7 +42,7 @@ export function SpendRow({
   );
 }
 
-/** Money (spec 10): Spends, Savings, Change dollars (two currencies), Add income, cards (item 18), plans (item 19), People (item 20). */
+/** Money (spec 10): Spends, Savings, Where my money is (ticket SAB-50), Change dollars (two currencies), Add income, cards (item 18), plans (item 19), People (item 20). */
 export function Money({ data }: { data: Ready }) {
   const n = data.spends.length;
   const cur = data.settings.spendingCurrency;
@@ -66,6 +67,7 @@ export function Money({ data }: { data: Ready }) {
             ›
           </span>
         </a>
+        <MoneyPlacesRow data={data} />
         {data.settings.salaryCurrency !== cur && (
           <a className="li tap link" href="#ChangeDollars">
             <span className="grow">Change {data.settings.salaryCurrency}</span>
