@@ -162,7 +162,7 @@ export function SpendSheet({
   const save = () => {
     const d = { spentOn, amountMinor, note: draft.note, potId, cardId, placeId, oneOff };
     // The next spend starts on this place (a card spend leaves the choice as it was).
-    if (cardId === null && placeChoices.length > 0) rememberPlace(cur, placeId);
+    if (cardId === null && placeChoices.length > 0) rememberPlace(data.places, cur, placeId);
     return run(() => (editing ? actions.change(editing, cur, d) : actions.add(newId(), cur, d)));
   };
 

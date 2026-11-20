@@ -237,7 +237,7 @@ export function PayPage({
           disabled={busy || waits || problems.length > 0}
           onClick={() => {
             // The next payment in this currency starts on this place.
-            if (placeChoices.length > 0) rememberPlace(payCur, placeId);
+            if (placeChoices.length > 0) rememberPlace(data.places, payCur, placeId);
             run(() =>
               editing ? actions.changePayment(editing, draft) : actions.pay(c, newId(), draft, finish),
             );
