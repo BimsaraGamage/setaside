@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.3...setaside-v0.1.4) (2026-11-20)
+
+
+### Features
+
+* place balances follow spends, payments and moves ([#79](https://github.com/BimsaraGamage/setaside/issues/79)) ([64346ca](https://github.com/BimsaraGamage/setaside/commit/64346ca5a4497e1268c88fc2804e411f7b8acc74))
+
 ## [0.1.3](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.2...setaside-v0.1.3) (2026-11-20)
 
 
