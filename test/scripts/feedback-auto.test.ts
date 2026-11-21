@@ -219,8 +219,14 @@ describe("the sandboxed checker", () => {
   it("has no network, an empty home, and writes only to the worktree", () => {
     expect(args).toContain("--unshare-all");
     expect(args).toContain("--clearenv");
-    expect(pairs("--tmpfs")).toEqual(expect.arrayContaining(["/home/me", "/tmp", "/run"]));
+    expect(pairs("--tmpfs")).toEqual(
+      expect.arrayContaining(["/home/me", "/home", "/tmp", "/var", "/run", "/opt", "/srv", "/mnt", "/media"]),
+    );
     expect(pairs("--bind")).toEqual(["/var/tmp/setaside-feedback-1000/0a1b2c3d/work"]);
+    // the worktree's .git link is read-only inside, and mounted after the worktree so it wins
+    const ro = args.lastIndexOf("/var/tmp/setaside-feedback-1000/0a1b2c3d/work/.git");
+    expect(args[ro - 2]).toBe("--ro-bind");
+    expect(ro).toBeGreaterThan(args.indexOf("--bind"));
     expect(args.slice(args.indexOf("--") + 1)).toEqual(["npm", "test"]);
   });
 
@@ -424,6 +430,36 @@ describe("a pass", () => {
     };
     await runPass({ ...deps, claude });
     expect(calls.git.some((a) => a[0] === "push")).toBe(false);
+    expect(calls.set.at(-1)?.status).toBe("planned");
+  });
+
+  it("commits only the paths that passed the gate", async () => {
+    const fix = decision({ action: "build", kind: "bug", commit: "fix: x happens" });
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], fix);
+    const git = (args: string[]) => {
+      calls.git.push(bare(args));
+      return bare(args)[0] === "status" ? " M src/x.ts\0?? test/x.test.ts\0" : "";
+    };
+    await runPass({ ...deps, git });
+    expect(calls.git).toContainEqual(["add", "--", "src/x.ts", "test/x.test.ts"]);
+    expect(calls.git.some((a) => a[0] === "add" && a.includes("--all"))).toBe(false);
+  });
+
+  it("never commits when files changed while the checks ran", async () => {
+    const fix = decision({ action: "build", kind: "bug", commit: "fix: x happens" });
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], fix);
+    let checked = false;
+    const git = (args: string[]) => {
+      calls.git.push(bare(args));
+      if (bare(args)[0] !== "status") return "";
+      return checked ? " M src/x.ts\0 M package.json\0" : " M src/x.ts\0";
+    };
+    const check = () => {
+      checked = true;
+      return { code: 0 };
+    };
+    await runPass({ ...deps, git, check });
+    expect(calls.git.some((a) => a[0] === "commit" || a[0] === "push")).toBe(false);
     expect(calls.set.at(-1)?.status).toBe("planned");
   });
 

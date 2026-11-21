@@ -19,6 +19,8 @@
 // It never opens a PR, merges, deploys or releases: a pushed branch waits for a person's yes.
 // Everything that reaches outside goes through `deps`, so the tests run a whole pass without Claude,
 // wrangler or the network.
+
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   cpSync,
@@ -110,8 +112,8 @@ export const buildBash = (checker) => CHECK_NAMES.map((c) => `Bash(node ${checke
 const CHANGE_ALLOWED = /^(src|test|e2e)\/./;
 const CHANGE_REFUSED = /(^|\/)(\.[^/]*|node_modules|package(-lock)?\.json)(\/|$)/;
 
-/** The changed paths that are not allowed, from `git status --porcelain=v1 -z --untracked-files=all`. */
-export function refusedChanges(porcelainZ) {
+/** The changed paths in `git status --porcelain=v1 -z --untracked-files=all` output. */
+export function changedPaths(porcelainZ) {
   const parts = porcelainZ.split("\0").filter(Boolean);
   const paths = [];
   for (let i = 0; i < parts.length; i++) {
@@ -119,7 +121,26 @@ export function refusedChanges(porcelainZ) {
     paths.push(entry.slice(3));
     if (entry[0] === "R" || entry[0] === "C") paths.push(parts[++i]); // a rename also names where it came from
   }
-  return paths.filter((p) => !CHANGE_ALLOWED.test(p) || CHANGE_REFUSED.test(p));
+  return paths;
+}
+
+/** The changed paths that are not allowed. */
+export function refusedChanges(porcelainZ) {
+  return changedPaths(porcelainZ).filter((p) => !CHANGE_ALLOWED.test(p) || CHANGE_REFUSED.test(p));
+}
+
+/** The changed files' contents, as one hash: anything that differs later was not what passed the gate. */
+function fingerprint(work, porcelainZ) {
+  const h = createHash("sha256");
+  for (const p of changedPaths(porcelainZ)) {
+    h.update(`${p}\0`);
+    try {
+      h.update(readFileSync(join(work, p)));
+    } catch {
+      h.update("\0gone\0");
+    }
+  }
+  return h.digest("hex");
 }
 
 /** Text that may carry a secret or someone's address: never sent back or pushed. */
@@ -884,13 +905,25 @@ async function handleOne(deps, id) {
     planned(`it changed paths a fix may not touch: ${refused.slice(0, 5).join(", ")}.`);
     return false;
   }
+  const before = fingerprint(work, changed);
   for (const check of ["test", "typecheck", "lint"]) {
     if (deps.check(check, work).code !== 0) {
       planned(`the \`${check}\` check is not green after the build run.`);
       return false;
     }
   }
-  deps.git([...SAFE_GIT, "add", "--all"], work);
+  // The checks ran code the AI wrote (in the sandbox, .git read-only there): nothing may differ from what passed
+  // the gate above, and only those paths are committed.
+  const after = deps.git(
+    [...SAFE_GIT, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
+    work,
+  );
+  const linkAfter = existsSync(join(work, ".git")) ? readFileSync(join(work, ".git"), "utf8") : null;
+  if (linkAfter !== gitLink || after !== changed || fingerprint(work, after) !== before) {
+    planned("files changed while the checks ran.");
+    return false;
+  }
+  deps.git([...SAFE_GIT, "add", "--", ...changedPaths(changed)], work);
   deps.git(
     [...SAFE_GIT, "commit", "--quiet", "--no-verify", "-m", decision.commit, "-m", `Feedback: ${id}`],
     work,
