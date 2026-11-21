@@ -20,6 +20,7 @@ import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { type Commitment, dayLabel, entriesOf, type Plan, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
 import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 
@@ -43,7 +44,7 @@ const remove = (id: string) => ok(api.api.plans[":id"].$delete({ param: { id } }
 const addExtra = (
   planId: string,
   id: string,
-  d: { amountMinor: number; from: "free" | "savings"; paysOff: boolean },
+  d: { amountMinor: number; from: "free" | "savings"; paysOff: boolean; placeId?: string | null },
 ) => ok(api.api.plans[":id"].extra.$post({ param: { id: planId }, json: { id, ...d } }));
 const removeExtra = (id: string) => ok(api.api.plans.extra[":id"].$delete({ param: { id } }));
 
@@ -66,7 +67,10 @@ export function planActions({ done }: Toaster) {
     /** Only while nothing is paid on it; Undo adds it back (with this cycle's payment). */
     remove: (p: Plan) =>
       remove(p.id).then((ok) => done(ok, { text: `${p.name} deleted`, undo: () => add(p.id, draftOf(p)) })),
-    extra: (p: Plan, d: { amountMinor: number; from: "free" | "savings"; paysOff: boolean }) => {
+    extra: (
+      p: Plan,
+      d: { amountMinor: number; from: "free" | "savings"; paysOff: boolean; placeId?: string | null },
+    ) => {
       const id = newId();
       return addExtra(p.id, id, d).then((ok) =>
         done(ok, {
@@ -491,6 +495,7 @@ function PlanProgressPage({ data, plan: p, actions }: { data: Ready; plan: Plan;
  * Pay extra and Pay it all off (spec 9): the money comes from free money or
  * savings (the user picks); the payments left drop. Pay it all off is filled
  * with everything still to pay (change it when the bank takes some off).
+ * It names the place the money came out of (spec 6).
  */
 function PayExtra({
   data,
@@ -513,6 +518,7 @@ function PayExtra({
   const [failed, setFailed] = useState(false);
   const amountMinor = parseAmount(text, p.currency) ?? 0;
   const savingsMinor = savingsTotal(data.savings, p.currency);
+  const place = usePlaceChoice(data.places, p.currency, "out");
   const problems = checkPlanExtra(
     { amountMinor, from, paysOff },
     { stillToPayMinor: g.stillToPayMinor, setAsideMinor, savingsMinor },
@@ -545,7 +551,8 @@ function PayExtra({
   async function save() {
     setBusy(true);
     setFailed(false);
-    const done = await actions.extra(p, { amountMinor, from, paysOff });
+    place.remember();
+    const done = await actions.extra(p, { amountMinor, from, paysOff, placeId: place.placeId });
     setBusy(false);
     if (done) setText("");
     else setFailed(true);
@@ -586,6 +593,7 @@ function PayExtra({
           From savings
         </button>
       </fieldset>
+      <PlaceChoice label="Paid from" choice={place} />
       {amountMinor > 0 && problems.length === 0 && (
         <p className="small" data-testid="plan-extra-after">
           {paysOff

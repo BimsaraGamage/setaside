@@ -15,6 +15,7 @@ import {
   paidItOn,
   salaryCarriedOf,
   salaryLeftoverOf,
+  staysInPlaces,
   stillToPayMinor,
   unpaidAtEnd,
   usualDayOf,
@@ -43,6 +44,7 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import type { SignedIn } from "./user-check";
 
 const name = z.string().transform((n) => n.trim());
@@ -52,6 +54,8 @@ const salaryDayBody = z.object({
   incomeId: z.uuid(),
   salaryMinor: z.number().int(),
   receivedOn: z.string(),
+  /** Step 1: the place the salary landed in (SAB-52), in the salary currency; null moves no place. */
+  placeId,
   expectedSalaryOn: z.string(),
   /** Step 6, two currencies (spec 6, 8): a new counting rate; none keeps the current one. */
   countingRate: z.object({ id: z.uuid(), rate: z.string() }).nullish(),
@@ -116,6 +120,8 @@ const salaryDayBody = z.object({
           choice: z.enum(["paid", "carry", "drop"]),
           /** Carry: the new commitment's id. Paid it: the payment's id. */
           newId: z.uuid().nullish(),
+          /** Paid it: the place it was paid from (SAB-52), in the commitment's currency; null moves no place. */
+          placeId,
         }),
       )
       .max(100),
@@ -431,6 +437,20 @@ export const salaryDay = new Hono<SignedIn>()
       return k !== undefined && (u.choice === "carry" || (u.choice === "paid" && stillToPayMinor(k) > 0));
     };
     if (b.close.unpaid.some((u) => needsId(u) && !u.newId)) problems.push("close.new_id");
+    // The salary's place and each Paid it's place (SAB-52): the user's, in use, in the money's currency.
+    // A savings set-aside paid is moved to savings: its money stays where it is.
+    const paidFrom = (u: (typeof b.close.unpaid)[number]) => {
+      const k = unpaidById.get(u.id);
+      return k && u.choice === "paid" && !staysInPlaces(k.kind) ? (u.placeId ?? null) : null;
+    };
+    const placeUses = [
+      { placeId: b.placeId, currency: now.settings.salaryCurrency },
+      ...b.close.unpaid.map((u) => ({
+        placeId: paidFrom(u),
+        currency: unpaidById.get(u.id)?.currency ?? cur,
+      })),
+    ];
+    if (!(await placesUsable(c, placeUses))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
 
     const recurringIds = b.commitments.flatMap((k) => (k.recurringId ? [k.recurringId] : []));
@@ -475,6 +495,7 @@ export const salaryDay = new Hono<SignedIn>()
         currency: now.settings.salaryCurrency,
         amountMinor: b.salaryMinor,
         receivedOn: b.receivedOn,
+        placeId: b.placeId ?? null,
       }),
     ];
     if (b.countingRate) {
@@ -572,6 +593,7 @@ export const salaryDay = new Hono<SignedIn>()
               currency: k.currency,
               amountMinor: rest,
               paidOn: paidItOn(k.dueOn, now.cycle.startedOn, b.receivedOn),
+              placeId: paidFrom(u),
             }),
           );
         }

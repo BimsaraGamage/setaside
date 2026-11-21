@@ -189,11 +189,11 @@ function differenceLine(t: PlaceTotal): { text: string; bad: boolean } {
     return { text: `Matches what the app counts (${money(t.appMinor)}).`, bad: false };
   return t.differenceMinor < 0
     ? {
-        text: `${money(-t.differenceMinor)} less than the app counts: spends not entered, or a balance out of date?`,
+        text: `${money(-t.differenceMinor)} less than the app counts: spends not entered?`,
         bad: true,
       }
     : {
-        text: `${money(t.differenceMinor)} more than the app counts: income not entered, or a balance out of date?`,
+        text: `${money(t.differenceMinor)} more than the app counts: income not entered?`,
         bad: true,
       };
 }

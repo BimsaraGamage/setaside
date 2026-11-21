@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { signInFreshToToday } from "./helpers";
 
-// Journey: where my money is (tickets SAB-50 and SAB-51, spec 6 and 16). A demo user of its
+// Journeys: where my money is (tickets SAB-50, SAB-51 and SAB-52, spec 6 and 16). A demo user of its
 // own, so free money starts at Rs 90,000 and there are no places yet.
 
 /** A spend from the + sheet; `from` picks the place it is paid from (none: the one the sheet starts on). */
@@ -42,7 +42,7 @@ test("add places, type their balances, see them follow spends, payments and move
   await expect(page.getByTestId("place-can-spend-Pan Asia")).toHaveText("Can spend Rs 60,000");
   await expect(page.getByTestId("places-total-LKR")).toHaveText("Rs 80,000");
   await expect(page.getByTestId("places-difference-LKR")).toHaveText(
-    "Rs 10,000 less than the app counts: spends not entered, or a balance out of date?",
+    "Rs 10,000 less than the app counts: spends not entered?",
   );
 
   // Set balance: the bank holds Rs 70,000 after all; Undo puts Rs 60,000 back.
@@ -143,7 +143,7 @@ test("add places, type their balances, see them follow spends, payments and move
   await addSpend(page, "200", "No place");
   await page.getByTestId("places-line").click();
   await expect(page.getByTestId("places-difference-LKR")).toHaveText(
-    "Rs 200 more than the app counts: income not entered, or a balance out of date?",
+    "Rs 200 more than the app counts: income not entered?",
   );
 
   // Delete asks once more for a place with a balance.
@@ -153,4 +153,119 @@ test("add places, type their balances, see them follow spends, payments and move
   await expect(page.getByRole("status")).toContainText("In hand deleted");
   await expect(page.getByTestId("place-balance-In hand")).toHaveCount(0);
   await expect(page.getByTestId("place-balance-Pan Asia")).toHaveText("Rs 39,000");
+});
+
+test("income, money lent, savings and the salary move their place; salary day starts in hand from the places", async ({
+  page,
+}) => {
+  const main = page.getByRole("navigation", { name: "Main" });
+  const places = async () => {
+    await main.getByRole("link", { name: "Money" }).click();
+    await page.getByRole("link", { name: /Where my money is/ }).click();
+  };
+  await signInFreshToToday(page);
+  await places();
+  await addPlace(page, "Bank", "70,000", true);
+  await addPlace(page, "In hand", "20,000");
+  await expect(page.getByTestId("places-difference-LKR")).toContainText("Matches what the app counts");
+
+  // Extra income: the sheet starts on the first For spending place; this one landed in the bank.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await page.getByRole("link", { name: /^Add income/ }).click();
+  await page.getByLabel("Amount (LKR)").fill("5000");
+  await expect(page.getByLabel("Received in").locator("option:checked")).toHaveText("In hand");
+  await page.getByLabel("Received in").selectOption({ label: "Bank" });
+  await page.getByRole("button", { name: "Add income" }).click();
+  await expect(page.getByRole("status")).toContainText("Income added");
+
+  // Money lent comes out of the hand: money out remembers its own place, apart from money in.
+  await page.getByRole("link", { name: /People/ }).click();
+  await page.getByRole("link", { name: "I lent money" }).click();
+  await page.getByLabel("To whom").fill("Nimal");
+  await page.getByLabel("Amount (LKR)").fill("2000");
+  await expect(page.getByLabel("Paid from").locator("option:checked")).toHaveText("In hand");
+  await page.getByRole("button", { name: "Lend" }).click();
+  await expect(page.getByRole("status")).toContainText("Lent Rs 2,000 to Nimal");
+
+  // Put in savings: money from outside; it starts on the bank, where money came in last.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await page.getByRole("link", { name: /^Savings/ }).click();
+  await page.getByRole("link", { name: "Put in" }).click();
+  await page.getByLabel("Amount (LKR)").fill("3000");
+  await expect(page.getByLabel("Received in").locator("option:checked")).toHaveText("Bank");
+  await page.getByRole("button", { name: "Put in" }).click();
+  await expect(page.getByRole("status")).toContainText("Rs 3,000 put in savings");
+  // Taken out into free money, the money stays where it is: no place is asked.
+  await page.getByRole("link", { name: "Take out" }).click();
+  await expect(page.getByLabel("Amount (LKR)")).toBeVisible();
+  await expect(page.getByLabel("Received in")).toHaveCount(0);
+  await expect(page.getByLabel("Paid from")).toHaveCount(0);
+  await page.getByRole("link", { name: "← Back" }).click();
+  await page.getByRole("link", { name: "← Back" }).click();
+
+  // Nothing was typed again: the places still match the app.
+  await page.getByRole("link", { name: /Where my money is/ }).click();
+  await expect(page.getByTestId("place-balance-Bank")).toHaveText("Rs 78,000");
+  await expect(page.getByTestId("place-balance-In hand")).toHaveText("Rs 18,000");
+  await expect(page.getByTestId("places-difference-LKR")).toContainText("Matches what the app counts");
+  await page.getByRole("link", { name: /Bank/ }).click();
+  await expect(page.getByTestId("place-since")).toHaveText("Rs 70,000 when set · Rs 8,000 in since");
+  await page.getByRole("link", { name: "← Back" }).click();
+
+  // Rs 1,000 of cash was spent and never entered: the hand holds Rs 17,000.
+  await page.getByRole("link", { name: /In hand/ }).click();
+  await page.getByLabel("It holds now (LKR)").fill("17000");
+  await page.getByRole("button", { name: "Set balance" }).click();
+  await expect(page.getByTestId("place-balance")).toHaveText("Rs 17,000");
+  await page.getByRole("link", { name: "← Back" }).click();
+  await expect(page.getByTestId("places-difference-LKR")).toHaveText(
+    "Rs 1,000 less than the app counts: spends not entered?",
+  );
+
+  // Salary day: the salary lands in the bank (where money came in last).
+  await page.getByRole("link", { name: "← Back" }).click();
+  await main.getByRole("link", { name: "Today" }).click();
+  await page.getByRole("link", { name: "Salary arrived" }).click();
+  await page.getByLabel("Salary (LKR)").fill("100000");
+  await expect(page.getByLabel("Received in").locator("option:checked")).toHaveText("Bank");
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(page.getByRole("heading", { name: "Last cycle's unpaid commitments" })).toBeVisible();
+  await page.getByRole("button", { name: "Next" }).click();
+
+  // Step 3: the leftover is Rs 93,000; in hand starts Rs 1,000 lower, from the places.
+  await expect(page.getByTestId("leftover")).toHaveText("Rs 93,000");
+  await expect(page.getByLabel("Actually have in hand (LKR)")).toHaveValue("92000");
+  await expect(page.getByTestId("in-hand-from-places")).toHaveText(
+    "From your places: they hold Rs 1,000 less than the app counts. Clear it to keep the leftover.",
+  );
+  await expect(page.getByTestId("leftover-to-cycle")).toHaveText("Rs 92,000");
+  // Cleared, the leftover stands; typed again, it is what was typed.
+  await page.getByLabel("Actually have in hand (LKR)").fill("");
+  await expect(page.getByTestId("leftover-to-cycle")).toHaveText("Rs 93,000");
+  await expect(page.getByTestId("in-hand-from-places")).toHaveCount(0);
+  await page.getByLabel("Actually have in hand (LKR)").fill("92000");
+  for (const heading of ["This cycle's commitments", "Pots", "Next salary day", "Summary"]) {
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  }
+  await expect(page.getByTestId("salary-day-free")).toHaveText("Rs 192,000");
+  await page.getByRole("button", { name: "Start new cycle" }).click();
+  await expect(page.getByRole("status")).toContainText("New cycle started");
+
+  // The bank has the salary; with the leftover corrected, the places match the app again.
+  await expect(page.getByTestId("places-line")).toHaveText("Bank Rs 175,000 · In hand Rs 17,000");
+  await page.getByTestId("places-line").click();
+  await expect(page.getByTestId("place-balance-Bank")).toHaveText("Rs 178,000");
+  await expect(page.getByTestId("places-difference-LKR")).toContainText("Matches what the app counts");
+
+  // Undo salary day takes the salary out of the bank again.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await main.getByRole("link", { name: "Plan" }).click();
+  const thisCycle = page.getByRole("region", { name: "This cycle" });
+  await thisCycle.getByRole("button", { name: "Undo salary day" }).click();
+  await thisCycle.getByRole("button", { name: "Undo salary day" }).click();
+  await expect(page.getByRole("status")).toContainText("Salary day undone");
+  await places();
+  await expect(page.getByTestId("place-balance-Bank")).toHaveText("Rs 78,000");
+  await expect(page.getByTestId("place-balance-In hand")).toHaveText("Rs 17,000");
 });

@@ -21,6 +21,7 @@ import {
   savingsMovement,
 } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
 
@@ -131,6 +132,8 @@ const newExtra = z.object({
   from: z.enum(["free", "savings"]),
   /** Pay it all off: the plan ends, this cycle's open payment is finished. */
   paysOff: z.boolean().default(false),
+  /** The place the money came out of (SAB-52), from free money or savings alike; null moves no place. */
+  placeId,
 });
 
 /**
@@ -255,11 +258,12 @@ export const plans = new Hono<SignedIn>()
       0,
     );
     const savingsMinor = b.from === "savings" ? savingsTotal(await savingsLines(c), plan.currency) : 0;
-    const problems = checkPlanExtra(b, {
+    const problems: string[] = checkPlanExtra(b, {
       stillToPayMinor: planProgress(plan).stillToPayMinor,
       setAsideMinor,
       savingsMinor,
     });
+    if (!(await placesUsable(c, [{ placeId: b.placeId, currency: plan.currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     // One time for every row it writes: Undo of Pay it all off reopens what it finished.
     const at = new Date();
@@ -275,6 +279,7 @@ export const plans = new Hono<SignedIn>()
           paidFrom: b.from,
           paysOff: b.paysOff,
           paidOn: now.today,
+          placeId: b.placeId ?? null,
           createdAt: at,
           updatedAt: at,
         }),

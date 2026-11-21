@@ -172,9 +172,15 @@ export const income = sqliteTable(
     toSavingsMinor: integer("to_savings_minor").notNull().default(0),
     /** Links borrowed money and money paid back to a person debt (item 20). */
     personDebtId: text("person_debt_id"),
+    /** The place the money landed in (SAB-52); none moves no place. Never set on a leftover. */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
-  (t) => [index("income_user_id_idx").on(t.userId), index("income_cycle_id_idx").on(t.cycleId)],
+  (t) => [
+    index("income_user_id_idx").on(t.userId),
+    index("income_cycle_id_idx").on(t.cycleId),
+    index("income_place_id_idx").on(t.placeId, t.createdAt),
+  ],
 );
 
 /** One purchase (item 4). Pots, cards and one-off join with items 7, 18 and 8. */
@@ -360,11 +366,18 @@ export const savingsMovement = sqliteTable(
     movedOn: text("moved_on").notNull(),
     /** A prepayment's money out of savings (item 14). */
     prepaymentId: text("prepayment_id"),
+    /**
+     * The place the money went into (Put in) or came out of (a prepayment) (SAB-52); none moves no
+     * place. Never set on a Take out into free money or a plan extra: that money stays where it is,
+     * or leaves with its `plan_extra_payment`.
+     */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
   (t) => [
     index("savings_movement_user_id_idx").on(t.userId, t.movedOn),
     index("savings_movement_cycle_id_idx").on(t.cycleId),
+    index("savings_movement_place_id_idx").on(t.placeId, t.createdAt),
   ],
 );
 
@@ -433,11 +446,16 @@ export const conversion = sqliteTable(
     coveredMinor: integer("covered_minor").notNull().default(0),
     gainMinor: integer("gain_minor").notNull().default(0),
     doneOn: text("done_on").notNull(),
+    /** The place the dollars came out of and the one the rupees went into (SAB-52); none moves no place. */
+    fromPlaceId: text("from_place_id"),
+    toPlaceId: text("to_place_id"),
     ...appTimestamps,
   },
   (t) => [
     index("conversion_user_id_idx").on(t.userId, t.doneOn),
     index("conversion_cycle_id_idx").on(t.cycleId),
+    index("conversion_from_place_idx").on(t.fromPlaceId, t.createdAt),
+    index("conversion_to_place_idx").on(t.toPlaceId, t.createdAt),
   ],
 );
 
@@ -509,11 +527,14 @@ export const planExtraPayment = sqliteTable(
     paidFrom: text("paid_from", { enum: ["free", "savings"] }).notNull(),
     paysOff: integer("pays_off", { mode: "boolean" }).notNull().default(false),
     paidOn: text("paid_on").notNull(),
+    /** The place the money came out of (SAB-52), from free money or savings alike; none moves no place. */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
   (t) => [
     index("plan_extra_payment_user_id_idx").on(t.userId),
     index("plan_extra_payment_plan_id_idx").on(t.planId),
+    index("plan_extra_payment_place_id_idx").on(t.placeId, t.createdAt),
   ],
 );
 
@@ -539,9 +560,15 @@ export const personDebt = sqliteTable(
     amountMinor: integer("amount_minor").notNull(),
     madeOn: text("made_on").notNull(),
     settledOn: text("settled_on"),
+    /** Lent: the place the money came out of (SAB-52); none moves no place. Borrowed: its income has the place. */
+    placeId: text("place_id"),
     ...appTimestamps,
   },
-  (t) => [index("person_debt_user_id_idx").on(t.userId), index("person_debt_cycle_id_idx").on(t.cycleId)],
+  (t) => [
+    index("person_debt_user_id_idx").on(t.userId),
+    index("person_debt_cycle_id_idx").on(t.cycleId),
+    index("person_debt_place_id_idx").on(t.placeId, t.createdAt),
+  ],
 );
 
 /**

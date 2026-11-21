@@ -5,6 +5,7 @@ import { checkConversion, conversionSplit } from "../money";
 import { current } from "./current";
 import { conversion, countingRate } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import { entriesOf } from "./salary-day";
 import type { SignedIn } from "./user-check";
 
@@ -13,6 +14,9 @@ const newConversion = z.object({
   givenMinor: z.number().int(),
   receivedMinor: z.number().int(),
   doneOn: z.string(),
+  /** The place the dollars came out of and the one the rupees went into (SAB-52); null moves no place. */
+  fromPlaceId: placeId,
+  toPlaceId: placeId,
 });
 
 /** One line of "This cycle's conversions" (spec 10), newest first. */
@@ -53,6 +57,14 @@ export const conversions = new Hono<SignedIn>()
     });
     if (problems.includes("currency")) return c.json({ error: "one_currency" as const }, 409);
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
+    const places = [
+      // Two currencies here (checked above): dollars are the salary currency's.
+      { placeId: b.fromPlaceId, currency: now.settings.salaryCurrency },
+      { placeId: b.toPlaceId, currency: now.settings.spendingCurrency },
+    ];
+    if (!(await placesUsable(c, places))) {
+      return c.json({ error: "invalid" as const, problems: ["place"] }, 400);
+    }
     const split = conversionSplit(await entriesOf(c, now), b.givenMinor, b.receivedMinor);
     if (!split.rate) return c.json({ error: "invalid" as const, problems: ["rate"] }, 400);
     const at = new Date();
@@ -60,6 +72,8 @@ export const conversions = new Hono<SignedIn>()
       await db.batch([
         db.insert(conversion).values({
           ...b,
+          fromPlaceId: b.fromPlaceId ?? null,
+          toPlaceId: b.toPlaceId ?? null,
           userId,
           cycleId: now.cycle.id,
           rate: split.rate,

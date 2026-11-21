@@ -5,6 +5,7 @@ import { checkPrepayment, savingsTotal } from "../money";
 import { current } from "./current";
 import { commitment, commitmentPayment, prepayment, savingsMovement } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
 
@@ -77,6 +78,8 @@ const newPrepayment = z.object({
   /** For the prepayment saving: the normal monthly price and the months covered (both or neither). */
   normalMonthlyMinor: z.number().int().nullish(),
   months: z.number().int().nullish(),
+  /** The place the money was paid out of (SAB-52); null moves no place. */
+  placeId,
 });
 
 /**
@@ -94,7 +97,8 @@ export const prepayments = new Hono<SignedIn>()
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const currency = b.currency ?? now.settings.spendingCurrency;
     const savingsMinor = savingsTotal(await savingsLines(c), currency);
-    const problems = checkPrepayment({ ...b, currency }, { ...now.currencies, savingsMinor });
+    const problems: string[] = checkPrepayment({ ...b, currency }, { ...now.currencies, savingsMinor });
+    if (!(await placesUsable(c, [{ placeId: b.placeId, currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.batch([
@@ -117,6 +121,8 @@ export const prepayments = new Hono<SignedIn>()
           kind: "prepayment",
           movedOn: now.today,
           prepaymentId: b.id,
+          // The money left its place: it paid for the prepayment (spec 6).
+          placeId: b.placeId ?? null,
         }),
         db.insert(commitment).values({
           id: b.commitmentId,

@@ -24,13 +24,19 @@ import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice"
 import { dayLabel, entriesOf, type Ready, type SavingsLine, useToday } from "./data";
 import { newId } from "./id";
 import type { PeopleActions } from "./People";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
 import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
 
-const addMove = (id: string, kind: "put_in" | "take_out", amountMinor: number, currency: string) =>
-  ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor, currency } }));
+const addMove = (
+  id: string,
+  kind: "put_in" | "take_out",
+  amountMinor: number,
+  currency: string,
+  placeId: string | null,
+) => ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor, currency, placeId } }));
 const removeMove = (id: string) => ok(api.api["savings-movements"][":id"].$delete({ param: { id } }));
 const addIncome = (
   id: string,
@@ -38,7 +44,8 @@ const addIncome = (
   amountMinor: number,
   toSavingsMinor: number,
   currency: string,
-) => ok(api.api.incomes.$post({ json: { id, kind, amountMinor, toSavingsMinor, currency } }));
+  placeId: string | null,
+) => ok(api.api.incomes.$post({ json: { id, kind, amountMinor, toSavingsMinor, currency, placeId } }));
 
 /** What Add income records (spec 5): extra income, loan money received as cash (item 19), borrowed and paid back to me (item 20). */
 type IncomeKindAdded = (typeof ADD_INCOME_KINDS)[number];
@@ -53,6 +60,7 @@ const addPrepayment = (json: {
   paybackMinor: number;
   normalMonthlyMinor: number | null;
   months: number | null;
+  placeId: string | null;
 }) => ok(api.api.prepayments.$post({ json }));
 
 /** What a prepayment saved against paying monthly: "Saved Rs 12,000 vs paying monthly". */
@@ -66,9 +74,15 @@ const removePrepayment = (id: string) => ok(api.api.prepayments[":id"].$delete({
 /** Put in, Take out and Add income; each success shows a toast with Undo (spec 5). */
 export function savingsActions({ done }: Toaster) {
   return {
-    move: (kind: "put_in" | "take_out", amountMinor: number, currency: string) => {
+    /** Put in names the place the money went into (spec 6); a take-out stays where it is. */
+    move: (
+      kind: "put_in" | "take_out",
+      amountMinor: number,
+      currency: string,
+      placeId: string | null = null,
+    ) => {
       const id = newId();
-      return addMove(id, kind, amountMinor, currency).then((ok) =>
+      return addMove(id, kind, amountMinor, currency, placeId).then((ok) =>
         done(ok, {
           text:
             kind === "take_out"
@@ -86,6 +100,8 @@ export function savingsActions({ done }: Toaster) {
       paybackMinor: number;
       normalMonthlyMinor: number | null;
       months: number | null;
+      /** The place it was paid out of (spec 6). */
+      placeId: string | null;
     }) => {
       const id = newId();
       const { name } = p;
@@ -93,9 +109,15 @@ export function savingsActions({ done }: Toaster) {
         done(ok, { text: `${name} prepayment saved`, undo: () => removePrepayment(id) }),
       );
     },
-    addIncome: (kind: IncomeKindAdded, amountMinor: number, toSavingsMinor: number, currency: string) => {
+    addIncome: (
+      kind: IncomeKindAdded,
+      amountMinor: number,
+      toSavingsMinor: number,
+      currency: string,
+      placeId: string | null = null,
+    ) => {
       const id = newId();
-      return addIncome(id, kind, amountMinor, toSavingsMinor, currency).then((ok) =>
+      return addIncome(id, kind, amountMinor, toSavingsMinor, currency, placeId).then((ok) =>
         done(ok, {
           text: kind === "loan" ? "Loan money added" : "Income added",
           undo: () => removeIncome(id),
@@ -274,6 +296,8 @@ export function SavingsPage({ data }: { data: Ready }) {
  * Take out asks "For a prepayment?" (item 14): Yes, pay back takes the money out
  * of savings for something paid up front (free money stays the same) and sets
  * aside a payback each cycle, this one at once.
+ * Put in names the place the money went into, a prepayment the place it was paid
+ * from (spec 6); money taken out into free money stays where it is.
  */
 export function SavingsMovePage({
   data,
@@ -301,6 +325,7 @@ export function SavingsMovePage({
   const paybackMinor = parseAmount(paybackText, cur) ?? 0;
   const takeOut = kind === "take_out";
   const forPrepayment = takeOut && prepay;
+  const place = usePlaceChoice(data.places, cur, takeOut ? "out" : "in", takeOut && !prepay);
   const cycles =
     paybackMinor > 0 && paybackMinor <= amountMinor ? paybackCycles(amountMinor, paybackMinor) : 0;
   const monthsShown = monthsText ?? (cycles > 0 ? String(cycles) : "");
@@ -340,6 +365,7 @@ export function SavingsMovePage({
   async function save() {
     setBusy(true);
     setFailed(false);
+    place.remember();
     const ok = forPrepayment
       ? await actions.prepay({
           name: name.trim(),
@@ -348,8 +374,9 @@ export function SavingsMovePage({
           paybackMinor,
           normalMonthlyMinor,
           months,
+          placeId: place.placeId,
         })
-      : await actions.move(kind, amountMinor, cur);
+      : await actions.move(kind, amountMinor, cur, place.placeId);
     setBusy(false);
     if (ok) window.location.hash = "Savings";
     else setFailed(true);
@@ -450,6 +477,7 @@ export function SavingsMovePage({
             )}
           </>
         )}
+        <PlaceChoice label={forPrepayment ? "Paid from" : "Received in"} choice={place} />
         {forPrepayment ? (
           <p className="small" data-testid="savings-after">
             Free money stays the same, less this cycle's payback. You can spend today after this:{" "}
@@ -479,6 +507,7 @@ export function SavingsMovePage({
  * money, and the new allowance before saving. Kinds: extra income and loan
  * money received as cash (item 19); borrowed from a person (with when it is paid
  * back) and paid back to me (on money lent), saved with their person (item 20).
+ * Each names the place the money landed in (spec 6), starting on the one used last.
  */
 export function AddIncomePage({
   data,
@@ -511,6 +540,7 @@ export function AddIncomePage({
   const [failed, setFailed] = useState(false);
   const amountMinor = parseAmount(text, cur) ?? 0;
   const toSavingsMinor = parseAmount(savedText, cur) ?? 0;
+  const place = usePlaceChoice(data.places, cur, "in");
   const problems: string[] = checkIncome(
     { kind, currency: cur, amountMinor, toSavingsMinor },
     currencyContext(data),
@@ -563,6 +593,7 @@ export function AddIncomePage({
   async function save() {
     setBusy(true);
     setFailed(false);
+    place.remember();
     const ok =
       kind === "borrowed"
         ? await people.add({
@@ -572,10 +603,11 @@ export function AddIncomePage({
             amountMinor,
             toSavingsMinor,
             payback,
+            placeId: place.placeId,
           })
         : kind === "paid_back" && who
-          ? await people.gotBack(who, amountMinor, toSavingsMinor)
-          : await actions.addIncome(kind, amountMinor, toSavingsMinor, cur);
+          ? await people.gotBack(who, amountMinor, toSavingsMinor, place.placeId)
+          : await actions.addIncome(kind, amountMinor, toSavingsMinor, cur, place.placeId);
     setBusy(false);
     if (ok) window.location.hash = kind === "borrowed" || kind === "paid_back" ? "People" : "Money";
     else setFailed(true);
@@ -659,6 +691,7 @@ export function AddIncomePage({
             To free money: <b>{formatMoney(Math.max(0, amountMinor - toSavingsMinor), cur)}</b>
           </p>
         )}
+        <PlaceChoice label="Received in" choice={place} />
         {kind === "borrowed" && (
           <label className="field">
             Pay back on
