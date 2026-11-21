@@ -16,6 +16,7 @@ import {
   refusedChanges,
   runPass,
   SAFE_GIT,
+  tidyTouches,
   triageCommand,
   // @ts-expect-error plain JavaScript script, no types
 } from "../../scripts/feedback-auto-core.mjs";
@@ -62,6 +63,18 @@ describe("the triage decision", () => {
     ).toEqual([]);
   });
 
+  it("takes the map's own touches words, which can have spaces (live check SAB-62)", () => {
+    expect(checkDecision(decision({ touches: "salary day, feedback job, worker cpu" }))).toEqual([]);
+    expect(checkDecision(decision({ touches: "settings, time zone" }))).toEqual([]);
+    expect(checkDecision(decision({ touches: "wtv.sessions" }))).toEqual([]);
+  });
+
+  it("tidies touches before the check: case, spaces, commas", () => {
+    expect(tidyTouches("Settings,  Time Zone ")).toBe("settings, time zone");
+    expect(tidyTouches(" salary day ,today")).toBe("salary day, today");
+    expect(tidyTouches(7)).toBe(7);
+  });
+
   it("refuses the wrong shape", () => {
     for (const bad of [
       null,
@@ -78,6 +91,10 @@ describe("the triage decision", () => {
       decision({ title: "" }),
       decision({ title: "a\nb" }),
       decision({ touches: "everything, all of it, and more, plus" }),
+      decision({ touches: "settings, time  zone" }),
+      decision({ touches: "settings,\ntime zone" }),
+      decision({ touches: "a; rm -rf" }),
+      decision({ touches: "a very long touches word that goes past thirty" }),
       decision({ action: "build", commit: "" }),
       decision({ action: "build", commit: "chore: release 9.9.9" }),
       decision({ action: "build", commit: "fix: x\n\nCo-Authored-By: someone" }),

@@ -182,7 +182,8 @@ export const DECISION_SCHEMA = {
     },
     touches: {
       type: "string",
-      description: 'For "build" and "plan": 1-3 short words, like "feedback, settings".',
+      description:
+        'For "build" and "plan": 1-3 short words, comma-separated, reusing the map\'s own Touches words, like "feedback, salary day".',
     },
     commit: {
       type: "string",
@@ -198,7 +199,18 @@ export const DECISION_SCHEMA = {
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/;
 const ONE_LINE = /[\r\n\u0000-\u001f\u007f]/;
 const TICKET = /^SAB-\d{1,4}$/;
-const TOUCHES = /^[a-z][a-z0-9.-]{0,30}(, [a-z][a-z0-9.-]{0,30}){0,2}$/;
+// One to three words, each up to 30 characters and up to three plain words ("salary day", like the map's own).
+const TOUCH = "(?=[a-z0-9. -]{1,30}(,|$))[a-z][a-z0-9.-]*( [a-z0-9.-]+){0,2}";
+const TOUCHES = new RegExp(`^${TOUCH}(, ${TOUCH}){0,2}$`);
+
+/** Lower case, one space after each comma, none around: the map's Touches spelling. Non-text is left as it is. */
+export function tidyTouches(t) {
+  if (typeof t !== "string") return t;
+  return t
+    .split(",")
+    .map((w) => w.trim().toLowerCase().replace(/ {2,}/g, " "))
+    .join(", ");
+}
 const COMMIT = /^(fix|feat)(\([a-z0-9-]{1,20}\))?: [^\r\n]{3,72}$/;
 
 /** Checks a triage answer against the fixed shape. Returns the problems, or none. */
@@ -223,7 +235,10 @@ export function checkDecision(d) {
     if (!t || [...t].length > 80 || ONE_LINE.test(t)) p.push("title is one line, at most 80 characters");
     if (!d.question.trim() || [...d.question].length > 4000 || CONTROL.test(d.question))
       p.push("question is plain text, at most 4000 characters");
-    if (!TOUCHES.test(d.touches)) p.push('touches is 1-3 short words, like "feedback, settings"');
+    if (!TOUCHES.test(d.touches))
+      p.push(
+        `touches is 1-3 short words, like "feedback, salary day" (got ${JSON.stringify(d.touches.slice(0, 60))})`,
+      );
   }
   if (d.action === "later") {
     const q = d.question.trim();
@@ -788,6 +803,7 @@ async function handleOne(deps, id) {
     return failed(deps, id, t.why, t.line);
   }
   const decision = t.out.structured_output;
+  if (decision && typeof decision === "object") decision.touches = tidyTouches(decision.touches);
   const problems = checkDecision(decision);
   if (!problems.length && decision.action === "link") {
     const f = ticketFile(deps.mapDir, decision.ticket);
