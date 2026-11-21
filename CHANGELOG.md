@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.11...setaside-v0.1.12) (2026-11-21)
+
+
+### Features
+
+* savings goals with a target, a date and a fair share each salary day ([#106](https://github.com/BimsaraGamage/setaside/issues/106)) ([7ce4a8f](https://github.com/BimsaraGamage/setaside/commit/7ce4a8fddf517ba5a3efbd0247abbfd53da60889)), closes [#105](https://github.com/BimsaraGamage/setaside/issues/105)
+
 ## [0.1.11](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.10...setaside-v0.1.11) (2026-11-21)
 
 
