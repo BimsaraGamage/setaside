@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.5...setaside-v0.1.6) (2026-11-21)
+
+
+### Features
+
+* send feedback with the last steps in the app and a screenshot ([#85](https://github.com/BimsaraGamage/setaside/issues/85)) ([579fc84](https://github.com/BimsaraGamage/setaside/commit/579fc843d5399fa7486e5a34afc916ddf51c959e))
+
 ## [0.1.5](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.4...setaside-v0.1.5) (2026-11-21)
 
 
