@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type CommitmentState,
   cardBalanceMinor,
+  currentZoneName,
+  currentZoneNames,
   type DayChoiceEntry,
   dayLabel,
   formatMoney,
@@ -16,6 +18,7 @@ import {
 import { api } from "./api";
 
 export {
+  currentZoneName,
   dayLabel,
   entriesOf,
   inDaysLabel,
@@ -407,10 +410,12 @@ export function useTimeOfDay(timeZone: string): string {
 
 /** The phone's own time zone, as a name the app lists. */
 export function phoneTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return currentZoneName(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
 }
 
+/** The zones to pick from, by current name; `current` (shown as its current name) is always in it. */
 export function timeZones(current: string): string[] {
-  const all = Intl.supportedValuesOf("timeZone");
-  return all.includes(current) ? all : [current, ...all];
+  const all = currentZoneNames(Intl.supportedValuesOf("timeZone"));
+  const now = currentZoneName(current);
+  return all.includes(now) ? all : [now, ...all];
 }

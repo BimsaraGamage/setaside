@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { todayIn, zoneToAsk } from "../money";
 import { api } from "./api";
-import { dayLabel, phoneTimeZone } from "./data";
+import { currentZoneName, dayLabel, phoneTimeZone } from "./data";
 import type { Toaster } from "./toast";
 
 /** Saves the answer to the switch question (item 22); reloads the numbers and shows a toast. */
@@ -50,7 +50,12 @@ export function ZoneSwitchCard({
   actions: ZoneActions;
 }) {
   const phone = usePhoneTimeZone();
-  const zone = zoneToAsk({ home, phone, asked });
+  // Old and current names of one zone ("Asia/Calcutta", "Asia/Kolkata") are the same zone: no question.
+  const zone = zoneToAsk({
+    home: currentZoneName(home),
+    phone,
+    asked: asked === null ? null : currentZoneName(asked),
+  });
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   if (!zone) return null;

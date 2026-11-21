@@ -3,7 +3,7 @@ import { DUE_SOON_DAYS_MAX, parseRate, type ReminderSettings, reminderTimes } fr
 import { api } from "./api";
 import { DeleteAccount } from "./DeleteAccount";
 import type { Current } from "./data";
-import { phoneTimeZone, timeZones } from "./data";
+import { currentZoneName, phoneTimeZone, timeZones } from "./data";
 import { type Download, download } from "./download";
 import { openFeedback } from "./Feedback";
 import { newId } from "./id";
@@ -288,7 +288,7 @@ export function Settings({
         <label className="li">
           <span className="grow">Home time zone</span>
           <select
-            value={settings.homeTimeZone}
+            value={currentZoneName(settings.homeTimeZone)}
             // Item 22: a zone picked here by hand is the answer for the phone's zone too.
             onChange={(e) => save({ homeTimeZone: e.target.value, askedTimeZone: phoneTimeZone() })}
             aria-label="Home time zone"

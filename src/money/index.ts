@@ -27,3 +27,4 @@ export * from "./speed";
 export * from "./spend";
 export * from "./spends-csv";
 export * from "./unsent";
+export * from "./zone-names";
