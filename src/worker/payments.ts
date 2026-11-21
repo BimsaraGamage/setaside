@@ -52,7 +52,7 @@ const placesOf = (rows: PlaceRow[]) => rows.map((p) => ({ ...p, archived: bool(p
 const OWNER = `select cycle_id as cycleId, state, currency, kind from commitment where user_id = ?1 and id = ?2`;
 
 /** The commitment of the signed-in user's payment `?2`. */
-const OWNER_OF_PAYMENT = `select k.cycle_id as cycleId, k.state, k.currency, k.kind
+const OWNER_OF_PAYMENT = `select k.id, k.cycle_id as cycleId, k.state, k.currency, k.kind
   from commitment k join commitment_payment cp on cp.commitment_id = k.id
   where k.user_id = ?1 and cp.user_id = ?1 and cp.id = ?2`;
 
@@ -67,6 +67,8 @@ interface PaymentRow {
 }
 
 interface OwnerRow {
+  /** Only the owner of a payment (`OWNER_OF_PAYMENT`) has it. */
+  id?: string;
   cycleId: string;
   state: string;
   currency: string;
@@ -210,6 +212,20 @@ export const payments = new Hono<SignedIn>()
     const owner = owners[0];
     if (!now || !owner) return c.json({ error: "not_found" as const }, 404);
     if (owner.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
-    await db.delete(commitmentPayment).where(and(mine(commitmentPayment), eq(commitmentPayment.id, id)));
+    const remove = db
+      .delete(commitmentPayment)
+      .where(and(mine(commitmentPayment), eq(commitmentPayment.id, id)));
+    // A finished one with a payment taken away is open again, so what is still to pay is set aside (SAB-57).
+    if (owner.state === "finished" && owner.id) {
+      await db.batch([
+        remove,
+        db
+          .update(commitment)
+          .set({ state: "open" })
+          .where(and(mine(commitment), eq(commitment.id, owner.id))),
+      ]);
+    } else {
+      await remove;
+    }
     return c.json({ ok: true as const });
   });

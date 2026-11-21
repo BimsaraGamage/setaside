@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.8](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.7...setaside-v0.1.8) (2026-11-21)
+
+
+### Features
+
+* pick another screen for the feedback screenshot ([#92](https://github.com/BimsaraGamage/setaside/issues/92)) ([b07597e](https://github.com/BimsaraGamage/setaside/commit/b07597e7516fffb1bee793583fd3412b4daf922d))
+
+## [0.1.7](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.6...setaside-v0.1.7) (2026-11-21)
+
+
+### Bug Fixes
+
+* deleting a payment of a finished commitment opens it again ([#89](https://github.com/BimsaraGamage/setaside/issues/89)) ([ffb9a35](https://github.com/BimsaraGamage/setaside/commit/ffb9a3538e2ee44703128f7c3b805fa51f46e7a3)), closes [#88](https://github.com/BimsaraGamage/setaside/issues/88)
+
 ## [0.1.6](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.5...setaside-v0.1.6) (2026-11-21)
 
 

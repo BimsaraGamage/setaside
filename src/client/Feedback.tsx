@@ -121,9 +121,32 @@ function contextOf(unsent: number, from: FeedbackFrom) {
   };
 }
 
+/** What the user has put in the sheet so far: kept while they go to another screen for its screenshot. */
+type Draft = {
+  id: string;
+  kind: Kind;
+  text: string;
+  withScreenshot: boolean;
+  picture: string | null;
+};
+
+const newDraft = (): Draft => ({
+  id: newId(),
+  kind: "problem",
+  text: "",
+  withScreenshot: true,
+  picture: null,
+});
+
+type HostState =
+  | { at: "sheet"; from: FeedbackFrom; shot: Promise<string | null>; draft: Draft }
+  | { at: "picking"; from: FeedbackFrom; draft: Draft };
+
 /**
  * The feedback sheet's home in the app: opened by `openFeedback` from anywhere. The screenshot is taken as it
- * opens, of the screen behind it.
+ * opens, of the screen behind it. **Pick another screen** closes the sheet and leaves a small **Capture this
+ * screen** bar over the app; the user goes to the screen that matters and taps it, and the sheet comes back with
+ * that screen's screenshot and what was already typed (ticket SAB-58).
  */
 export function FeedbackHost({
   today,
@@ -134,25 +157,50 @@ export function FeedbackHost({
   unsent: number;
   onSent: () => void;
 }) {
-  const [open, setOpen] = useState<{ from: FeedbackFrom; shot: Promise<string | null> } | null>(null);
+  const [state, setState] = useState<HostState | null>(null);
+  const now = useRef(state);
+  now.current = state;
   useEffect(() => {
     const on = (e: Event) => {
+      const s = now.current;
+      if (s?.at === "sheet") return;
+      // While picking, opening it again (e.g. Settings → Send feedback) takes this screen and keeps the draft.
+      const shot = takeScreenshot();
       const from = (e as CustomEvent<FeedbackFrom>).detail;
-      setOpen((o) => o ?? { from, shot: takeScreenshot() });
+      setState(s ? { ...s, at: "sheet", shot } : { at: "sheet", from, shot, draft: newDraft() });
     };
     window.addEventListener(OPEN, on);
     return () => window.removeEventListener(OPEN, on);
   }, []);
-  if (!open) return null;
+  if (!state) return null;
+  if (state.at === "picking") {
+    return (
+      <section className="feedback-pick" data-feedback aria-label="Feedback screenshot">
+        <span className="grow small">Go to the screen with the problem</span>
+        <button type="button" className="btn" onClick={() => setState(null)}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn pri"
+          onClick={() => setState({ ...state, at: "sheet", shot: takeScreenshot() })}
+        >
+          Capture this screen
+        </button>
+      </section>
+    );
+  }
   return (
     <FeedbackSheet
-      from={open.from}
-      shot={open.shot}
+      from={state.from}
+      shot={state.shot}
+      draft={state.draft}
       today={today}
       unsent={unsent}
-      onClose={() => setOpen(null)}
+      onClose={() => setState(null)}
+      onPick={(draft) => setState({ at: "picking", from: state.from, draft })}
       onSent={() => {
-        setOpen(null);
+        setState(null);
         onSent();
       }}
     />
@@ -177,28 +225,31 @@ function useOnline() {
 function FeedbackSheet({
   from,
   shot,
+  draft,
   today,
   unsent,
   onClose,
+  onPick,
   onSent,
 }: {
   from: FeedbackFrom;
   shot: Promise<string | null>;
+  draft: Draft;
   today: Current | null;
   unsent: number;
   onClose: () => void;
+  onPick: (draft: Draft) => void;
   onSent: () => void;
 }) {
-  const [kind, setKind] = useState<Kind>("problem");
-  const [text, setText] = useState("");
+  const [kind, setKind] = useState<Kind>(draft.kind);
+  const [text, setText] = useState(draft.text);
   const [screenshot, setScreenshot] = useState<string | null | "taking">("taking");
-  const [withScreenshot, setWithScreenshot] = useState(true);
-  const [picture, setPicture] = useState<string | null>(null);
+  const [withScreenshot, setWithScreenshot] = useState(draft.withScreenshot);
+  const [picture, setPicture] = useState<string | null>(draft.picture);
   const [pictureNote, setPictureNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const online = useOnline();
-  const id = useRef(newId());
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -224,7 +275,7 @@ function FeedbackSheet({
     const res = await api.api.feedback
       .$post({
         json: {
-          id: id.current,
+          id: draft.id,
           kind,
           text,
           context: contextOf(unsent, from),
@@ -318,6 +369,13 @@ function FeedbackSheet({
         {withScreenshot && screenshot && screenshot !== "taking" && (
           <img className="feedback-shot" src={screenshot} alt="Screenshot of the screen behind" />
         )}
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => onPick({ id: draft.id, kind, text, withScreenshot: true, picture })}
+        >
+          Pick another screen
+        </button>
 
         {picture ? (
           <div className="row">

@@ -204,6 +204,18 @@ describe("paying a commitment (item 6, spec 3)", () => {
     expect((await rentOf(cookie)).payments).toHaveLength(1);
   });
 
+  it("deleting a payment of a finished commitment reopens it, so it is set aside again (SAB-57)", async () => {
+    const { cookie, rentId } = await setUp();
+    const p = payment(3_600_000, { finish: true });
+    await send("POST", `/api/commitments/${rentId}/payments`, p, cookie);
+    expect((await rentOf(cookie)).state).toBe("finished");
+    expect((await send("DELETE", `/api/payments/${p.id}`, undefined, cookie)).status).toBe(200);
+    expect(await rentOf(cookie)).toMatchObject({ state: "open", payments: [] });
+    // Undo: the payment back, finished again in the same write.
+    expect((await send("POST", `/api/commitments/${rentId}/payments`, p, cookie)).status).toBe(201);
+    expect(await rentOf(cookie)).toMatchObject({ state: "finished", payments: [{ id: p.id }] });
+  });
+
   it("deleting a commitment deletes its payments", async () => {
     const { cookie, rentId } = await setUp();
     const p = payment(1_000_000);
