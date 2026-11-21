@@ -175,16 +175,12 @@ export function commitmentActions({ done }: Toaster, box: Outbox) {
         return done(true, { text: "Payment deleted", undo: () => queue(unsent).then(() => true) });
       }
       const ok = await removePayment(old.id);
+      const finished = c.state === "finished";
       return done(ok, {
-        text: "Payment deleted",
-        // A finished one takes no payments: reopen, add it back, finish again.
-        undo: () =>
-          c.state === "finished"
-            ? all([
-                () => change(c.id, { state: "open" }),
-                () => addPayment(c.id, old.id, paymentDraftOf(old), true),
-              ])
-            : addPayment(c.id, old.id, paymentDraftOf(old)),
+        // The server reopens a finished one, so it is set aside again (SAB-57).
+        text: finished ? `Payment deleted · ${c.name} open again` : "Payment deleted",
+        // Undo: add it back, and finish it again in the same write.
+        undo: () => addPayment(c.id, old.id, paymentDraftOf(old), finished),
       });
     },
     /** Sends a payment that needs a look to an open commitment instead (item 24). */

@@ -72,3 +72,40 @@ test("pay a commitment in parts, mark it finished, reopen it", async ({ page }) 
   await expect(page.getByRole("status")).toContainText("Commitment deleted");
   await expect(row).toHaveCount(0);
 });
+
+// SAB-57 (feedback): deleting the payment of a finished one opens it again, so it is set aside again.
+test("deleting the payment of a finished commitment opens it again", async ({ page }) => {
+  const name = `Mother ${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const main = page.getByRole("navigation", { name: "Main" });
+  await signInToToday(page);
+
+  await main.getByRole("link", { name: "Plan" }).click();
+  await page.getByRole("link", { name: "+ Add" }).click();
+  await page.getByLabel("Name").fill(name);
+  await page.getByLabel("Amount (LKR)").fill("120");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toContainText("Commitment saved");
+  const row = page.getByRole("link", { name: new RegExp(`^.*${name}`) });
+
+  // Paid in full: finished, off Next up.
+  await row.click();
+  await page.getByRole("link", { name: "Pay", exact: true }).click();
+  await page.getByRole("button", { name: "Pay", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(`${name} paid · finished`);
+  await expect(page.getByRole("button", { name: "Reopen" })).toBeVisible();
+
+  // Delete that payment: open again, Rs 120 still to pay and back on Next up.
+  await page.getByRole("link", { name: /Rs 120/ }).click();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("status")).toContainText(`Payment deleted · ${name} open again`);
+  await expect(page.getByTestId("still-to-pay")).toContainText("Paid Rs 0 · still to pay Rs 120");
+  await expect(page.getByRole("button", { name: "Mark finished" })).toBeVisible();
+  await page.getByRole("link", { name: "← Back" }).click();
+  await main.getByRole("link", { name: "Today" }).click();
+  const nextUp = page.getByRole("region", { name: "Next up · already set aside" });
+  await expect(nextUp.locator(".li", { hasText: name })).toContainText(/Rs 120$/);
+
+  // Undo puts the payment back and finishes it again.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(nextUp.getByText(name)).toHaveCount(0);
+});
