@@ -40,7 +40,8 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - card spends and card balances, instalment plans with their progress page, money lent to or borrowed from people (9);
 - places: where the money is, with what can be spent from each (6, Where my money is);
 - every screen in section 10, including past cycles;
-- offline spend entry (11), reminders (12), login (13), data download and delete account (14).
+- offline spend entry (11), reminders (12), login (13), data download and delete account (14);
+- feedback with a screenshot and the last steps in the app, for fixing (14, Feedback).
 
 **Users.** v0.1 serves one person, but is ready for many: real login and every record tied to one account from day one. Only addresses on the **allowed-email list** can make an account.
 
@@ -318,7 +319,7 @@ Rows for Spends, Savings, Where my money is, Change dollars, Add income, each ca
 
 ### Settings
 
-Salary and spending currency, counting rate, usual pay day, home time zone; **Reminders** (section 12); passkeys + Add, Google backup, Sign out, Sign out everywhere; **Download my data**; **Delete account**.
+Salary and spending currency, counting rate, usual pay day, home time zone; **Reminders** (section 12); passkeys + Add, Google backup, Sign out, Sign out everywhere; **Send feedback** (section 14); **Download my data**; **Delete account**.
 
 ### Salary day and first use
 
@@ -378,6 +379,18 @@ See [ADR 0004](adr/0004-passkey-and-google-login-no-email.md).
   - Settings → **Delete account** → "Delete my account…" opens the warning, "Download my data first" (the JSON file above), a box to type DELETE (exactly, capitals) and "Delete my account", which stays off until then; "Keep my account" closes it. The server checks the word too.
   - The user row is deleted and every table's owner column goes with it (cascade), sessions included, so every device is signed out at once. Offline it says "Not deleted" and nothing changes.
   - The phone also drops its saved copy, its unsent items and this device's alert subscription, asks the browser to forget the account's passkeys where it can (others stay in the phone's password manager until removed by hand), and shows the sign-in page with "Your account and all its data were deleted." Signing in again with the same Google address starts a new, empty account.
+
+### Feedback
+
+**Feedback** is how the user tells whoever keeps the app running (a person or an AI agent) that something is wrong, or asks for something, with enough of what happened for it to be fixed without asking back.
+
+- **Send feedback** opens a sheet from Settings → **Feedback**, from **Report this** on a toast saying something failed, and from **Report this** on Needs a look (section 11). The sheet: Something's wrong / Idea, a text box ("What went wrong or what you want", needed), **Include screenshot** (on) with a preview of the screen behind the sheet, **Add a picture** from the gallery (for something outside the app), and "Also sends: last steps in the app, app version, this device." Send → "Thanks, saved".
+- **Screenshot**: taken as the sheet opens, of the visible screen without the sheet (SnapDOM, loaded only then), as WebP (JPEG where the browser makes none), made smaller until it is at most 300 KB. An added picture is made small the same way. Each is kept in the feedback row; nothing goes to another service.
+- **Also sent**: the **trail**, app version and build, browser and screen size, the phone's time zone, online, unsent count, the current screen, where the sheet was opened from, and Today's data as the phone showed it.
+- **Trail**: the last 100 steps of this visit, in memory only: screens opened, buttons and links pressed (by their label), API calls (method, path, answer, time taken), app errors (message and stack), the connection going and coming back. Nothing typed into a field.
+- **Offline**: Send stays off with "Needs a connection, try again." Feedback never joins the unsent list.
+- **Reading it**: `npm run feedback` (`--local` for the dev database, `--all` for handled ones too) writes each new one to `feedback-inbox/<id>/` (never committed): `note.md`, `context.json`, `trail.json`, `today.json` and the pictures. `npm run feedback -- --done <id>` marks one handled. A real problem then becomes an issue (without the user's money data: the repo is public).
+- Feedback is the user's own data: in **Download my data** (the text, trail and details; the pictures only as `screenshotKept` / `pictureKept`) and removed with **Delete account**.
 
 ## 15. Stack and architecture
 
@@ -447,7 +460,7 @@ See [ADR 0001](adr/0001-browser-app-thin-api-one-worker.md), [ADR 0002](adr/0002
 
 ## 19. Not in v0.1
 
-- **Public sign-up.** Before it: a privacy note, and a Turnstile bot check on sign-up.
+- **Public sign-up.** Before it: a privacy note (including what feedback sends: section 14, Feedback), and a Turnstile bot check on sign-up.
 - Automatic spend capture (bank SMS, email, bank API) and statement file import.
 - Native mobile apps.
 - Cash-flow or bank-balance projection (what a place will hold on a later day); bank import; a place per bill, pot or saving. Places show today's typed balances only (section 6).

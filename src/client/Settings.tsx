@@ -5,6 +5,7 @@ import { DeleteAccount } from "./DeleteAccount";
 import type { Current } from "./data";
 import { phoneTimeZone, timeZones } from "./data";
 import { type Download, download } from "./download";
+import { openFeedback } from "./Feedback";
 import { newId } from "./id";
 import { type PushState, type TurnOnProblem, usePush } from "./push";
 import { SignInSettings } from "./SignInSettings";
@@ -305,6 +306,15 @@ export function Settings({
         )}
       </section>
       <RemindersSettings reminders={settings.reminders} save={(reminders) => save({ reminders })} />
+      <section className="card" aria-labelledby="feedback-settings-h">
+        <h3 id="feedback-settings-h">Feedback</h3>
+        <button type="button" className="li tap" onClick={() => openFeedback("settings")}>
+          <span className="grow">
+            Send feedback
+            <span className="tiny mute block">Something wrong, or an idea</span>
+          </span>
+        </button>
+      </section>
       <YourData />
       <SignInSettings onSignedOut={onSignedOut} />
       <DeleteAccount userId={userId} onDeleted={onSignedOut} />

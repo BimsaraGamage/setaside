@@ -8,6 +8,7 @@ import { conversions } from "./conversions";
 import { dayChoices } from "./day-choices";
 import { deleteAccount } from "./delete-account";
 import { dataExport } from "./export";
+import { feedbackRoutes } from "./feedback";
 import { firstUse } from "./first-use";
 import { past } from "./past";
 import { payments } from "./payments";
@@ -48,6 +49,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", past)
   .route("/", push)
   .route("/", dataExport)
+  .route("/", feedbackRoutes)
   .route("/", deleteAccount)
   .route("/", salaryDay);
 

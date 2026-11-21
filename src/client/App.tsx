@@ -6,6 +6,7 @@ import { ChangeDollarsPage, conversionActions } from "./ChangeDollars";
 import { commitmentActions } from "./commitment-actions";
 import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
+import { FeedbackHost, openFeedback } from "./Feedback";
 import { FirstUse } from "./FirstUse";
 import { agoLabel, clearCopy, readCopy } from "./offline-copy";
 import { PastCyclePage, PastList } from "./Past";
@@ -374,8 +375,25 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
               Undo
             </button>
           )}
+          {toast.report && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                openFeedback("toast");
+                toaster.dismiss();
+              }}
+            >
+              Report this
+            </button>
+          )}
         </div>
       )}
+      <FeedbackHost
+        today={served ?? null}
+        unsent={waiting(unsent.state).length}
+        onSent={() => toaster.say("Thanks, saved")}
+      />
     </>
   );
 }

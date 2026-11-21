@@ -128,6 +128,9 @@ export async function seedEveryTable(ownerId: string, endpoint: string) {
     env.DB.prepare(
       "insert into reminder_sent (id, user_id, kind, subject_id, sent_on, created_at, updated_at) values (?, ?, 'due_soon', ?, '2026-11-17', ?, ?)",
     ).bind(crypto.randomUUID(), ownerId, k, now, now),
+    env.DB.prepare(
+      "insert into feedback (id, user_id, kind, text, context, trail, screenshot, created_at, updated_at) values (?, ?, 'problem', 'Today is wrong', '{}', '[]', 'data:image/webp;base64,AAAA', ?, ?)",
+    ).bind(crypto.randomUUID(), ownerId, now, now),
   ]);
 }
 

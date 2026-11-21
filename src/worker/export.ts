@@ -1,4 +1,4 @@
-import { and, asc, eq, getTableColumns, getTableName, is } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, getTableName, is, type SQL, sql } from "drizzle-orm";
 import { type SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { spendsCsv, todayIn } from "../money";
@@ -15,6 +15,9 @@ const LOGIN_TABLES = new Set(["user", "session", "account", "passkey", "verifica
 /** Columns left out of the file besides `userId`: secrets. The push endpoint is a secret URL. */
 const SECRET_COLUMNS: Record<string, string[]> = { push_subscription: ["endpoint", "p256dh", "auth"] };
 
+/** Pictures sent with feedback (ticket SAB-55): not in the file, only whether one is kept (`screenshotKept`). */
+const KEPT_ONLY_COLUMNS: Record<string, string[]> = { feedback: ["screenshot", "picture"] };
+
 /**
  * Every app table with an owner column, found from the schema, so a table added
  * later is in the download without anyone remembering (the server test checks it).
@@ -28,8 +31,15 @@ async function rowsOf(c: Ctx, table: OwnedTable) {
   const { userId: _, ...columns } = getTableColumns(table);
   const name = getTableName(table);
   for (const secret of SECRET_COLUMNS[name] ?? []) delete columns[secret];
+  const marked: Record<string, SQL<boolean>> = {};
+  for (const col of KEPT_ONLY_COLUMNS[name] ?? []) {
+    const column = columns[col];
+    if (!column) continue;
+    delete columns[col];
+    marked[`${col}Kept`] = sql<boolean>`${column} is not null`.mapWith(Boolean);
+  }
   const rows = await c.var.db
-    .select(columns)
+    .select({ ...columns, ...marked })
     .from(table)
     .where(c.var.mine(table))
     .orderBy(...(columns.id ? [asc(columns.id)] : []));

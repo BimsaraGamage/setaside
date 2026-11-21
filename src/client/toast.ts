@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from "react";
 export interface Toast {
   text: string;
   undo?: () => Promise<boolean>;
+  /** Something failed: the toast offers "Report this" (ticket SAB-55). */
+  report?: boolean;
 }
 
 /** The one toast with Undo; every change reloads the numbers, then shows it. */
@@ -30,6 +32,8 @@ export function useToast(reload: () => Promise<void>) {
   return {
     toast,
     done,
+    /** A toast with only text. */
+    say: (text: string) => show({ text }),
     dismiss: () => show(null),
     async undo() {
       if (!toast?.undo) return;
@@ -37,7 +41,7 @@ export function useToast(reload: () => Promise<void>) {
       show(null);
       const ok = await t.undo();
       await reload();
-      if (!ok) show({ text: "Couldn't undo. Check the connection." });
+      if (!ok) show({ text: "Couldn't undo. Check the connection.", report: true });
     },
   };
 }
