@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.10...setaside-v0.1.11) (2026-11-21)
+
+
+### Features
+
+* **feedback:** say why a Sent feedback still waits ([#103](https://github.com/BimsaraGamage/setaside/issues/103)) ([21845e8](https://github.com/BimsaraGamage/setaside/commit/21845e855feb4e7fb3869dea16f7c3c399332e6f))
+
 ## [0.1.10](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.9...setaside-v0.1.10) (2026-11-21)
 
 
