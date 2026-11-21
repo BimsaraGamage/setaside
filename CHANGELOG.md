@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.7...setaside-v0.1.8) (2026-11-21)
+
+
+### Features
+
+* pick another screen for the feedback screenshot ([#92](https://github.com/BimsaraGamage/setaside/issues/92)) ([b07597e](https://github.com/BimsaraGamage/setaside/commit/b07597e7516fffb1bee793583fd3412b4daf922d))
+
 ## [0.1.7](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.6...setaside-v0.1.7) (2026-11-21)
 
 
