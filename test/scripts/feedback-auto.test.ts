@@ -348,6 +348,57 @@ describe("a pass", () => {
     expect(calls.said).toContain("Skipped: the 5-hour quota is 80% used.");
   });
 
+  // Ticket SAB-66: a skipped pass tells the waiting ones why, without Claude; a pass that goes ahead clears it.
+  const recordD1 = (rows: { id: string; status: string; waiting?: string | null }[]) => {
+    const sql: string[] = [];
+    return { sql, d1: (q: string) => (sql.push(q), q.startsWith("select") ? rows : []) };
+  };
+  const hex = (t: string) => Buffer.from(t).toString("hex");
+
+  it("notes why new feedback waits when the quota is low or the login has run out", async () => {
+    for (const [why, words, extra] of [
+      ["quota", "Waiting: paused while Claude is busy.", { gate: () => [false, "Skipped: 80% used."] }],
+      ["login", "Waiting: the feedback job needs a fresh Claude login.", { loggedIn: () => false }],
+    ] as const) {
+      const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+      const { sql, d1 } = recordD1([{ id, status: "new" }]);
+      const r = await runPass({ ...deps, ...extra, d1 });
+      expect(r.skipped).toBe(why);
+      expect(calls.claude).toEqual([]);
+      expect(calls.set).toEqual([]);
+      expect(sql).toHaveLength(2);
+      expect(sql[1]).toContain(`waiting = cast(x'${hex(words)}`);
+      expect(sql[1]).toContain(`checked_at = ${Date.UTC(2026, 10, 21, 12)}`);
+      expect(sql[1]).toMatch(/where status = 'new'$/);
+    }
+  });
+
+  it("clears the wait note when a pass goes ahead, and writes nothing when there is none", async () => {
+    const a = fakeDeps([{ id, status: "new" }], decision());
+    const rec = recordD1([{ id, status: "new", waiting: "Waiting: paused while Claude is busy." }]);
+    await runPass({ ...a.deps, d1: rec.d1 });
+    expect(rec.sql[1]).toBe(
+      "update feedback set waiting = null where status = 'new' and waiting is not null",
+    );
+    expect(a.calls.claude).toHaveLength(1);
+
+    const b = fakeDeps([{ id, status: "new" }], decision());
+    const none = recordD1([{ id, status: "new", waiting: null }]);
+    await runPass({ ...b.deps, d1: none.d1 });
+    expect(none.sql.filter((q) => q.includes("waiting ="))).toEqual([]);
+  });
+
+  it("goes on when the wait note can't be written", async () => {
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+    const d1 = (q: string) => {
+      if (q.startsWith("update")) throw new Error("D1 down\nmore");
+      return [{ id, status: "new" }];
+    };
+    const r = await runPass({ ...deps, d1, gate: () => [false, "Skipped."] });
+    expect(r.skipped).toBe("quota");
+    expect(calls.said).toContain("Couldn't note the wait: D1 down");
+  });
+
   it("charts a grilling ticket for a bigger idea and tells the sender", async () => {
     const { deps, calls, mapDir } = fakeDeps([{ id, status: "new" }], decision());
     await runPass(deps);

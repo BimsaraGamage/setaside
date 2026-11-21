@@ -158,12 +158,44 @@ describe("your feedback", () => {
       createdAt: expect.any(Number),
       status: "planned",
       reply: "Planned: Next cycle preview",
+      waiting: null,
+      checkedAt: null,
     });
     expect(JSON.stringify(feedback)).not.toContain("data:image");
     expect(feedback.find((f) => f.id === newer.id)).toMatchObject({
       kind: "idea",
       status: "new",
       reply: null,
+    });
+  });
+
+  // Ticket SAB-66: why a Sent one still waits, as the feedback job wrote it.
+  it("says why a new one waits and when it was last checked, only while it is new", async () => {
+    const me = await signIn("second");
+    const waits = good();
+    const moved = good();
+    await send(waits, me.cookie);
+    await send(moved, me.cookie);
+    await env.DB.prepare("update feedback set waiting = ?, checked_at = ? where id in (?, ?)")
+      .bind(
+        "Waiting: paused while Claude is busy. Checked every 5 minutes.",
+        1_763_768_100_000,
+        waits.id,
+        moved.id,
+      )
+      .run();
+    await env.DB.prepare("update feedback set status = 'seen' where id = ?").bind(moved.id).run();
+
+    const { feedback } = await list(me.cookie);
+    expect(feedback.find((f) => f.id === waits.id)).toMatchObject({
+      status: "new",
+      waiting: "Waiting: paused while Claude is busy. Checked every 5 minutes.",
+      checkedAt: 1_763_768_100_000,
+    });
+    expect(feedback.find((f) => f.id === moved.id)).toMatchObject({
+      status: "seen",
+      waiting: null,
+      checkedAt: null,
     });
   });
 });

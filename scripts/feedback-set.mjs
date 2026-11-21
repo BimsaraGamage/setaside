@@ -28,10 +28,26 @@ export function checkSet({ id, status, reply, ticket }) {
 /** Text as an SQL value that nothing in it can end: its UTF-8 bytes in hex. */
 const sqlText = (t) => `cast(x'${Buffer.from(t, "utf8").toString("hex")}' as text)`;
 
-/** The update for a checked `--set`. A reply or ticket left out stays as it is. */
+/** The update for a checked `--set`. A reply or ticket left out stays as it is; a wait note goes (SAB-66). */
 export function setSql({ id, status, reply, ticket }, now = Date.now()) {
-  const parts = [`status = ${sqlText(status)}`, `updated_at = ${Math.trunc(now)}`];
+  const parts = [`status = ${sqlText(status)}`, `updated_at = ${Math.trunc(now)}`, "waiting = null"];
   if (reply !== undefined) parts.push(`reply = ${sqlText(reply.trim())}`);
   if (ticket !== undefined) parts.push(`ticket = ${sqlText(ticket)}`);
   return `update feedback set ${parts.join(", ")} where id = '${id.toLowerCase()}'`;
+}
+
+/** Why new feedback waits, in plain words for Settings → Your feedback (ticket SAB-66), by why a pass skipped. */
+export const WAIT_WORDS = {
+  quota: "Waiting: paused while Claude is busy. Checked every 5 minutes.",
+  login: "Waiting: the feedback job needs a fresh Claude login.",
+};
+
+/**
+ * The feedback job's note on every new feedback (ticket SAB-66): why it waits and when it last looked; with no
+ * reason, the note cleared (only on rows that have one).
+ */
+export function waitSql(reason, now = Date.now()) {
+  if (reason === null)
+    return "update feedback set waiting = null where status = 'new' and waiting is not null";
+  return `update feedback set waiting = ${sqlText(reason)}, checked_at = ${Math.trunc(now)} where status = 'new'`;
 }

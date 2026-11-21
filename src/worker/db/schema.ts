@@ -813,6 +813,13 @@ export const feedback = sqliteTable(
     reply: text("reply"),
     /** The ticket it became, e.g. `SAB-61`. */
     ticket: text("ticket"),
+    /**
+     * Why a new one still waits (ticket SAB-66), in plain words, e.g. "Waiting: paused while Claude is busy.":
+     * set by the feedback job when a pass skips, cleared when a pass goes ahead or the status changes.
+     */
+    waiting: text("waiting"),
+    /** When the feedback job last looked at it while it waited. */
+    checkedAt: integer("checked_at", { mode: "timestamp_ms" }),
     ...appTimestamps,
   },
   (t) => [index("feedback_user_id_idx").on(t.userId), index("feedback_status_idx").on(t.status, t.createdAt)],
