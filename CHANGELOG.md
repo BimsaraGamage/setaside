@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.10](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.9...setaside-v0.1.10) (2026-11-21)
+
+
+### Bug Fixes
+
+* **feedback:** take touches words with spaces, like the map's own ([#98](https://github.com/BimsaraGamage/setaside/issues/98)) ([00660fd](https://github.com/BimsaraGamage/setaside/commit/00660fd72f5068cdc257d70a5fd87534eff84e4c))
+* keep the Add income kind choice inside the screen on phones ([#102](https://github.com/BimsaraGamage/setaside/issues/102)) ([08472bc](https://github.com/BimsaraGamage/setaside/commit/08472bc8e0a13e654827d20eb53d4422e7e69475))
+* show current city names in the home time zone list ([#100](https://github.com/BimsaraGamage/setaside/issues/100)) ([abcfda4](https://github.com/BimsaraGamage/setaside/commit/abcfda45090f8053d96cb5c3981bfcbc2bf04270))
+
 ## [0.1.9](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.8...setaside-v0.1.9) (2026-11-21)
 
 
