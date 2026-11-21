@@ -496,3 +496,32 @@ textarea {
 .sheet.feedback {
   max-height: 90dvh;
 }
+/* Pick another screen: a small bar at the top (clear of the tabs, the + button and toasts) until the user
+   captures the screen; it is left out of the screenshot (ticket SAB-58). */
+.feedback-pick {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(0.5rem + env(safe-area-inset-top));
+  width: min(30rem, calc(100vw - 2rem));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 0.25rem 1rem rgb(0 0 0 / 0.2);
+}
+.feedback-pick > span {
+  flex-basis: 100%;
+  text-align: center;
+}
+.feedback-pick > .btn {
+  flex: 1;
+}
+.feedback-pick > .btn.pri {
+  flex: 2;
+}
