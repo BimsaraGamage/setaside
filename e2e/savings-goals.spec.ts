@@ -72,7 +72,9 @@ test("make a goal with its first share, see it on Today, Savings and the next cy
   await expect(page.getByTestId("free-money")).toHaveText("Rs 90,000");
 });
 
-test("move a goal's share to savings: its progress grows and it can no longer be deleted", async ({ page }) => {
+test("move a goal's share to savings: its progress grows and it can no longer be deleted", async ({
+  page,
+}) => {
   await signInFreshToToday(page);
   const tabs = page.getByRole("navigation", { name: "Main" });
   await tabs.getByRole("link", { name: "Money" }).click();
