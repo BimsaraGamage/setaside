@@ -37,6 +37,23 @@ Sign in with **Sign in as demo user**: it exists only in local development (and 
 - `migrations/`: D1 SQL migrations (drizzle-kit)
 - `test/money`, `test/server`, `e2e/`: tests
 
+## Feedback
+
+`npm run feedback` reads what people sent from the app (see [docs/spec.md](docs/spec.md), "Feedback"). The **feedback job**
+(`npm run feedback:auto`, `scripts/feedback-auto.mjs`) can also handle new feedback by itself: it sorts each one with a
+read-only Claude run, answers the sender in the app, charts a ticket on the maintainer's planning map, and for a small fix
+builds it on a pushed `fb/<id>` branch (tests first, all checks green). It never opens a PR, merges, deploys or releases.
+
+- **Off by default**: it does nothing unless `SETASIDE_MAP` names the planning map folder.
+- **Kept apart**: feedback text is untrusted. The AI works on copies outside the home folder and can't read
+  home, so it never sees a login or key. Code it wrote runs only in a [bubblewrap](https://github.com/containers/bubblewrap)
+  sandbox (`scripts/feedback-check.mjs`: no network, no home). A fix may change only `src/`, `test/` and `e2e/`.
+- **Timer** (the maintainer's laptop): `~/.config/systemd/user/setaside-feedback.timer`, every 30 minutes.
+  Turn it on: `systemctl --user enable --now setaside-feedback.timer`.
+  Turn it off: `systemctl --user disable --now setaside-feedback.timer`.
+  What it did: `journalctl --user -u setaside-feedback`; each Claude run's cost:
+  `~/.local/state/setaside-feedback/runs.jsonl`.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems: [SECURITY.md](SECURITY.md), reported privately.
