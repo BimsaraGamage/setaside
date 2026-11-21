@@ -772,3 +772,34 @@ export const placeMove = sqliteTable(
     index("place_move_to_idx").on(t.toPlaceId, t.createdAt),
   ],
 );
+
+/**
+ * Feedback (ticket SAB-55, spec 14 "Feedback"): what the user wrote, with what the phone
+ * knew when they sent it, so an agent can fix from it (`npm run feedback`).
+ * `context`, `trail` and `today` are JSON text; the pictures are data URLs
+ * (WebP, or JPEG where the browser makes no WebP), at most 300 KB each.
+ */
+export const feedback = sqliteTable(
+  "feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    kind: text("kind", { enum: ["problem", "idea"] }).notNull(),
+    text: text("text").notNull(),
+    /** Version, browser, screen, time zone, online, unsent count, current screen. */
+    context: text("context").notNull(),
+    /** The last steps in the app (`src/client/trail.ts`). */
+    trail: text("trail").notNull(),
+    /** Today's data as the phone showed it. */
+    today: text("today"),
+    /** The screen behind the sheet. */
+    screenshot: text("screenshot"),
+    /** A picture the user added from the gallery. */
+    picture: text("picture"),
+    status: text("status", { enum: ["new", "done"] })
+      .notNull()
+      .default("new"),
+    ...appTimestamps,
+  },
+  (t) => [index("feedback_user_id_idx").on(t.userId), index("feedback_status_idx").on(t.status, t.createdAt)],
+);

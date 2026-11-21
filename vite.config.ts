@@ -7,10 +7,14 @@ import { defineConfig, type Plugin } from "vite";
 
 /** Changes with every build: a phone's saved copy from another build is not used (src/client/offline-copy.ts). */
 const buildId = String(Date.now());
+/** The release, sent with feedback (ticket SAB-55). */
+const appVersion: string = JSON.parse(
+  readFileSync(path.join(import.meta.dirname, "package.json"), "utf8"),
+).version;
 
 export default defineConfig({
   plugins: [serviceWorker(), react(), cloudflare()],
-  define: { __BUILD_ID__: JSON.stringify(buildId) },
+  define: { __BUILD_ID__: JSON.stringify(buildId), __APP_VERSION__: JSON.stringify(appVersion) },
 });
 
 /**

@@ -219,6 +219,19 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/places/moves/:id": (o) => ({ path: `/api/places/moves/${firstRow(o, "place_move")}` }),
+  // Reuses the first user's feedback id: must not overwrite their feedback (ticket SAB-55).
+  "POST /api/feedback": (o) => ({
+    path: "/api/feedback",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "feedback"),
+        kind: "problem",
+        text: "taken over?",
+        context: {},
+        trail: [],
+      }),
+    },
+  }),
   // Aimed at the first user's prepayment, savings movement and commitment: must not take any over or delete them.
   "POST /api/prepayments": (o) => ({
     path: "/api/prepayments",

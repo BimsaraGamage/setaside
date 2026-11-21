@@ -2,6 +2,7 @@ import { useState } from "react";
 import { formatMoney } from "../money";
 import type { CommitmentActions } from "./commitment-actions";
 import { dayLabel, type Ready, type Spend } from "./data";
+import { openFeedback } from "./Feedback";
 import type { LookItem, Outbox, UnsentState } from "./unsent";
 
 /** Why the server refused it, in words (item 24). */
@@ -122,7 +123,14 @@ export function UnsentCards({
     <>
       {state.look.length > 0 && (
         <section className="card" aria-labelledby="look-h" data-testid="needs-a-look">
-          <h3 id="look-h">Needs a look</h3>
+          <div className="row">
+            <h3 id="look-h" className="grow">
+              Needs a look
+            </h3>
+            <button type="button" className="btn ghost" onClick={() => openFeedback("needs-a-look")}>
+              Report this
+            </button>
+          </div>
           <p className="tiny mute">Made offline and not saved: fix or remove each.</p>
           {state.look.map((item) =>
             item.kind === "payment" ? (

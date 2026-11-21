@@ -155,7 +155,8 @@ h3 + .li {
   font-weight: 400;
 }
 input,
-select {
+select,
+textarea {
   font: inherit;
   min-height: 3rem;
   padding: 0 0.75rem;
@@ -475,4 +476,23 @@ fieldset.card {
 }
 .li.group .item {
   padding: 0.25rem 0 0 1rem;
+}
+
+/* Send feedback (ticket SAB-55). */
+textarea {
+  padding: 0.75rem;
+  resize: vertical;
+  font-weight: 400;
+}
+.feedback-shot {
+  display: block;
+  max-height: 12rem;
+  max-width: 100%;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+.sheet.feedback {
+  max-height: 90dvh;
 }

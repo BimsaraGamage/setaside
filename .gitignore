@@ -8,3 +8,5 @@ test-results/
 playwright-report/
 blob-report/
 *.tsbuildinfo
+# Feedback read with `npm run feedback` (ticket SAB-55): people's money data, never committed.
+feedback-inbox/

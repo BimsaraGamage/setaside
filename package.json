@@ -22,10 +22,12 @@
     "types": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "feedback": "node scripts/feedback.mjs"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.7.22",
+    "@zumer/snapdom": "3.7.6",
     "better-auth": "^1.7.22",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.18",
