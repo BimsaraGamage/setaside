@@ -72,3 +72,61 @@ test("send feedback with a screenshot and read it back with the script", async (
   const after = execFileSync("node", ["scripts/feedback.mjs", "--local", "--out", out], { encoding: "utf8" });
   expect(after).not.toContain(id);
 });
+
+// Journey: the screenshot of another screen than Settings (ticket SAB-58).
+test("pick another screen for the screenshot, keeping what was typed", async ({ page }, info) => {
+  await signInFreshToToday(page);
+  const tabs = page.getByRole("navigation", { name: "Main" });
+  const openSheet = async () => {
+    await tabs.getByRole("link", { name: "Settings" }).click();
+    await page
+      .getByRole("region", { name: "Feedback" })
+      .getByRole("button", { name: /Send feedback/ })
+      .click();
+  };
+
+  await openSheet();
+  const sheet = page.getByRole("dialog", { name: "Send feedback" });
+  const words = `Plan total looks off ${info.project.name} ${Date.now()}`;
+  await sheet.getByRole("button", { name: "Idea" }).click();
+  await sheet.getByLabel("Feedback").fill(words);
+
+  // The sheet steps aside; a small bar stays while the user goes to the screen that matters.
+  await sheet.getByRole("button", { name: "Pick another screen" }).click();
+  await expect(sheet).toBeHidden();
+  const bar = page.getByRole("region", { name: "Feedback screenshot" });
+  await expect(bar).toBeVisible();
+  await tabs.getByRole("link", { name: "Plan" }).click();
+  await bar.getByRole("button", { name: "Capture this screen" }).click();
+
+  await expect(bar).toBeHidden();
+  await expect(sheet.getByLabel("Feedback")).toHaveValue(words);
+  await expect(sheet.getByRole("button", { name: "Idea" })).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet.getByRole("img", { name: "Screenshot of the screen behind" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Send" }).click();
+  await expect(page.getByRole("status")).toContainText("Thanks, saved");
+
+  const out = info.outputPath("inbox");
+  const listed = execFileSync("node", ["scripts/feedback.mjs", "--local", "--out", out], {
+    encoding: "utf8",
+  });
+  const id =
+    listed
+      .split("\n")
+      .find((l) => l.includes(words))
+      ?.split(/\s+/)[0] ?? "";
+  expect(id).toBeTruthy();
+  const note = await readFile(join(out, id, "note.md"), "utf8");
+  expect(note).toContain("screen Plan");
+  expect((await readdir(join(out, id))).some((f) => /^screen\.(webp|jpg|png)$/.test(f))).toBe(true);
+  execFileSync("node", ["scripts/feedback.mjs", "--local", "--done", id], { encoding: "utf8" });
+
+  // Cancel drops the draft: the next sheet starts empty.
+  await openSheet();
+  await sheet.getByLabel("Feedback").fill("dropped");
+  await sheet.getByRole("button", { name: "Pick another screen" }).click();
+  await bar.getByRole("button", { name: "Cancel" }).click();
+  await expect(bar).toBeHidden();
+  await openSheet();
+  await expect(sheet.getByLabel("Feedback")).toHaveValue("");
+});
