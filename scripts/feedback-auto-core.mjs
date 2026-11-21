@@ -1,4 +1,4 @@
-// The feedback job (ticket SAB-61, spec 14 "Feedback", decided in SAB-59): every 30 minutes a timer runs
+// The feedback job (ticket SAB-61, spec 14 "Feedback", decided in SAB-59): every 5 minutes a timer runs
 // `npm run feedback:auto`. Each pass:
 //
 //   1. a cheap look at the database, no Claude: the feedback that is `new`, and the ones on their way

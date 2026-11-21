@@ -1,4 +1,4 @@
-// The feedback job (ticket SAB-61): one pass, run every 30 minutes by `setaside-feedback.timer`.
+// The feedback job (ticket SAB-61): one pass, run every 5 minutes by `setaside-feedback.timer`.
 //
 //   SETASIDE_MAP=<map folder> npm run feedback:auto          one pass
 //   SETASIDE_MAP=<map folder> npm run feedback:auto -- --local   against the local database (npm run dev)
