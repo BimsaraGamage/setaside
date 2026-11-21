@@ -219,6 +219,8 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/places/moves/:id": (o) => ({ path: `/api/places/moves/${firstRow(o, "place_move")}` }),
+  // Your feedback (ticket SAB-60): must not list the first user's feedback.
+  "GET /api/feedback": () => ({ path: "/api/feedback" }),
   // Reuses the first user's feedback id: must not overwrite their feedback (ticket SAB-55).
   "POST /api/feedback": (o) => ({
     path: "/api/feedback",

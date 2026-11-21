@@ -18,6 +18,10 @@ export default defineConfig({
         test: { name: "money", include: ["test/money/**/*.test.ts"], environment: "node" },
       },
       {
+        // Scripts run by hand or by a timer (`scripts/`): plain Node, no database.
+        test: { name: "scripts", include: ["test/scripts/**/*.test.ts"], environment: "node" },
+      },
+      {
         // Server: Workers runtime with a local D1 and the real migrations.
         plugins: [
           cloudflareTest(async () => ({

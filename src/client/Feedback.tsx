@@ -3,6 +3,7 @@ import { api } from "./api";
 import type { Current } from "./data";
 import { newId } from "./id";
 import { screenOf, trail } from "./trail";
+import { feedbackSent } from "./YourFeedback";
 
 /** One picture, as bytes (the server takes no more: `PICTURE_MAX_BYTES`). */
 const PICTURE_MAX_BYTES = 300 * 1024;
@@ -286,8 +287,10 @@ function FeedbackSheet({
       })
       .catch(() => null);
     setBusy(false);
-    if (res?.ok) onSent();
-    else setFailed(true);
+    if (res?.ok) {
+      feedbackSent();
+      onSent();
+    } else setFailed(true);
   }
 
   const empty = text.trim() === "";

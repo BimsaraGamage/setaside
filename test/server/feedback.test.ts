@@ -110,3 +110,60 @@ describe("send feedback", () => {
     expect(mine).not.toHaveProperty("screenshot");
   });
 });
+
+// Your feedback (ticket SAB-60, spec 14 "Feedback"): the user's own, newest first, with where it is.
+describe("your feedback", () => {
+  const list = async (cookie: string) => {
+    const res = await call("/api/feedback", {}, cookie);
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      feedback: {
+        id: string;
+        kind: string;
+        text: string;
+        createdAt: number;
+        status: string;
+        reply: string | null;
+      }[];
+    };
+  };
+
+  it("lists only the user's own, newest first, first line only, no pictures", async () => {
+    const me = await signIn("second");
+    const other = await signIn("demo");
+    const older = { ...good(), text: "Older one\nwith a second line" };
+    const newer = { ...good(), kind: "idea", text: "Newer one" };
+    await send(older, me.cookie);
+    await env.DB.prepare("update feedback set created_at = created_at - 60000 where id = ?")
+      .bind(older.id)
+      .run();
+    await send(newer, me.cookie);
+    const theirs = good();
+    await send(theirs, other.cookie);
+    await env.DB.prepare(
+      "update feedback set status = 'planned', reply = 'Planned: Next cycle preview' where id = ?",
+    )
+      .bind(older.id)
+      .run();
+
+    const { feedback } = await list(me.cookie);
+    const ids = feedback.map((f) => f.id);
+    expect(ids).not.toContain(theirs.id);
+    expect(ids.indexOf(newer.id)).toBeLessThan(ids.indexOf(older.id));
+    const o = feedback.find((f) => f.id === older.id);
+    expect(o).toEqual({
+      id: older.id,
+      kind: "problem",
+      text: "Older one",
+      createdAt: expect.any(Number),
+      status: "planned",
+      reply: "Planned: Next cycle preview",
+    });
+    expect(JSON.stringify(feedback)).not.toContain("data:image");
+    expect(feedback.find((f) => f.id === newer.id)).toMatchObject({
+      kind: "idea",
+      status: "new",
+      reply: null,
+    });
+  });
+});
