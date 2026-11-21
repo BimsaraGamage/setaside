@@ -70,3 +70,28 @@ test("lend, get some back, borrow with a payback, then settle", async ({ page })
   await main.getByRole("link", { name: "Today" }).click();
   await expect(page.getByTestId("free-money")).toHaveText("Rs 103,000");
 });
+
+// Feedback 01a1ff2f: on a narrow phone the Add income kinds stay inside the card.
+test("add income kinds wrap inside the card on a narrow phone", async ({ page }) => {
+  await page.setViewportSize({ width: 473, height: 900 });
+  await signInFreshToToday(page);
+  await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Money" }).click();
+  await page.getByRole("link", { name: /People/ }).click();
+  await page.getByRole("link", { name: "I borrowed" }).click();
+  const kinds = page.getByRole("group", { name: "Kind" });
+  const cardBox = await page.locator("section.card").filter({ has: kinds }).boundingBox();
+  if (!cardBox) throw new Error("no card");
+  const right = cardBox.x + cardBox.width;
+  for (const target of [
+    kinds,
+    kinds.locator("label", { hasText: "Extra income" }),
+    kinds.locator("label", { hasText: "Paid back to me" }),
+    page.getByLabel("From whom"),
+  ]) {
+    const box = await target.boundingBox();
+    expect(box ? box.x + box.width : Number.POSITIVE_INFINITY).toBeLessThanOrEqual(right);
+  }
+  const pageWidth = await page.locator("html").evaluate((el) => el.scrollWidth);
+  expect(pageWidth).toBeLessThanOrEqual(473);
+  await page.screenshot({ path: "test-results/add-income-phone.png", fullPage: true });
+});
