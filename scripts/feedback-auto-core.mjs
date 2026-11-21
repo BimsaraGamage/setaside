@@ -6,13 +6,29 @@
 //   2. for each new one (oldest first, at most 3 a pass): its inbox folder, status `seen`, then a read-only
 //      Claude run (triage) that answers with one decision of a fixed shape;
 //   3. the script, never Claude, acts on it: link it to an open map ticket, chart a ticket, build a small fix on
-//      a pushed `fb/<short id>` branch (a second Claude run that may only edit, test and look at git), or not
-//      doing; and writes the status, reply and ticket back with `npm run feedback -- --set`.
+//      a pushed `fb/<short id>` branch (a second Claude run that may only edit its worktree and run the sandboxed
+//      checks), or not doing; and writes the status, reply and ticket back with `npm run feedback -- --set`.
+//
+// Safety (the feedback text is untrusted): each run works on copies under a work root outside the home folder
+// (/var/tmp/setaside-feedback-<uid>/<short id>/: worktree, inbox, map), and its reads of home, /proc, /run and
+// the like are denied, so no login, key or token can be read and passed on in a reply or a commit. Code the AI
+// edited only ever runs in the bubblewrap sandbox of `scripts/feedback-check.mjs` (no network, no home). Before a
+// commit the changed paths must all be in src/, test/ or e2e/; git runs without hooks or fsmonitor; replies and
+// titles that look like a key, a token or an e-mail address are replaced by a fixed text.
 //
 // It never opens a PR, merges, deploys or releases: a pushed branch waits for a person's yes.
 // Everything that reaches outside goes through `deps`, so the tests run a whole pass without Claude,
 // wrangler or the network.
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { checkSet, REPLY_MAX } from "./feedback-set.mjs";
 
@@ -65,28 +81,68 @@ export const DENIED = [
   "Bash(git checkout:*)",
   "Bash(git switch:*)",
   "Bash(git reset:*)",
+  // Reads: only the run's own folders. Reads are open by default and deny beats allow, so every place that may
+  // hold a secret is shut out by name (checked 2026-11-21: this stops Read, Grep and Glob, /proc too).
+  "Read(//home/**)",
+  "Read(//root/**)",
+  "Read(//proc/**)",
+  "Read(//sys/**)",
+  "Read(//run/**)",
+  "Read(//tmp/**)",
+  "Read(//etc/**)",
+  "Read(//mnt/**)",
+  "Read(//media/**)",
+  "Read(//srv/**)",
+  "Read(//opt/**)",
+  "Read(//snap/**)",
 ];
 
 /** Triage reads only. Its one answer is the structured output, so it needs no Write. */
 export const TRIAGE_TOOLS = ["Read", "Grep", "Glob"];
 
-/** Build edits inside its own worktree, runs the checks and looks at git. The script commits and pushes. */
+/** Build edits inside its own worktree and runs the sandboxed checks; no git. The script commits and pushes. */
 export const BUILD_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
-export const BUILD_ALLOWED = [
-  "Read",
-  "Grep",
-  "Glob",
-  "Bash(npm test:*)",
-  "Bash(npm run test:money:*)",
-  "Bash(npm run test:server:*)",
-  "Bash(npm run typecheck:*)",
-  "Bash(npm run lint:*)",
-  "Bash(npm run format:*)",
-  "Bash(git status:*)",
-  "Bash(git diff:*)",
-  "Bash(git log:*)",
-  "Bash(git show:*)",
-];
+export const CHECK_NAMES = ["test", "typecheck", "lint", "format", "test:money", "test:server"];
+/** The only commands the build run may start: the sandboxed checker in the main checkout (outside its worktree). */
+export const buildBash = (checker) => CHECK_NAMES.map((c) => `Bash(node ${checker} ${c}:*)`);
+
+/** Paths a fix may change. Anything else (package files, configs, CI, scripts, migrations, docs) is a person's job. */
+const CHANGE_ALLOWED = /^(src|test|e2e)\/./;
+const CHANGE_REFUSED = /(^|\/)(\.[^/]*|node_modules|package(-lock)?\.json)(\/|$)/;
+
+/** The changed paths that are not allowed, from `git status --porcelain=v1 -z --untracked-files=all`. */
+export function refusedChanges(porcelainZ) {
+  const parts = porcelainZ.split("\0").filter(Boolean);
+  const paths = [];
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    paths.push(entry.slice(3));
+    if (entry[0] === "R" || entry[0] === "C") paths.push(parts[++i]); // a rename also names where it came from
+  }
+  return paths.filter((p) => !CHANGE_ALLOWED.test(p) || CHANGE_REFUSED.test(p));
+}
+
+/** Text that may carry a secret or someone's address: never sent back or pushed. */
+export function looksSecret(text) {
+  return (
+    /[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(text) ||
+    /[A-Za-z0-9_\-+/=]{24,}/.test(text) ||
+    /\b(sk|pk|rk|ghp|gho|ghs|ghu|github_pat|xox[abprs]|AKIA|AIza|ya29)[-_.]?[A-Za-z0-9_-]{12}/.test(text) ||
+    /BEGIN [A-Z ]*PRIVATE KEY/.test(text)
+  );
+}
+
+/** Fixed replies, used when the AI's reply looks unsafe. */
+export const FIXED_REPLY = {
+  link: "Thanks: this is already on the list.",
+  build: "Thanks: a small fix is being made.",
+  plan: "Thanks: this is planned.",
+  later: "Thanks: noted for later.",
+  "not doing": "Thanks for writing. We won't be doing this one.",
+};
+
+/** git in a worktree the AI touched: its hooks and fsmonitor never run. */
+export const SAFE_GIT = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
 
 export const ACTIONS = ["link", "build", "plan", "later", "not doing"];
 export const KINDS = ["bug", "idea", "duplicate", "other"];
@@ -219,12 +275,20 @@ export function buildEditRules(work) {
   const root = `/${work.replace(/\/+$/, "")}`;
   return {
     allow: [`Edit(${root}/**)`, `Write(${root}/**)`],
-    deny: [`Edit(${root}/.git/**)`, `Write(${root}/.git/**)`],
+    // No git at all: read-only git runs without a rule otherwise (checked 2026-11-21), and `git -C <dir>` could
+    // read other repos in the home folder. The script does the git work.
+    deny: [
+      `Edit(${root}/.git)`,
+      `Write(${root}/.git)`,
+      `Edit(${root}/.git/**)`,
+      `Write(${root}/.git/**)`,
+      "Bash(git:*)",
+    ],
   };
 }
 
 /** The build run, in the worktree on branch fb/<short id>. It is given the ticket triage wrote, not the raw text. */
-export function buildCommand({ id, work, ticketCode, ticketTitle, question }) {
+export function buildCommand({ id, work, checker, ticketCode, ticketTitle, question }) {
   const edits = buildEditRules(work);
   const prompt = [
     `Fix one small ticket in the Setaside app: this folder is a fresh worktree on branch fb/${short(id)}.`,
@@ -239,8 +303,10 @@ export function buildCommand({ id, work, ticketCode, ticketTitle, question }) {
     "",
     "- Read CONTRIBUTING.md and the parts of docs/spec.md and docs/data-model.md the change touches.",
     "- Test first: a test that fails because of the problem, then the smallest fix that makes it pass.",
-    "- Run `npm run typecheck`, `npm run lint` and `npm test` until all are green (`npm run format` fixes",
-    "  formatting).",
+    `- Run the checks only as \`node ${checker} <check>\` (checks: ${CHECK_NAMES.join(", ")}), one per command,`,
+    "  until test, typecheck and lint are all green (format fixes formatting). They run in a sandbox with no",
+    "  network. There is no git and no other command.",
+    "- Change only files in src/, test/ and e2e/: never package files, configs, CI, scripts or migrations.",
     "- Do not commit or push: the job does that after it runs the checks itself.",
     "- If it turns out bigger than one small change, or needs a change to a money rule, the data model or the",
     "  spec, change nothing more and end with a line `STOPPED: <why>`.",
@@ -259,7 +325,10 @@ export function buildCommand({ id, work, ticketCode, ticketTitle, question }) {
     "--tools",
     BUILD_TOOLS.join(","),
     "--allowedTools",
-    ...BUILD_ALLOWED,
+    "Read",
+    "Grep",
+    "Glob",
+    ...buildBash(checker),
     ...edits.allow,
     "--disallowedTools",
     ...DENIED,
@@ -454,7 +523,8 @@ const isOpen = (file) => !/^## Answer\s*$/m.test(readFileSync(file, "utf8"));
  *   d1(sql) → rows · set({id,status,reply?,ticket?}) · inbox() writes feedback-inbox/ (npm run feedback)
  *   git(args, cwd?) → stdout (throws on failure) · claude(args, {cwd, timeoutMs}) → {code, stdout, stderr}
  *   npm(args, cwd, timeoutMs) → {code, output} · loggedIn() · gate() → [go, line] · notify(title, body)
- *   log(entry) · say(line) · now() (ms) · repo (path) · mapDir · inboxRoot · stateDir
+ *   check(name, work) → {code} (sandboxed) · log(entry) · say(line) · now() (ms) · repo · mapDir · inboxRoot
+ *   stateDir · workRoot (outside home) · checker (path of scripts/feedback-check.mjs in the main checkout)
  */
 export async function runPass(deps) {
   const lock = join(deps.stateDir, "lock");
@@ -638,31 +708,49 @@ function failed(deps, id, why, line) {
   return why === "limit" || why === "login";
 }
 
+/** Copies the map (map.md and its tickets) for triage to read: it never sees the real folder. */
+function snapshotMap(mapDir, to) {
+  const issues = join(to, "issues");
+  mkdirSync(issues, { recursive: true });
+  cpSync(join(mapDir, "map.md"), join(to, "map.md"));
+  const from = ticketsDir(mapDir);
+  for (const f of readdirSync(from)) if (/^\d+-.*\.md$/.test(f)) cpSync(join(from, f), join(issues, f));
+}
+
 async function handleOne(deps, id) {
   const sid = short(id);
   deps.set({ id, status: "seen" });
-  const inboxDir = join(deps.inboxRoot, id);
   const branch = `fb/${sid}`;
-  const work = join(deps.stateDir, "worktrees", `fb-${sid}`);
+  // One run at a time (the lock), and nothing of an earlier one is left to read.
+  rmSync(deps.workRoot, { recursive: true, force: true });
+  const runDir = join(deps.workRoot, sid);
+  mkdirSync(runDir, { recursive: true, mode: 0o700 });
+  chmodSync(deps.workRoot, 0o700);
+  const work = join(runDir, "work");
+  const inboxDir = join(runDir, "inbox");
+  const mapCopy = join(runDir, "map");
+  cpSync(join(deps.inboxRoot, id), inboxDir, { recursive: true });
+  snapshotMap(deps.mapDir, mapCopy);
   try {
     deps.git(["fetch", "--quiet", "origin", "main"]);
   } catch {
-    // offline: the last fetched main will do for triage
+    // offline: the last fetched main will do
   }
-  rmSync(work, { recursive: true, force: true });
   try {
     deps.git(["worktree", "prune"]);
   } catch {
     // nothing to prune
   }
   deps.git(["worktree", "add", "--force", "-B", branch, work, "origin/main"]);
+  const gitLink = existsSync(join(work, ".git")) ? readFileSync(join(work, ".git"), "utf8") : null;
   const removeWork = () => {
     try {
       deps.git(["worktree", "remove", "--force", work]);
       deps.git(["branch", "-D", branch]);
     } catch {
-      rmSync(work, { recursive: true, force: true });
+      // gone already
     }
+    rmSync(runDir, { recursive: true, force: true });
   };
 
   // Triage.
@@ -670,7 +758,7 @@ async function handleOne(deps, id) {
     deps,
     "triage",
     id,
-    triageCommand({ id, inboxDir, mapDir: deps.mapDir }),
+    triageCommand({ id, inboxDir, mapDir: mapCopy }),
     work,
     TRIAGE_TIMEOUT_MS,
   );
@@ -686,14 +774,16 @@ async function handleOne(deps, id) {
   }
   if (!problems.length && checkSet({ id, status: "planned", reply: decision.reply }).length)
     problems.push("reply is not one plain line");
-  mkdirSync(inboxDir, { recursive: true });
-  writeFileSync(join(inboxDir, "decision.json"), `${JSON.stringify(decision ?? null, null, 2)}\n`);
+  if (!problems.length && (looksSecret(decision.title) || looksSecret(decision.commit)))
+    problems.push("title or commit looks like it holds a key or an address");
+  mkdirSync(join(deps.inboxRoot, id), { recursive: true });
+  writeFileSync(join(deps.inboxRoot, id, "decision.json"), `${JSON.stringify(decision ?? null, null, 2)}\n`);
   if (problems.length) {
     removeWork();
     return failed(deps, id, "error", `Triage answer had the wrong shape: ${problems.join("; ")}.`);
   }
   const date = day(deps.now());
-  const reply = oneLine(decision.reply);
+  const reply = looksSecret(decision.reply) ? FIXED_REPLY[decision.action] : oneLine(decision.reply);
   deps.say(`${sid}: ${decision.kind} → ${decision.action}`);
 
   if (decision.action === "not doing") {
@@ -748,11 +838,12 @@ async function handleOne(deps, id) {
     );
     deps.set({ id, status: "planned", reply, ticket: tk.code });
     deps.say(`${sid}: build stopped (${why}); left as planned`);
+    removeWork();
   };
+  // The install runs before the AI touches anything: main's own lock file.
   const install = deps.npm(["ci", "--prefer-offline", "--no-audit", "--no-fund"], work, CHECK_TIMEOUT_MS);
   if (install.code !== 0) {
     planned("npm ci failed.");
-    removeWork();
     return false;
   }
   const b = runClaude(
@@ -762,6 +853,7 @@ async function handleOne(deps, id) {
     buildCommand({
       id,
       work,
+      checker: deps.checker,
       ticketCode: tk.code,
       ticketTitle: tk.title,
       question: safeBody(decision.question),
@@ -769,31 +861,41 @@ async function handleOne(deps, id) {
     work,
     BUILD_TIMEOUT_MS,
   );
-  if (b.why === "limit" || b.why === "login") {
-    planned(b.line);
-    removeWork();
-    return true;
-  }
   if (b.why) {
     planned(b.line);
-    removeWork();
+    return b.why === "limit" || b.why === "login";
+  }
+  // What it changed, before anything it wrote runs outside the sandbox (git itself included).
+  const linkNow = existsSync(join(work, ".git")) ? readFileSync(join(work, ".git"), "utf8") : null;
+  if (linkNow !== gitLink) {
+    planned("the worktree's .git link changed.");
     return false;
   }
-  for (const check of [["test"], ["run", "typecheck"], ["run", "lint"]]) {
-    const r = deps.npm(check, work, CHECK_TIMEOUT_MS);
-    if (r.code !== 0) {
-      planned(`\`npm ${check.join(" ")}\` is not green after the build run (worktree kept at ${work}).`);
+  const changed = deps.git(
+    [...SAFE_GIT, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"],
+    work,
+  );
+  if (!changed.trim()) {
+    planned("the build run changed nothing.");
+    return false;
+  }
+  const refused = refusedChanges(changed);
+  if (refused.length) {
+    planned(`it changed paths a fix may not touch: ${refused.slice(0, 5).join(", ")}.`);
+    return false;
+  }
+  for (const check of ["test", "typecheck", "lint"]) {
+    if (deps.check(check, work).code !== 0) {
+      planned(`the \`${check}\` check is not green after the build run.`);
       return false;
     }
   }
-  if (!deps.git(["status", "--porcelain"], work).trim()) {
-    planned("the build run changed nothing.");
-    removeWork();
-    return false;
-  }
-  deps.git(["add", "--all"], work);
-  deps.git(["commit", "--quiet", "--no-verify", "-m", decision.commit, "-m", `Feedback: ${id}`], work);
-  deps.git(["push", "--quiet", "-u", "origin", `${branch}:${branch}`], work);
+  deps.git([...SAFE_GIT, "add", "--all"], work);
+  deps.git(
+    [...SAFE_GIT, "commit", "--quiet", "--no-verify", "-m", decision.commit, "-m", `Feedback: ${id}`],
+    work,
+  );
+  deps.git([...SAFE_GIT, "push", "--quiet", "--no-verify", "-u", "origin", `${branch}:${branch}`], work);
   setJobSession(tk.file, `charted from feedback ${sid}, built ${branch}, checks green, pushed`);
   addProgress(
     tk.file,

@@ -45,6 +45,9 @@ read-only Claude run, answers the sender in the app, charts a ticket on the main
 builds it on a pushed `fb/<id>` branch (tests first, all checks green). It never opens a PR, merges, deploys or releases.
 
 - **Off by default**: it does nothing unless `SETASIDE_MAP` names the planning map folder.
+- **Kept apart**: feedback text is untrusted. The AI works on copies outside the home folder and can't read
+  home, so it never sees a login or key. Code it wrote runs only in a [bubblewrap](https://github.com/containers/bubblewrap)
+  sandbox (`scripts/feedback-check.mjs`: no network, no home). A fix may change only `src/`, `test/` and `e2e/`.
 - **Timer** (the maintainer's laptop): `~/.config/systemd/user/setaside-feedback.timer`, every 30 minutes.
   Turn it on: `systemctl --user enable --now setaside-feedback.timer`.
   Turn it off: `systemctl --user disable --now setaside-feedback.timer`.

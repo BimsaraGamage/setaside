@@ -4,8 +4,9 @@
 //   SETASIDE_MAP=<map folder> npm run feedback:auto -- --local   against the local database (npm run dev)
 //
 // Off unless SETASIDE_MAP names the wayfinder map folder the job charts tickets on. What a pass does, and what it
-// never does: scripts/feedback-auto-core.mjs. Its state (lock, run log with each run's cost, worktrees) lives in
-// $XDG_STATE_HOME/setaside-feedback (default ~/.local/state/setaside-feedback).
+// never does: scripts/feedback-auto-core.mjs. Its state (lock, run log with each run's cost) lives in
+// $XDG_STATE_HOME/setaside-feedback (default ~/.local/state/setaside-feedback); each run's worktree and copies
+// in /var/tmp/setaside-feedback-<uid>/, outside the home folder. Needs bubblewrap (`bwrap`) for its checks.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, readFileSync } from "node:fs";
@@ -13,6 +14,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { quotaGate, runPass } from "./feedback-auto-core.mjs";
+import { workRoot } from "./feedback-check.mjs";
 
 const { values } = parseArgs({ options: { local: { type: "boolean", default: false } } });
 
@@ -30,6 +32,11 @@ const repo = resolve(import.meta.dirname, "..");
 const home = process.env.HOME || homedir();
 const stateDir = join(process.env.XDG_STATE_HOME || join(home, ".local/state"), "setaside-feedback");
 const where = values.local ? "--local" : "--remote";
+const checker = join(repo, "scripts", "feedback-check.mjs");
+if (spawnSync("bwrap", ["--version"]).status !== 0) {
+  console.error("Off: the feedback job needs bubblewrap (bwrap) to run its checks in a sandbox.");
+  process.exit(1);
+}
 
 const sh = (cmd, args, cwd = repo) =>
   execFileSync(cmd, args, {
@@ -44,6 +51,16 @@ await runPass({
   mapDir: resolve(mapDir),
   inboxRoot: join(repo, "feedback-inbox"),
   stateDir,
+  workRoot: workRoot(),
+  checker,
+  check: (name, work) => {
+    const r = spawnSync(process.execPath, [checker, name], {
+      cwd: work,
+      stdio: "ignore",
+      timeout: 20 * 60_000,
+    });
+    return { code: r.status ?? 1 };
+  },
   d1: (sql) =>
     JSON.parse(sh("npx", ["wrangler", "d1", "execute", "DB", where, "--json", "--command", sql])).flatMap(
       (r) => r.results ?? [],

@@ -1,20 +1,30 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  BUILD_ALLOWED,
+  buildBash,
   buildCommand,
   checkDecision,
   DENIED,
   doneStep,
+  FIXED_REPLY,
+  looksSecret,
   quotaGate,
+  refusedChanges,
   runPass,
+  SAFE_GIT,
   triageCommand,
   // @ts-expect-error plain JavaScript script, no types
 } from "../../scripts/feedback-auto-core.mjs";
+// @ts-expect-error plain JavaScript script, no types
+import { checkProblems, sandboxArgs } from "../../scripts/feedback-check.mjs";
+
+/** A git call without the hardening flags in front, so tests read what it does. */
+const bare = (args: string[]) =>
+  args[0] === SAFE_GIT[0] && args[1] === SAFE_GIT[1] ? args.slice(SAFE_GIT.length) : args;
 
 // The feedback job (ticket SAB-61): the decision's shape, the Claude command lines, and whole passes with
 // everything outside faked, so no test calls Claude, wrangler or the network.
@@ -83,7 +93,8 @@ describe("the Claude command lines", () => {
   const triage = triageCommand({ id, inboxDir: "/inbox/x", mapDir: "/map" });
   const build = buildCommand({
     id,
-    work: "/state/worktrees/fb-0a1b2c3d",
+    work: "/var/tmp/setaside-feedback-1000/0a1b2c3d/work",
+    checker: "/repo/scripts/feedback-check.mjs",
     ticketCode: "SAB-70",
     ticketTitle: "T",
     question: "Q",
@@ -120,6 +131,10 @@ describe("the Claude command lines", () => {
         "Bash(curl:*)",
         "Bash(git push:*)",
         "Bash(npm run deploy:*)",
+        "Read(//home/**)",
+        "Read(//proc/**)",
+        "Read(//run/**)",
+        "Read(//tmp/**)",
       ])
         expect(denied).toContain(t);
     }
@@ -132,15 +147,89 @@ describe("the Claude command lines", () => {
     expect(list(triage, "--add-dir")).toEqual(["/inbox/x", "/map"]);
   });
 
-  it("let build edit inside its worktree and run the checks, but never commit or push", () => {
-    expect(list(build, "--allowedTools")).toEqual([
-      ...BUILD_ALLOWED,
-      "Edit(//state/worktrees/fb-0a1b2c3d/**)",
-      "Write(//state/worktrees/fb-0a1b2c3d/**)",
+  it("let build edit only its worktree and start only the sandboxed checker: no git, no npm", () => {
+    const w = "//var/tmp/setaside-feedback-1000/0a1b2c3d/work";
+    const allowed = list(build, "--allowedTools");
+    expect(allowed).toEqual([
+      "Read",
+      "Grep",
+      "Glob",
+      ...buildBash("/repo/scripts/feedback-check.mjs"),
+      `Edit(${w}/**)`,
+      `Write(${w}/**)`,
     ]);
-    expect(list(build, "--disallowedTools")).toContain("Edit(//state/worktrees/fb-0a1b2c3d/.git/**)");
-    expect(BUILD_ALLOWED.some((t: string) => /push|commit|wrangler|gh |deploy/.test(t))).toBe(false);
+    for (const t of allowed.filter((a: string) => a.startsWith("Bash(")))
+      expect(t).toMatch(/^Bash\(node \/repo\/scripts\/feedback-check\.mjs [a-z:]+:\*\)$/);
+    const denied = list(build, "--disallowedTools");
+    for (const t of [`Edit(${w}/.git)`, `Write(${w}/.git)`, `Edit(${w}/.git/**)`, "Bash(git:*)"])
+      expect(denied).toContain(t);
     expect(build).not.toContain("--add-dir");
+  });
+});
+
+describe("what a fix may change", () => {
+  it("only files in src/, test/ and e2e/", () => {
+    expect(refusedChanges(" M src/client/Today.tsx\0?? test/money/x.test.ts\0 M e2e/a.spec.ts\0")).toEqual(
+      [],
+    );
+    expect(
+      refusedChanges(
+        " M package.json\0 M package-lock.json\0?? .github/workflows/x.yml\0 M vitest.config.ts\0" +
+          " M scripts/feedback-check.mjs\0 M migrations/0028.sql\0?? src/.npmrc\0 M docs/spec.md\0" +
+          "?? test/node_modules/x/index.js\0",
+      ),
+    ).toEqual([
+      "package.json",
+      "package-lock.json",
+      ".github/workflows/x.yml",
+      "vitest.config.ts",
+      "scripts/feedback-check.mjs",
+      "migrations/0028.sql",
+      "src/.npmrc",
+      "docs/spec.md",
+      "test/node_modules/x/index.js",
+    ]);
+  });
+});
+
+describe("text sent back or pushed", () => {
+  it("is caught when it looks like a key, a token or an address", () => {
+    for (const bad of [
+      "Your key is sk-ant-api03-abcdefghijklmnop",
+      "token ghp_1234567890abcdefghij",
+      "write to someone@example.com",
+      "x".repeat(40),
+      "-----BEGIN OPENSSH PRIVATE KEY-----",
+    ])
+      expect(looksSecret(bad), bad).toBe(true);
+    for (const ok of ["Thanks: planned as Show the week's spends on Today", "Fixed in v0.1.9."])
+      expect(looksSecret(ok), ok).toBe(false);
+  });
+});
+
+describe("the sandboxed checker", () => {
+  const args = sandboxArgs({
+    work: "/var/tmp/setaside-feedback-1000/0a1b2c3d/work",
+    check: "test",
+    nodeDir: "/home/me/.nvm/versions/node/v24",
+    home: "/home/me",
+  });
+  const pairs = (flag: string) => args.flatMap((a: string, i: number) => (a === flag ? [args[i + 1]] : []));
+
+  it("has no network, an empty home, and writes only to the worktree", () => {
+    expect(args).toContain("--unshare-all");
+    expect(args).toContain("--clearenv");
+    expect(pairs("--tmpfs")).toEqual(expect.arrayContaining(["/home/me", "/tmp", "/run"]));
+    expect(pairs("--bind")).toEqual(["/var/tmp/setaside-feedback-1000/0a1b2c3d/work"]);
+    expect(args.slice(args.indexOf("--") + 1)).toEqual(["npm", "test"]);
+  });
+
+  it("runs only a known check, only in a worktree under the work root", () => {
+    const root = "/var/tmp/setaside-feedback-1000";
+    expect(checkProblems({ work: `${root}/0a1b2c3d/work`, check: "lint", root })).toEqual([]);
+    expect(checkProblems({ work: `${root}/0a1b2c3d/work`, check: "deploy", root }).length).toBe(1);
+    expect(checkProblems({ work: "/home/me/setaside", check: "test", root }).length).toBe(1);
+    expect(checkProblems({ work: `${root}-evil/x`, check: "test", root }).length).toBe(1);
   });
 });
 
@@ -173,17 +262,25 @@ function fakeDeps(rows: { id: string; status: string }[], answer?: unknown) {
     said: [] as string[],
   };
   const mapDir = fakeMap();
+  const inboxRoot = mkdtempSync(join(tmpdir(), "fb-inbox-"));
+  for (const r of rows) {
+    mkdirSync(join(inboxRoot, r.id));
+    writeFileSync(join(inboxRoot, r.id, "note.md"), "# Idea\n");
+  }
   const deps = {
     repo: "/repo",
     mapDir,
-    inboxRoot: mkdtempSync(join(tmpdir(), "fb-inbox-")),
+    inboxRoot,
     stateDir: mkdtempSync(join(tmpdir(), "fb-state-")),
+    workRoot: join(mkdtempSync(join(tmpdir(), "fb-work-")), "root"),
+    checker: "/repo/scripts/feedback-check.mjs",
+    check: () => ({ code: 0 }),
     d1: () => rows,
     set: (c: Change) => calls.set.push(c),
     inbox: () => {},
     git: (args: string[]) => {
-      calls.git.push(args);
-      return args[0] === "tag" ? "" : "";
+      calls.git.push(bare(args));
+      return "";
     },
     claude: (args: string[]) => {
       calls.claude.push(args);
@@ -282,8 +379,8 @@ describe("a pass", () => {
     const fix = decision({ action: "build", kind: "bug", commit: "fix: the week total counts today" });
     const { deps, calls, mapDir } = fakeDeps([{ id, status: "new" }], fix);
     const git = (args: string[]) => {
-      calls.git.push(args);
-      return args[0] === "status" ? " M src/x.ts\n" : "";
+      calls.git.push(bare(args));
+      return bare(args)[0] === "status" ? " M src/x.ts\0" : "";
     };
     await runPass({ ...deps, git });
     expect(calls.claude).toHaveLength(2);
@@ -296,7 +393,14 @@ describe("a pass", () => {
       "-m",
       `Feedback: ${id}`,
     ]);
-    expect(calls.git).toContainEqual(["push", "--quiet", "-u", "origin", "fb/0a1b2c3d:fb/0a1b2c3d"]);
+    expect(calls.git).toContainEqual([
+      "push",
+      "--quiet",
+      "--no-verify",
+      "-u",
+      "origin",
+      "fb/0a1b2c3d:fb/0a1b2c3d",
+    ]);
     expect(calls.git.some((a) => a.includes("main") && a[0] === "push")).toBe(false);
     expect(calls.git.some((a) => a.some((x) => /force/.test(x) && a[0] === "push"))).toBe(false);
     expect(calls.set.map((c) => c.status)).toEqual(["seen", "building", "ready"]);
@@ -321,6 +425,55 @@ describe("a pass", () => {
     await runPass({ ...deps, claude });
     expect(calls.git.some((a) => a[0] === "push")).toBe(false);
     expect(calls.set.at(-1)?.status).toBe("planned");
+  });
+
+  it("never commits a build that changed a file outside src/, test/ and e2e/", async () => {
+    const fix = decision({ action: "build", kind: "bug", commit: "fix: x happens" });
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], fix);
+    const checks: string[] = [];
+    const git = (args: string[]) => {
+      calls.git.push(bare(args));
+      return bare(args)[0] === "status" ? " M src/x.ts\0 M package.json\0" : "";
+    };
+    await runPass({ ...deps, git, check: (name: string) => (checks.push(name), { code: 0 }) });
+    expect(checks).toEqual([]); // nothing it wrote ran outside the build run's own sandboxed checks
+    expect(calls.git.some((a) => a[0] === "commit" || a[0] === "push")).toBe(false);
+    expect(calls.set.at(-1)?.status).toBe("planned");
+  });
+
+  it("runs every git command in the worktree without hooks or fsmonitor", async () => {
+    const fix = decision({ action: "build", kind: "bug", commit: "fix: x happens" });
+    const { deps } = fakeDeps([{ id, status: "new" }], fix);
+    const raw: string[][] = [];
+    const git = (args: string[], cwd?: string) => {
+      if (cwd) raw.push(args);
+      return bare(args)[0] === "status" ? " M src/x.ts\0" : "";
+    };
+    await runPass({ ...deps, git });
+    expect(raw.length).toBeGreaterThan(0);
+    for (const a of raw) expect(a.slice(0, SAFE_GIT.length)).toEqual(SAFE_GIT);
+  });
+
+  it("sends a fixed reply when the AI's reply looks like it holds a secret", async () => {
+    const leak = decision({
+      action: "not doing",
+      title: "",
+      question: "",
+      touches: "",
+      reply: "ok ghp_abcdefgh12345678",
+    });
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], leak);
+    await runPass(deps);
+    expect(calls.set.at(-1)).toEqual({ id, status: "not doing", reply: FIXED_REPLY["not doing"] });
+  });
+
+  it("works on copies outside the real inbox and map, and leaves nothing behind", async () => {
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+    await runPass(deps);
+    const args = calls.claude[0] ?? [];
+    const dirs = args.slice(args.indexOf("--add-dir") + 1, args.indexOf("--add-dir") + 3);
+    expect(dirs).toEqual([join(deps.workRoot, "0a1b2c3d", "inbox"), join(deps.workRoot, "0a1b2c3d", "map")]);
+    expect(existsSync(join(deps.workRoot, "0a1b2c3d"))).toBe(false);
   });
 
   it("does nothing while another pass holds the lock", async () => {
