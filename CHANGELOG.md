@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.9](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.8...setaside-v0.1.9) (2026-11-21)
+
+
+### Features
+
+* feedback answers in the app ([#95](https://github.com/BimsaraGamage/setaside/issues/95)) ([7267c1b](https://github.com/BimsaraGamage/setaside/commit/7267c1bb2128d1fea12ebca7d1016078b650b76e))
+* feedback job that sorts new feedback and builds small fixes on a branch ([#97](https://github.com/BimsaraGamage/setaside/issues/97)) ([85b6a8d](https://github.com/BimsaraGamage/setaside/commit/85b6a8d8f6f417bb77e6635e1775b693b8781e3f))
+
 ## [0.1.8](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.7...setaside-v0.1.8) (2026-11-21)
 
 
