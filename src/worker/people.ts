@@ -12,6 +12,7 @@ import {
 import { current } from "./current";
 import { commitment, commitmentPayment, income, personDebt } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import type { SignedIn } from "./user-check";
 
 /** One Got it back on money lent (item 20): a `paid_back` income. */
@@ -133,9 +134,17 @@ const newDebt = z.object({
   toSavingsMinor: z.number().int().default(0),
   /** Borrowed: the payback commitment, when a date is given. */
   payback: z.object({ id: z.uuid(), plannedMinor: z.number().int(), dueOn: z.string() }).nullish(),
+  /** Lent: the place the money came out of. Borrowed: the place it landed in (SAB-52). Null moves no place. */
+  placeId,
 });
 
-const newBack = z.object({ id: z.uuid(), amountMinor: z.number().int(), toSavingsMinor: z.number().int() });
+const newBack = z.object({
+  id: z.uuid(),
+  amountMinor: z.number().int(),
+  toSavingsMinor: z.number().int(),
+  /** The place the money landed in (SAB-52); null moves no place. */
+  placeId,
+});
 
 const newPayback = z.object({ id: z.uuid(), plannedMinor: z.number().int(), dueOn: z.string() });
 
@@ -159,6 +168,7 @@ export const people = new Hono<SignedIn>()
       { ...now.currencies, cycleStartedOn: now.cycle.startedOn },
     );
     if (b.direction === "borrowed" && !b.incomeId) problems.push("new_id");
+    if (!(await placesUsable(c, [{ placeId: b.placeId, currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.batch([
@@ -171,6 +181,8 @@ export const people = new Hono<SignedIn>()
           currency,
           amountMinor: b.amountMinor,
           madeOn: now.today,
+          // Money lent leaves its place here; money borrowed lands with its income.
+          placeId: b.direction === "lent" ? (b.placeId ?? null) : null,
         }),
         ...(b.direction === "borrowed" && b.incomeId
           ? [
@@ -184,6 +196,7 @@ export const people = new Hono<SignedIn>()
                 toSavingsMinor: b.toSavingsMinor,
                 receivedOn: now.today,
                 personDebtId: b.id,
+                placeId: b.placeId ?? null,
               }),
             ]
           : []),
@@ -237,7 +250,8 @@ export const people = new Hono<SignedIn>()
     const now = await current(c);
     const d = (await personDebtLines(c)).find((x) => x.id === id);
     if (!now || !d) return c.json({ error: "not_found" as const }, 404);
-    const problems = checkGotBack(b, d);
+    const problems: string[] = checkGotBack(b, d);
+    if (!(await placesUsable(c, [{ placeId: b.placeId, currency: d.currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(income).values({
@@ -250,6 +264,7 @@ export const people = new Hono<SignedIn>()
         toSavingsMinor: b.toSavingsMinor,
         receivedOn: now.today,
         personDebtId: id,
+        placeId: b.placeId ?? null,
       });
     } catch {
       return c.json({ error: "conflict" as const }, 409);

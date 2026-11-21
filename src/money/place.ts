@@ -185,6 +185,20 @@ export interface PlaceTotal {
   differenceMinor: Minor | null;
 }
 
+/**
+ * Salary day step 3 (spec 6): what "actually have in hand" starts on, from the
+ * places. The leftover moved by the difference between the places and what the
+ * app counts (less in the places: spends never entered; more: money never
+ * entered), never below zero. Null (the leftover stands) when they match, when
+ * the currency has no place or a place with no balance yet, or on an overspend.
+ */
+export function inHandFromPlaces(leftoverMinor: Minor, total: PlaceTotal | undefined): Minor | null {
+  if (leftoverMinor < 0 || !total || total.differenceMinor === null || total.differenceMinor === 0) {
+    return null;
+  }
+  return Math.max(0, leftoverMinor + total.differenceMinor);
+}
+
 export interface PlacesView<P> {
   /** The places in use, in list order. */
   lines: PlaceLine<P>[];

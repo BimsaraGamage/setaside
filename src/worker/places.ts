@@ -4,7 +4,7 @@ import { validator } from "hono/validator";
 import * as z from "zod";
 import { checkPlace, checkPlaceMove, isPlaceBalance, PLACES_MAX } from "../money";
 import { current } from "./current";
-import { commitmentPayment, place, placeCheck, placeMove, spend } from "./db/schema";
+import { place, placeCheck, placeMove } from "./db/schema";
 import { json } from "./json";
 import type { SignedIn } from "./user-check";
 
@@ -39,6 +39,21 @@ const newMove = z.object({
   toPlaceId: z.uuid(),
   amountMinor: z.number(),
 });
+
+/**
+ * Every column that names the place an entry moves (SAB-51, SAB-52): the tables of `PLACE_MOVED` in
+ * `today-read.ts`, Move money apart. Deleting a place clears them.
+ */
+const PLACE_COLUMNS: [table: string, column: string][] = [
+  ["spend", "place_id"],
+  ["commitment_payment", "place_id"],
+  ["income", "place_id"],
+  ["savings_movement", "place_id"],
+  ["person_debt", "place_id"],
+  ["plan_extra_payment", "place_id"],
+  ["conversion", "from_place_id"],
+  ["conversion", "to_place_id"],
+];
 
 /** The whole list, in its new order. */
 const newOrder = z.object({ ids: z.array(z.uuid()).max(PLACES_MAX) });
@@ -133,7 +148,7 @@ export const places = new Hono<SignedIn>()
     "/places/:id",
     validator("query", (q) => ({ balances: q.balances })),
     async (c) => {
-      const { db, mine } = c.var;
+      const { db, mine, userId } = c.var;
       const id = c.req.param("id");
       const old = await db.query.place.findFirst({
         where: and(mine(place), eq(place.id, id)),
@@ -145,20 +160,18 @@ export const places = new Hono<SignedIn>()
       if (has.length && c.req.valid("query").balances !== "delete") {
         return c.json({ error: "has_balances" as const }, 409);
       }
-      // Its balances and its Move money rows go with it; the spends and payments out of it stay, with no place.
-      await db.batch([
-        db
-          .update(spend)
-          .set({ placeId: null })
-          .where(and(mine(spend), eq(spend.placeId, id))),
-        db
-          .update(commitmentPayment)
-          .set({ placeId: null })
-          .where(and(mine(commitmentPayment), eq(commitmentPayment.placeId, id))),
-        db.delete(placeCheck).where(checks),
-        db.delete(placeMove).where(and(mine(placeMove), eq(placeMove.fromPlaceId, id))),
-        db.delete(placeMove).where(and(mine(placeMove), eq(placeMove.toPlaceId, id))),
-        db.delete(place).where(and(mine(place), eq(place.id, id))),
+      // Its balances and its Move money rows go with it; the entries that moved it stay, with no place.
+      // `updated_at` is left as it is: an entry was not changed, so Undo salary day stays (spec 2).
+      // Fixed SQL, every statement scoped to the signed-in user (`?1`); `?2` is the place.
+      const d1 = db.$client;
+      const run = (statement: string) => d1.prepare(statement).bind(userId, id);
+      await d1.batch([
+        run("delete from place_check where user_id = ?1 and place_id = ?2"),
+        ...PLACE_COLUMNS.map(([table, column]) =>
+          run(`update "${table}" set ${column} = null where user_id = ?1 and ${column} = ?2`),
+        ),
+        run("delete from place_move where user_id = ?1 and (from_place_id = ?2 or to_place_id = ?2)"),
+        run("delete from place where user_id = ?1 and id = ?2"),
       ]);
       return c.json({ ok: true as const });
     },

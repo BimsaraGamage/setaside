@@ -14,6 +14,7 @@ import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { type Commitment, dayLabel, entriesOf, type Person, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
 import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 
@@ -29,6 +30,8 @@ export interface PersonDraft {
   toSavingsMinor: number;
   /** Borrowed: the payback, when a date is given. */
   payback: { plannedMinor: number; dueOn: string } | null;
+  /** Lent: the place the money came out of. Borrowed: the place it landed in (spec 6). */
+  placeId?: string | null;
 }
 
 const add = (id: string, d: PersonDraft) =>
@@ -43,9 +46,18 @@ const add = (id: string, d: PersonDraft) =>
     }),
   );
 const remove = (id: string) => ok(api.api.people[":id"].$delete({ param: { id } }));
-const addBack = (personId: string, id: string, amountMinor: number, toSavingsMinor: number) =>
+const addBack = (
+  personId: string,
+  id: string,
+  amountMinor: number,
+  toSavingsMinor: number,
+  placeId: string | null,
+) =>
   ok(
-    api.api.people[":id"].back.$post({ param: { id: personId }, json: { id, amountMinor, toSavingsMinor } }),
+    api.api.people[":id"].back.$post({
+      param: { id: personId },
+      json: { id, amountMinor, toSavingsMinor, placeId },
+    }),
   );
 const removeIncome = (id: string) => ok(api.api.incomes[":id"].$delete({ param: { id } }));
 const addPayback = (personId: string, id: string, plannedMinor: number, dueOn: string) =>
@@ -71,9 +83,9 @@ export function peopleActions({ done }: Toaster) {
     },
     /** Only in the cycle it was made, while nothing is back. */
     remove: (p: Person) => remove(p.id).then((ok) => done(ok, { text: `${p.personName} deleted` })),
-    gotBack: (p: Person, amountMinor: number, toSavingsMinor: number) => {
+    gotBack: (p: Person, amountMinor: number, toSavingsMinor: number, placeId: string | null = null) => {
       const id = newId();
-      return addBack(p.id, id, amountMinor, toSavingsMinor).then((ok) =>
+      return addBack(p.id, id, amountMinor, toSavingsMinor, placeId).then((ok) =>
         done(ok, {
           text: `Got ${formatMoney(amountMinor, p.currency)} back from ${p.personName}`,
           undo: () => removeIncome(id),
@@ -222,7 +234,7 @@ export function PeoplePage({ data }: { data: Ready }) {
   );
 }
 
-/** I lent money (spec 9): name, currency and amount; it comes out of free money now. */
+/** I lent money (spec 9): name, currency, amount and the place it came out of; it comes out of free money now. */
 export function LendPage({ data, actions }: { data: Ready; actions: PeopleActions }) {
   const spendCur = data.settings.spendingCurrency;
   const today = useToday(data.settings.homeTimeZone);
@@ -232,6 +244,7 @@ export function LendPage({ data, actions }: { data: Ready; actions: PeopleAction
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const amountMinor = parseAmount(text, cur) ?? 0;
+  const place = usePlaceChoice(data.places, cur, "out");
   const draft: PersonDraft = {
     direction: "lent",
     personName: name.trim(),
@@ -239,6 +252,7 @@ export function LendPage({ data, actions }: { data: Ready; actions: PeopleAction
     amountMinor,
     toSavingsMinor: 0,
     payback: null,
+    placeId: place.placeId,
   };
   const problems = checkPersonDebt(draft, { ...currencyContext(data), cycleStartedOn: data.cycle.startedOn });
   const entries = entriesOf(data);
@@ -250,6 +264,7 @@ export function LendPage({ data, actions }: { data: Ready; actions: PeopleAction
   async function save() {
     setBusy(true);
     setFailed(false);
+    place.remember();
     const done = await actions.add(draft);
     setBusy(false);
     if (done) window.location.hash = "People";
@@ -279,6 +294,7 @@ export function LendPage({ data, actions }: { data: Ready; actions: PeopleAction
           }}
         />
         <AmountField label="Amount" text={text} currency={cur} onChange={setText} />
+        <PlaceChoice label="Paid from" choice={place} />
         <p className="small" data-testid="lend-after">
           It comes out of free money now. You can spend today after this:{" "}
           <b>{formatMoney(after.allowanceMinor, spendCur)}</b>

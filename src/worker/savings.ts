@@ -15,6 +15,7 @@ import {
   settings,
 } from "./db/schema";
 import { json } from "./json";
+import { placeId, placesUsable } from "./place-use";
 import type { SignedIn } from "./user-check";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
@@ -191,6 +192,8 @@ const newMove = z.object({
   currency: z.string().optional(),
   /** Above zero; a take-out is stored below zero. */
   amountMinor: z.number().int(),
+  /** Put in: the place the money went into (SAB-52). A take-out stays where it is: it takes none. */
+  placeId,
 });
 
 const newIncome = z.object({
@@ -200,12 +203,15 @@ const newIncome = z.object({
   currency: z.string().optional(),
   amountMinor: z.number().int(),
   toSavingsMinor: z.number().int(),
+  /** The place the money landed in (SAB-52), the part sent to savings too; null moves no place. */
+  placeId,
 });
 
 /**
  * Savings and Add income (backlog item 10, spec 5): Put in, Take out (into free
  * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
- * current cycle. Deletes are the toasts' Undo, current cycle only.
+ * current cycle. Deletes are the toasts' Undo, current cycle only. Income and Put
+ * in may name the place the money landed in (SAB-52).
  * The phone works out every number with the money rules.
  */
 export const savings = new Hono<SignedIn>()
@@ -216,7 +222,10 @@ export const savings = new Hono<SignedIn>()
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const currency = b.currency ?? now.settings.spendingCurrency;
     const totalMinor = b.kind === "take_out" ? savingsTotal(await savingsLines(c), currency) : 0;
-    const problems = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
+    const problems: string[] = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
+    // Taken out into free money, the money stays in its place (spec 6).
+    const inPlace = b.kind === "put_in" ? (b.placeId ?? null) : null;
+    if (!(await placesUsable(c, [{ placeId: inPlace, currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(savingsMovement).values({
@@ -227,6 +236,7 @@ export const savings = new Hono<SignedIn>()
         amountMinor: b.kind === "take_out" ? -b.amountMinor : b.amountMinor,
         kind: b.kind,
         movedOn: now.today,
+        placeId: inPlace,
       });
     } catch {
       // The id is already in use.
@@ -258,12 +268,14 @@ export const savings = new Hono<SignedIn>()
     const problems: string[] = checkIncome(row, now.currencies);
     // Borrowed money and money paid back go with their person entry (item 20, /api/people).
     if (row.kind === "borrowed" || row.kind === "paid_back") problems.push("kind");
+    if (!(await placesUsable(c, [row]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(income).values({
         ...row,
         // Checked above: extra income or loan money received as cash (item 19).
         kind: row.kind as "extra" | "loan",
+        placeId: row.placeId ?? null,
         userId,
         cycleId: now.cycle.id,
         receivedOn: now.today,

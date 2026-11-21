@@ -13,6 +13,7 @@ import {
   cycleSpeeds,
   formatMoney,
   heldForCardsMinor,
+  inHandFromPlaces,
   isComingUp,
   leftoverOf,
   type OverspendChoice,
@@ -25,6 +26,7 @@ import {
   salaryDayDrafts,
   salaryDayView,
   salaryLeftoverOf,
+  staysInPlaces,
   stillToPayMinor,
   suggestSalaryDay,
   type UnpaidChoice,
@@ -35,6 +37,9 @@ import { currenciesOf, currencyContext } from "./CurrencyChoice";
 import { CommitmentsStep, type PotRow, PotsStep, type Row, typedOk } from "./CycleSteps";
 import { dayLabel, entriesOf, potEntry, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { lastPlace, placesFor, rememberPlace } from "./last-place";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
+import { placesOf } from "./Places";
 import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 import { VerdictChip } from "./Verdict";
@@ -76,6 +81,14 @@ const CHOICES: { choice: UnpaidChoice; label: string }[] = [
   { choice: "drop", label: "Drop" },
 ];
 
+/** Why "actually have in hand" starts where it does: the places against what the app counts (spec 6). */
+function placesStartNote(differenceMinor: number, currency: string): string {
+  const by = formatMoney(Math.abs(differenceMinor), currency);
+  return differenceMinor < 0
+    ? `From your places: they hold ${by} less than the app counts. Clear it to keep the leftover.`
+    : `From your places: they hold ${by} more than the app counts. Clear it to keep the leftover.`;
+}
+
 const OVERSPEND: { choice: OverspendChoice; label: string }[] = [
   { choice: "take", label: "Take it from the new cycle" },
   { choice: "ignore", label: "Ignore it" },
@@ -87,6 +100,8 @@ const OVERSPEND: { choice: OverspendChoice; label: string }[] = [
  * split, or the overspend choice) → this cycle's commitments (filled from the recurring ones and last cycle's
  * coming-up ones) → pots → expected next salary day and counting rate → summary with the gap
  * warning → Start new cycle. One step per screen.
+ * With places (spec 6): the salary names the place it landed in, a Paid it the
+ * place it was paid from, and "actually have in hand" starts from the places.
  */
 export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryDayActions }) {
   const cur = data.settings.spendingCurrency;
@@ -97,6 +112,10 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const [step, setStep] = useState<Step>(1);
   const [salaryText, setSalaryText] = useState("");
   const [receivedOn, setReceivedOn] = useState(today);
+  // The place the salary landed in (spec 6), in the salary currency.
+  const salaryPlace = usePlaceChoice(data.places, salaryCur, "in");
+  // Step 2: the place each Paid it was paid from, once picked; else the one paid from last.
+  const [paidPlaces, setPaidPlaces] = useState<Record<string, string | null>>({});
   const [rows, setRows] = useState<Row[] | null>(null);
   const [pots, setPots] = useState<PotRow[]>(() =>
     data.pots
@@ -131,9 +150,10 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     salaryCloseId: newId(),
   }));
   const [choices, setChoices] = useState<Record<string, { choice: UnpaidChoice; newId: string }>>({});
-  const [inHandText, setInHandText] = useState("");
+  // Null until typed in: the field starts from the places, when they differ from the app (spec 6).
+  const [inHandTyped, setInHandText] = useState<string | null>(null);
   const [toSavingsText, setToSavingsText] = useState("");
-  const [salaryInHandText, setSalaryInHandText] = useState("");
+  const [salaryInHandTyped, setSalaryInHandText] = useState<string | null>(null);
   const [salaryToSavingsText, setSalaryToSavingsText] = useState("");
   const [overspend, setOverspend] = useState<OverspendChoice | null>(null);
 
@@ -167,15 +187,40 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
 
   // Steps 2 and 3: the cycle that ends is still the current one.
   const unpaid = unpaidAtEnd(data.commitments, data.cycle.expectedSalaryOn);
+  /** The places a Paid it of this commitment can come out of: none for a set-aside moved to savings. */
+  const paidChoices = (k: { kind?: string; currency: string }) =>
+    staysInPlaces(k.kind ?? "bill") ? [] : placesFor(data.places, k.currency);
+  const paidPlace = (k: { id: string; kind?: string; currency: string }) => {
+    const offered = paidChoices(k);
+    if (offered.length === 0) return null;
+    const picked = paidPlaces[k.id];
+    return picked === null || offered.some((p) => p.id === picked)
+      ? (picked as string | null)
+      : lastPlace(data.places, k.currency);
+  };
   const chosen = unpaid.flatMap((k) => {
     const c = choices[k.id];
-    return c ? [{ id: k.id, choice: c.choice, newId: c.newId }] : [];
+    if (!c) return [];
+    const paid = c.choice === "paid" && stillToPayMinor(k) > 0;
+    return [{ id: k.id, choice: c.choice, newId: c.newId, ...(paid ? { placeId: paidPlace(k) } : {}) }];
   });
   const leftover = leftoverOf(entriesOf(data), chosen);
   // Two currencies: the salary currency's leftover, split into dollar savings and the new cycle (item 16).
   const salaryLeftover = salaryLeftoverOf(entriesOf(data), chosen);
   const dollarsToSplit = salaryLeftover !== null && salaryLeftover > 0;
   const overspent = leftover.leftoverMinor < 0;
+  // Step 3 starts "actually have in hand" from the places, where they differ from what the app counts.
+  const placeTotals = placesOf(data).totals;
+  const placesOwn = placeTotals.find((t) => t.currency === cur);
+  const placesSalary = two ? placeTotals.find((t) => t.currency === salaryCur) : undefined;
+  // Rupees short covered from the dollars: the two leftovers lean on each other, so nothing is started.
+  const mixed = leftover.fromSalaryMinor > 0;
+  const inHandStart = mixed ? null : inHandFromPlaces(leftover.leftoverMinor, placesOwn);
+  const salaryInHandStart =
+    mixed || !dollarsToSplit ? null : inHandFromPlaces(salaryLeftover ?? 0, placesSalary);
+  const inHandText = inHandTyped ?? (inHandStart === null ? "" : toText(inHandStart, cur));
+  const salaryInHandText =
+    salaryInHandTyped ?? (salaryInHandStart === null ? "" : toText(salaryInHandStart, salaryCur));
   const closeInput: CloseInput = {
     unpaid: chosen.map(({ id, choice }) => ({ id, choice })),
     inHandMinor: overspent || inHandText === "" ? null : (parseAmount(inHandText, cur) ?? -1),
@@ -318,11 +363,19 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   async function start() {
     setBusy(true);
     setFailed(false);
+    salaryPlace.remember();
+    for (const u of chosen) {
+      const k = unpaid.find((x) => x.id === u.id);
+      if (k && "placeId" in u && paidChoices(k).length > 0) {
+        rememberPlace(data.places, k.currency, u.placeId ?? null);
+      }
+    }
     const done = await actions.start({
       cycleId: newId(),
       incomeId: newId(),
       salaryMinor: input.salaryMinor,
       receivedOn,
+      placeId: salaryPlace.placeId,
       expectedSalaryOn: expected,
       ...(newRate ? { countingRate: { id: rateId, rate: newRate } } : {}),
       commitments: (rows ?? []).map((r) => ({
@@ -413,6 +466,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
           {has("received_on") && (
             <p className="tiny bad">Pick a day from {dayLabel(data.cycle.startedOn)} up to today.</p>
           )}
+          <PlaceChoice label="Received in" choice={salaryPlace} />
         </section>
       )}
 
@@ -452,6 +506,11 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
               onChange={(e) => typed(e.target.value) && setInHandText(e.target.value)}
             />
             <span className="tiny mute">Change it if some spends were never entered.</span>
+            {inHandTyped === null && inHandStart !== null && placesOwn?.differenceMinor && (
+              <span className="tiny mute block" data-testid="in-hand-from-places">
+                {placesStartNote(placesOwn.differenceMinor, cur)}
+              </span>
+            )}
             {heldMinor > 0 && (
               <span className="tiny mute block" data-testid="held-for-cards">
                 Leave out {money(heldMinor)} held for card bills: it is not leftover.
@@ -496,6 +555,13 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
                   placeholder={toText(salaryLeftover, salaryCur)}
                   onChange={(e) => typedSalary(e.target.value) && setSalaryInHandText(e.target.value)}
                 />
+                {salaryInHandTyped === null &&
+                  salaryInHandStart !== null &&
+                  placesSalary?.differenceMinor && (
+                    <span className="tiny mute block" data-testid="salary-in-hand-from-places">
+                      {placesStartNote(placesSalary.differenceMinor, salaryCur)}
+                    </span>
+                  )}
               </label>
               {has("close.salary_in_hand") && <p className="tiny bad">Type a plain amount.</p>}
               <label className="field">
@@ -592,6 +658,22 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
                     </button>
                   ))}
                 </div>
+                {pick === "paid" && rest > 0 && paidChoices(k).length > 0 && (
+                  <label className="field">
+                    Paid from
+                    <select
+                      value={paidPlace(k) ?? ""}
+                      onChange={(e) => setPaidPlaces((ps) => ({ ...ps, [k.id]: e.target.value || null }))}
+                    >
+                      {paidChoices(k).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                      <option value="">No place</option>
+                    </select>
+                  </label>
+                )}
                 {pick === "drop" && rest > 0 && (
                   <p className="tiny mute">{money(rest)} joins the leftover (next step).</p>
                 )}

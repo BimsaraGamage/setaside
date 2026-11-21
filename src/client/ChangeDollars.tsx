@@ -4,18 +4,27 @@ import { api } from "./api";
 import { currencyContext } from "./CurrencyChoice";
 import { type Conversion, dayLabel, entriesOf, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
 import type { Toaster } from "./toast";
 
 const ok = async (res: Promise<Response | { ok: boolean }>) => (await res.catch(() => null))?.ok ?? false;
 
-const addConversion = (json: { id: string; givenMinor: number; receivedMinor: number; doneOn: string }) =>
-  ok(api.api.conversions.$post({ json }));
+/** Dollars given, rupees received, the day, and the places they came out of and went into (spec 6). */
+interface ConversionDraft {
+  givenMinor: number;
+  receivedMinor: number;
+  doneOn: string;
+  fromPlaceId?: string | null;
+  toPlaceId?: string | null;
+}
+
+const addConversion = (json: ConversionDraft & { id: string }) => ok(api.api.conversions.$post({ json }));
 const removeConversion = (id: string) => ok(api.api.conversions[":id"].$delete({ param: { id } }));
 
 /** Change dollars: each save shows a toast with Undo (spec 2: the only undo is on screen). */
 export function conversionActions({ done }: Toaster) {
   return {
-    add: (c: { givenMinor: number; receivedMinor: number; doneOn: string }, text: string) => {
+    add: (c: ConversionDraft, text: string) => {
       const id = newId();
       return addConversion({ id, ...c }).then((saved) =>
         done(saved, { text, undo: () => removeConversion(id) }),
@@ -39,7 +48,8 @@ function gainLabel(gainMinor: number, currency: string): string | null {
 /**
  * Change dollars (spec 8, 10; item 16): dollars given, rupees received, date;
  * the live rate; how much covers rupee bills and how much goes to free money;
- * the rate gain or loss. The counting rate with Set, and this cycle's conversions.
+ * the rate gain or loss; the place the dollars came out of and the one the rupees
+ * went into (spec 6). The counting rate with Set, and this cycle's conversions.
  */
 export function ChangeDollarsPage({
   data,
@@ -61,6 +71,9 @@ export function ChangeDollarsPage({
   const givenMinor = parseAmount(givenText, salaryCur) ?? 0;
   const receivedMinor = parseAmount(receivedText, cur) ?? 0;
   const input = { givenMinor, receivedMinor, doneOn };
+  // The place the dollars came out of and the one the rupees went into (spec 6).
+  const from = usePlaceChoice(data.places, salaryCur, "out");
+  const to = usePlaceChoice(data.places, cur, "in");
   const problems = checkConversion(input, {
     ...currencyContext(data),
     cycleStartedOn: data.cycle.startedOn,
@@ -85,7 +98,9 @@ export function ChangeDollarsPage({
     setBusy(true);
     setFailed(false);
     const text = `Changed ${formatMoney(givenMinor, salaryCur)} into ${formatMoney(receivedMinor, cur)}`;
-    const saved = await actions.add(input, text);
+    from.remember();
+    to.remember();
+    const saved = await actions.add({ ...input, fromPlaceId: from.placeId, toPlaceId: to.placeId }, text);
     setBusy(false);
     if (saved) {
       setGivenText("");
@@ -137,6 +152,8 @@ export function ChangeDollarsPage({
         {problems.includes("done_on") && (
           <p className="tiny bad">Pick a day from {dayLabel(data.cycle.startedOn)} up to today.</p>
         )}
+        <PlaceChoice label={`${salaryCur} from`} choice={from} />
+        <PlaceChoice label={`${cur} into`} choice={to} />
         {ready && split.rate && (
           <div className="stack" data-testid="conversion-split">
             <p className="small">

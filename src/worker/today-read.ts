@@ -55,16 +55,24 @@ const UNDO_TABLES: [table: string, more?: string][] = [
 ];
 
 /**
- * What moves a place's balance (ticket SAB-51, spec 6), each with its sign: spends not on a card and
- * commitment payments out of it, Move money out of it and into it. Only rows saved after the balance was
- * last typed count (`created_at` against the check's instant): a typed balance already has the older ones.
- * A later kind of entry with a `place_id` joins this list.
+ * What moves a place's balance (tickets SAB-51 and SAB-52, spec 6), each with its sign and the column
+ * added up: money out of it (spends not on a card, commitment payments, money lent, plan extras, dollars
+ * changed), money into it (incomes, rupees from a conversion), Move money both ways, and savings
+ * movements by their own sign (Put in above zero, a prepayment below). Only rows saved after the balance
+ * was last typed count (`created_at` against the check's instant): a typed balance already has the older
+ * ones. A later kind of entry with a place joins this list and `PLACE_COLUMNS` in `places.ts`.
  */
-const PLACE_MOVED: [sign: "-" | "+", from: string][] = [
-  ["-", "spend where place_id = p.id and card_id is null"],
-  ["-", "commitment_payment where place_id = p.id"],
-  ["-", "place_move where from_place_id = p.id"],
-  ["+", "place_move where to_place_id = p.id"],
+const PLACE_MOVED: [sign: "-" | "+", column: string, from: string][] = [
+  ["-", "amount_minor", "spend where place_id = p.id and card_id is null"],
+  ["-", "amount_minor", "commitment_payment where place_id = p.id"],
+  ["-", "amount_minor", "place_move where from_place_id = p.id"],
+  ["+", "amount_minor", "place_move where to_place_id = p.id"],
+  ["+", "amount_minor", "income where place_id = p.id"],
+  ["+", "amount_minor", "savings_movement where place_id = p.id"],
+  ["-", "amount_minor", "person_debt where place_id = p.id"],
+  ["-", "amount_minor", "plan_extra_payment where place_id = p.id"],
+  ["-", "given_minor", "conversion where from_place_id = p.id"],
+  ["+", "received_minor", "conversion where to_place_id = p.id"],
 ];
 
 const SQL = {
@@ -178,7 +186,7 @@ const SQL = {
   // moved (SAB-51; money out is below zero), all in one statement.
   places: `select p.id, p.name, p.currency, p.kind, p.archived, k.amount_minor as balanceMinor,
       k.checked_at as checkedAt,
-      ${PLACE_MOVED.map(([sign, from]) => `${sign} coalesce((select sum(amount_minor) from ${from} and user_id = ?1 and created_at >= k.checked_at), 0)`).join(" ")}
+      ${PLACE_MOVED.map(([sign, column, from]) => `${sign} coalesce((select sum(${column}) from ${from} and user_id = ?1 and created_at >= k.checked_at), 0)`).join(" ")}
         as movedMinor
     from place p left join place_check k on k.id = (select id from place_check
       where user_id = ?1 and place_id = p.id order by checked_at desc, id desc limit 1)
