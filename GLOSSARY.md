@@ -44,4 +44,5 @@ Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10
 - **Unsent**: an entry made on the phone without a connection, not yet saved by the server. Only unsent entries can be changed or removed while offline.
 - **Needs a look**: the list of unsent commitment payments that no longer fit once sent (their commitment was removed, finished or its cycle ended); the user fixes or removes each.
 - **Feedback**: what the user sends from the app (Something's wrong or Idea) with a screenshot, the trail and what the phone showed, so the problem can be fixed without asking back. Read with `npm run feedback`.
+- **Feedback job**: `npm run feedback:auto` on a timer: sorts new feedback, answers the sender, charts a ticket, and builds a small fix on an `fb/<id>` branch. Never opens a PR, merges or releases.
 - **Trail**: the last steps in the app on this phone (screens, buttons pressed, server calls, errors, connection), kept in memory only and sent with feedback. Never what was typed. Avoid: usage history, log.
