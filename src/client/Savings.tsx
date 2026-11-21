@@ -22,6 +22,7 @@ import {
 import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, type Ready, type SavingsLine, useToday } from "./data";
+import { GoalsCard } from "./Goals";
 import { newId } from "./id";
 import type { PeopleActions } from "./People";
 import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
@@ -222,6 +223,7 @@ export function SavingsPage({ data }: { data: Ready }) {
           </a>
         </div>
       </section>
+      <GoalsCard data={data} />
       {data.prepayments.length > 0 && (
         <section className="card" aria-labelledby="prepay-h">
           <h3 id="prepay-h">Prepayments</h3>

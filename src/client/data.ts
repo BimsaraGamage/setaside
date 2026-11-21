@@ -82,6 +82,8 @@ export interface Current {
   savings: SavingsLine[];
   /** Prepayments from savings with their payback so far, oldest first (item 14). */
   prepayments: Prepayment[];
+  /** Savings goals, oldest first, with what is moved toward each and their shares (SAB-68). */
+  goals: Goal[];
   /** The "Every cycle" templates, paused ones too (item 11). */
   recurring: Recurring[];
   /** Undo salary day is allowed: nothing new entered since salary day started this cycle (item 13). */
@@ -214,6 +216,33 @@ export interface Prepayment {
   startedOn: string;
 }
 
+/** A savings goal (SAB-68, spec 5): a target to save by a day; its shares are savings set-asides. */
+export interface Goal {
+  id: string;
+  name: string;
+  currency: string;
+  targetMinor: number;
+  byOn: string;
+  /** "Already saved for it". */
+  startMinor: number;
+  stopped: boolean;
+  /** What payments on its shares cover, all cycles. */
+  movedMinor: number;
+  shareCount: number;
+  /** Every share, newest cycle first. */
+  shares: GoalShare[];
+}
+
+export interface GoalShare {
+  id: string;
+  cycleId: string;
+  /** Its cycle's first day. */
+  startedOn: string;
+  plannedMinor: number;
+  state: CommitmentState;
+  coveredMinor: number;
+}
+
 export interface SavingsLine {
   id: string;
   /** Put in, Take out, extra income to savings, a savings set-aside moved, a prepayment and its paybacks, Pay extra on a plan. */
@@ -268,6 +297,8 @@ export interface Commitment {
   planId: string | null;
   /** A payback to a person: the money borrowed (item 20). */
   personDebtId: string | null;
+  /** A goal share: the savings goal it saves toward (SAB-68). */
+  goalId?: string | null;
   /** Payments so far, oldest first (item 6). */
   payments: Payment[];
 }

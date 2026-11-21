@@ -245,11 +245,14 @@ export const commitment = sqliteTable(
     planId: text("plan_id"),
     personDebtId: text("person_debt_id"),
     prepaymentId: text("prepayment_id"),
+    /** A goal share: the savings goal it saves toward (SAB-68; kind savings, no foreign key). */
+    goalId: text("goal_id"),
     ...appTimestamps,
   },
   (t) => [
     index("commitment_user_id_idx").on(t.userId),
     index("commitment_cycle_id_idx").on(t.cycleId, t.dueOn),
+    index("commitment_goal_id_idx").on(t.goalId),
   ],
 );
 
@@ -403,6 +406,30 @@ export const prepayment = sqliteTable(
     ...appTimestamps,
   },
   (t) => [index("prepayment_user_id_idx").on(t.userId)],
+);
+
+/**
+ * A savings goal (SAB-68, spec 5): a target to save by a day. It belongs to no
+ * cycle (like a place): each cycle's **goal share** is a `savings` commitment with
+ * `goal_id`. Saved toward it, the fair share and its status are only worked out.
+ */
+export const savingsGoal = sqliteTable(
+  "savings_goal",
+  {
+    id: text("id").primaryKey(),
+    userId: ownerColumn(),
+    name: text("name").notNull(),
+    /** One of the user's two, fixed once made. */
+    currency: text("currency").notNull(),
+    targetMinor: integer("target_minor").notNull(),
+    byOn: text("by_on").notNull(),
+    /** "Already saved for it": a part of the savings total when made; takes no money. */
+    startMinor: integer("start_minor").notNull().default(0),
+    /** Stop this goal: no more shares (it can start again). */
+    stopped: integer("stopped", { mode: "boolean" }).notNull().default(false),
+    ...appTimestamps,
+  },
+  (t) => [index("savings_goal_user_id_idx").on(t.userId)],
 );
 
 /**

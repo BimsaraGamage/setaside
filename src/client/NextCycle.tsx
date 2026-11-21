@@ -1,5 +1,6 @@
 import { formatMoney, type NextCycleGroup, nextCyclePreview } from "../money";
 import { dayLabel, type Ready } from "./data";
+import { goalEntry } from "./Goals";
 
 const LABELS: [NextCycleGroup, string][] = [
   ["bills", "Bills"],
@@ -29,6 +30,7 @@ export function NextCycleCard({ data }: { data: Ready }) {
     pots: data.pots,
     prepayments: data.prepayments,
     plans: data.plans,
+    goals: data.goals.map((g) => goalEntry(data, g)),
   });
   const money = (m: number) => formatMoney(m, cur);
   return (

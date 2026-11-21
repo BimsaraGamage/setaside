@@ -5,6 +5,7 @@ import {
   type PrepaymentEntry,
   type PreviewCommitment,
   type RecurringEntry,
+  type SavingsGoalEntry,
 } from "../../src/money";
 
 // Next cycle preview (spec 6): what salary day would set aside, against this cycle's salary.
@@ -160,5 +161,43 @@ describe("next cycle preview (spec 6)", () => {
     expect(p.salaryMinor).toBe(30_000_000);
     expect(p.groups.savings).toBe(3_000_000);
     expect(p.freeMinor).toBe(30_000_000 - 3_600_000 - 3_000_000 - 4_000_000);
+  });
+});
+
+describe("next cycle preview with savings goals (SAB-68)", () => {
+  const japan: SavingsGoalEntry = {
+    id: "g1",
+    name: "Trip to Japan",
+    currency: "LKR",
+    targetMinor: 60_000_000,
+    byOn: "2027-06-01",
+    startMinor: 0,
+    stopped: false,
+    movedMinor: 0,
+    shareCount: 1,
+  };
+
+  it("counts each live goal's fair share under Savings, this cycle's share as if moved", () => {
+    const share = open({
+      id: "s1",
+      name: "Trip to Japan",
+      kind: "savings",
+      goalId: "g1",
+      plannedMinor: 10_000_000,
+    });
+    const p = nextCyclePreview({ ...base, recurring: [], commitments: [share], goals: [japan] });
+    // From 25 Nov: shares left 1 + Dec … May = 7; 600,000 − 100,000 moved = 500,000 / 7 → 71,429.
+    expect(p.items).toContainEqual({
+      group: "savings",
+      name: "Trip to Japan",
+      currency: "LKR",
+      minor: 7_142_900,
+    });
+    expect(p.groups.savings).toBe(7_142_900);
+  });
+
+  it("leaves out stopped goals", () => {
+    const p = nextCyclePreview({ ...base, recurring: [], goals: [{ ...japan, stopped: true }] });
+    expect(p.groups.savings).toBe(0);
   });
 });

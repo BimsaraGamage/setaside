@@ -23,6 +23,7 @@ export * from "./reminder-words";
 export * from "./reminders";
 export * from "./salary-day";
 export * from "./savings";
+export * from "./savings-goal";
 export * from "./speed";
 export * from "./spend";
 export * from "./spends-csv";

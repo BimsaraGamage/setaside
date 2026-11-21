@@ -8,6 +8,7 @@ import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FeedbackHost, openFeedback } from "./Feedback";
 import { FirstUse } from "./FirstUse";
+import { GoalPage, goalActions } from "./Goals";
 import { agoLabel, clearCopy, readCopy } from "./offline-copy";
 import { PastCyclePage, PastList } from "./Past";
 import { PayPage } from "./Pay";
@@ -39,6 +40,7 @@ const pages = {
   Spends: "Money",
   Savings: "Money",
   SavingsMove: "Money",
+  Goal: "Money",
   AddIncome: "Money",
   ChangeDollars: "Money",
   Card: "Money",
@@ -128,6 +130,7 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   const cards = cardActions(toaster);
   const plans = planActions(toaster);
   const places = placeActions(toaster);
+  const goals = goalActions(toaster);
   const people = peopleActions(toaster);
   const salaryDay = salaryDayActions(toaster);
   const everyCycle = everyCycleActions(toaster);
@@ -181,6 +184,8 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   const card = tab === "Card" && id ? ready.cards.find((k) => k.id === id) : undefined;
   // "#Place" adds a place; "#Place/<id>" opens one (ticket SAB-50).
   const place = tab === "Place" && id ? ready.places.find((p) => p.id === id) : undefined;
+  // "#Goal" makes a savings goal; "#Goal/<id>" opens one (SAB-68).
+  const goal = tab === "Goal" && id ? ready.goals.find((g) => g.id === id) : undefined;
   // "#Instalments" makes a plan; "#Instalments/<id>" opens one (item 19).
   const plan = tab === "Instalments" && id ? ready.plans.find((p) => p.id === id) : undefined;
   // "#Person/<id>" opens one person entry (item 20).
@@ -278,6 +283,17 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
             actions={savings}
           />
         )}
+        {tab === "Goal" &&
+          (!id || goal ? (
+            <GoalPage key={id ?? "new"} data={ready} editing={goal} actions={goals} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Savings">
+                ← Back
+              </a>
+              <p className="mute">This goal is no longer here.</p>
+            </>
+          ))}
         {tab === "AddIncome" && (
           // "#AddIncome/borrowed", "#AddIncome/paid_back/<person id>" (item 20).
           <AddIncomePage

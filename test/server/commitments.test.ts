@@ -70,6 +70,7 @@ describe("commitments (item 5, spec 3)", () => {
         cardId: null,
         planId: null,
         personDebtId: null,
+        goalId: null,
         payments: [],
       },
     ]);

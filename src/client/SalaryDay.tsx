@@ -12,6 +12,7 @@ import {
   countedMinor,
   cycleSpeeds,
   formatMoney,
+  goalDrafts,
   heldForCardsMinor,
   inHandFromPlaces,
   isComingUp,
@@ -36,6 +37,7 @@ import { api } from "./api";
 import { currenciesOf, currencyContext } from "./CurrencyChoice";
 import { CommitmentsStep, type PotRow, PotsStep, type Row, typedOk } from "./CycleSteps";
 import { dayLabel, entriesOf, potEntry, type Ready, useToday } from "./data";
+import { goalEntry } from "./Goals";
 import { newId } from "./id";
 import { lastPlace, placesFor, rememberPlace } from "./last-place";
 import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
@@ -296,15 +298,21 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
     // Plan payments (item 19) the same way, by plan.
     const planPaid: Record<string, number> = {};
     const planPlanned: Record<string, number> = {};
+    // Goal shares (SAB-68) the same way, by goal: what step 2 moved or carried counts first.
+    const goalPaid: Record<string, number> = {};
+    const goalPlanned: Record<string, number> = {};
     for (const k of unpaid) {
       const choice = choices[k.id]?.choice;
       if (choice === "paid") add(paid, k.prepaymentId, stillToPayMinor(k));
       if (choice === "carry") add(planned, k.prepaymentId, stillToPayMinor(k));
       if (choice === "paid") add(planPaid, k.planId, stillToPayMinor(k));
       if (choice === "carry") add(planPlanned, k.planId, stillToPayMinor(k));
+      if (choice === "paid") add(goalPaid, k.goalId, stillToPayMinor(k));
+      if (choice === "carry") add(goalPlanned, k.goalId, stillToPayMinor(k));
     }
     for (const d of drafts) add(planned, d.prepaymentId, d.plannedMinor);
     for (const d of drafts) add(planPlanned, d.planId, d.plannedMinor);
+    for (const d of drafts) add(goalPlanned, d.goalId, d.plannedMinor);
     const plans = data.plans.map((p) => ({ ...p, paidMinor: p.paidMinor + (planPaid[p.id] ?? 0) }));
     const prepayments = data.prepayments.map((p) => ({
       ...p,
@@ -314,6 +322,11 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       ...drafts,
       ...paybackDrafts(prepayments, receivedOn, planned),
       ...planDrafts(plans, receivedOn, expected, planPlanned),
+      ...goalDrafts(
+        data.goals.map((g) => goalEntry(data, g)),
+        { startedOn: receivedOn, usualPayDay: data.settings.usualPayDay },
+        { paid: goalPaid, planned: goalPlanned },
+      ),
     ].map((d) => ({
       ...d,
       id: newId(),
@@ -382,6 +395,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         id: r.id,
         kind: r.kind,
         prepaymentId: r.prepaymentId ?? null,
+        goalId: r.goalId ?? null,
         cardId: r.cardId ?? null,
         planId: r.planId ?? null,
         name: r.name,
