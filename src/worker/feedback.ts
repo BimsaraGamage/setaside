@@ -84,15 +84,21 @@ export const feedbackRoutes = new Hono<SignedIn>()
         createdAt: feedback.createdAt,
         status: feedback.status,
         reply: feedback.reply,
+        waiting: feedback.waiting,
+        checkedAt: feedback.checkedAt,
       })
       .from(feedback)
       .where(eq(feedback.userId, userId))
       .orderBy(desc(feedback.createdAt))
       .limit(FEEDBACK_LIST_MAX);
-    const list = rows.map((r) => ({
+    const ms = (d: Date | number) => (d instanceof Date ? d.getTime() : Number(d));
+    const list = rows.map(({ waiting, checkedAt, ...r }) => ({
       ...r,
       text: (r.text.split("\n")[0] ?? "").slice(0, 200),
-      createdAt: r.createdAt instanceof Date ? r.createdAt.getTime() : Number(r.createdAt),
+      createdAt: ms(r.createdAt),
+      // Why a new one still waits and when the feedback job last looked (ticket SAB-66); only while it is new.
+      waiting: r.status === "new" && waiting ? waiting : null,
+      checkedAt: r.status === "new" && waiting && checkedAt != null ? ms(checkedAt) : null,
     }));
     return c.json({ feedback: list });
   })

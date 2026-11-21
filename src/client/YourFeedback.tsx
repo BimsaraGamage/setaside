@@ -10,6 +10,10 @@ export interface FeedbackItem {
   createdAt: number;
   status: "new" | "seen" | "planned" | "building" | "ready" | "done" | "not doing";
   reply: string | null;
+  /** Why a Sent one still waits, from the feedback job (ticket SAB-66). */
+  waiting: string | null;
+  /** When the feedback job last looked at it, while it waits. */
+  checkedAt: number | null;
 }
 
 /** Where it is, in plain words (spec 14 "Feedback"). */
@@ -31,6 +35,14 @@ export function feedbackSent() {
 }
 
 const dayOf = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const timeOf = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** "Last checked 23:55", with the day when it was not today (on this phone). */
+export function lastChecked(at: number, now = Date.now()) {
+  const when = new Date(at);
+  const sameDay = new Date(now).toDateString() === when.toDateString();
+  return `Last checked ${sameDay ? "" : `${dayOf.format(when)}, `}${timeOf.format(when)}`;
+}
 
 type Load = { kind: "loading" } | { kind: "error" } | { kind: "ok"; items: FeedbackItem[] };
 
@@ -82,6 +94,12 @@ export function YourFeedback() {
           <span className="grow">
             <span className="block">{f.text}</span>
             {f.reply && <span className="tiny block">{f.reply}</span>}
+            {f.status === "new" && f.waiting && (
+              <span className="tiny mute block" data-testid="your-feedback-waiting">
+                {f.waiting}
+                {f.checkedAt != null && ` ${lastChecked(f.checkedAt)}.`}
+              </span>
+            )}
             <span className="tiny mute block">
               {f.kind === "idea" ? "Idea" : "Something's wrong"} · {dayOf.format(new Date(f.createdAt))}
             </span>

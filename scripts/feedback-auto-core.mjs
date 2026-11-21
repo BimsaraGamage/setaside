@@ -32,7 +32,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { checkSet, REPLY_MAX } from "./feedback-set.mjs";
+import { checkSet, REPLY_MAX, WAIT_WORDS, waitSql } from "./feedback-set.mjs";
 
 export const MAX_PER_PASS = 3;
 export const MAX_TRIES = 2;
@@ -603,7 +603,7 @@ async function pass(deps) {
   // 1. The cheap look: one query, no Claude.
   const rows = deps
     .d1(
-      "select id, status from feedback where status in ('new', 'planned', 'building', 'ready') order by created_at",
+      "select id, status, waiting from feedback where status in ('new', 'planned', 'building', 'ready') order by created_at",
     )
     .filter((r) => UUID.test(String(r.id)));
   const done = doneStep(
@@ -619,13 +619,16 @@ async function pass(deps) {
   if (!deps.loggedIn()) {
     noticeOnce(deps, "login", "Feedback job: log in again", "The feedback job needs a fresh Claude login.");
     deps.say("Skipped: the Claude login has run out.");
+    noteWait(deps, WAIT_WORDS.login);
     return { ran: 0, done, skipped: "login" };
   }
   const [go, why] = deps.gate();
   if (!go) {
     deps.say(why);
+    noteWait(deps, WAIT_WORDS.quota);
     return { ran: 0, done, skipped: "quota" };
   }
+  if (rows.some((r) => r.status === "new" && r.waiting)) noteWait(deps, null);
   deps.inbox();
   let ran = 0;
   for (const { id } of fresh) {
@@ -634,6 +637,15 @@ async function pass(deps) {
     if (stop) break;
   }
   return { ran, done };
+}
+
+/** Tells the new feedback why it waits, or clears that (SAB-66). A failed write never stops the pass. */
+function noteWait(deps, reason) {
+  try {
+    deps.d1(waitSql(reason, deps.now()));
+  } catch (e) {
+    deps.say(`Couldn't note the wait: ${String(e?.message ?? e).split("\n")[0]}`);
+  }
 }
 
 /** Done step: a feedback whose `Feedback: <id>` commit is in a release tag is done (ticket 61, Facts). */
