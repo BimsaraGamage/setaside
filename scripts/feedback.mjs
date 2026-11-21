@@ -3,7 +3,10 @@
 //
 //   npm run feedback                 new feedback from the live database
 //   npm run feedback -- --all        done ones too
-//   npm run feedback -- --done <id>  marks one handled
+//   npm run feedback -- --set <id> --status <s> [--reply <text>] [--ticket SAB-NN]
+//                                    where it is, shown to the sender under Settings → Your feedback (SAB-60);
+//                                    statuses: new, seen, planned, building, ready, done, not doing
+//   npm run feedback -- --done <id>  short for --set <id> --status done
 //   npm run feedback -- --local      the local database (npm run dev) instead
 //
 // Each folder: note.md (what they wrote, when, the screen, the device), context.json, trail.json (the last
@@ -13,12 +16,17 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { checkSet, setSql } from "./feedback-set.mjs";
 
 const { values } = parseArgs({
   options: {
     local: { type: "boolean", default: false },
     all: { type: "boolean", default: false },
     done: { type: "string" },
+    set: { type: "string" },
+    status: { type: "string" },
+    reply: { type: "string" },
+    ticket: { type: "string" },
     out: { type: "string", default: "feedback-inbox" },
   },
 });
@@ -45,18 +53,30 @@ function d1(command) {
   return parsed.flatMap((r) => r.results ?? []);
 }
 
-if (values.done !== undefined) {
-  if (!UUID.test(values.done)) {
-    console.error("--done takes a feedback id (a UUID).");
+const change =
+  values.done !== undefined
+    ? { id: values.done, status: "done", reply: values.reply, ticket: values.ticket }
+    : values.set !== undefined
+      ? { id: values.set, status: values.status, reply: values.reply, ticket: values.ticket }
+      : null;
+
+if (change) {
+  // Every value is checked before any SQL is made (scripts/feedback-set.mjs).
+  const problems = checkSet(change);
+  if (problems.length) {
+    for (const p of problems) console.error(p);
     process.exit(1);
   }
-  d1(`update feedback set status = 'done', updated_at = ${Date.now()} where id = '${values.done}'`);
-  const [row] = d1(`select status from feedback where id = '${values.done}'`);
-  if (row?.status !== "done") {
-    console.error(`No feedback ${values.done}.`);
+  const id = change.id.toLowerCase();
+  d1(setSql(change));
+  const [row] = d1(`select status from feedback where id = '${id}'`);
+  if (row?.status !== change.status) {
+    console.error(`No feedback ${id}.`);
     process.exit(1);
   }
-  console.log(`Marked done: ${values.done}`);
+  console.log(
+    `${id}: ${change.status}${change.reply ? ` · "${change.reply.trim()}"` : ""}${change.ticket ? ` · ${change.ticket}` : ""}`,
+  );
   process.exit(0);
 }
 
@@ -125,7 +145,7 @@ function writeOne(f) {
   const note = [
     `# ${f.kind === "idea" ? "Idea" : "Something's wrong"} · ${when(f.created_at)}`,
     "",
-    `- Id: \`${f.id}\` (status ${plain(f.status, 10)}; mark handled: \`npm run feedback -- --done ${f.id}\`)`,
+    `- Id: \`${f.id}\` (status ${plain(f.status, 10)}; answer: \`npm run feedback -- --set ${f.id} --status <s> --reply <text>\`)`,
     `- From: user \`${plain(f.user_id, 64)}\` (${plain(f.email)})`,
     `- Files: context.json, trail.json (${steps.length} steps)${f.today ? ", today.json" : ""}${screen ? `, ${screen}` : ""}${picture ? `, ${picture}` : ""}`,
     "",

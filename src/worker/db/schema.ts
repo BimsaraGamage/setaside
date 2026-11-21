@@ -773,6 +773,17 @@ export const placeMove = sqliteTable(
   ],
 );
 
+/** Where a feedback is (ticket SAB-60, spec 14 "Feedback"). */
+export const FEEDBACK_STATUSES = [
+  "new",
+  "seen",
+  "planned",
+  "building",
+  "ready",
+  "done",
+  "not doing",
+] as const;
+
 /**
  * Feedback (ticket SAB-55, spec 14 "Feedback"): what the user wrote, with what the phone
  * knew when they sent it, so an agent can fix from it (`npm run feedback`).
@@ -796,9 +807,12 @@ export const feedback = sqliteTable(
     screenshot: text("screenshot"),
     /** A picture the user added from the gallery. */
     picture: text("picture"),
-    status: text("status", { enum: ["new", "done"] })
-      .notNull()
-      .default("new"),
+    /** Where it is (ticket SAB-60): set by `npm run feedback -- --set`, shown under Your feedback. */
+    status: text("status", { enum: FEEDBACK_STATUSES }).notNull().default("new"),
+    /** A short answer for the person who sent it (≤ 280 characters). */
+    reply: text("reply"),
+    /** The ticket it became, e.g. `SAB-61`. */
+    ticket: text("ticket"),
     ...appTimestamps,
   },
   (t) => [index("feedback_user_id_idx").on(t.userId), index("feedback_status_idx").on(t.status, t.createdAt)],

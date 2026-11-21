@@ -8,7 +8,7 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["*.config.ts", "e2e", "test/money"],
+  "include": ["*.config.ts", "e2e", "test/money", "test/scripts"],
   "references": [
     {
       "path": "./tsconfig.money.json"

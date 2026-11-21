@@ -41,7 +41,7 @@ v0.1 is the version the maintainer uses every day and the version the repo goes 
 - places: where the money is, with what can be spent from each (6, Where my money is);
 - every screen in section 10, including past cycles;
 - offline spend entry (11), reminders (12), login (13), data download and delete account (14);
-- feedback with a screenshot and the last steps in the app, for fixing (14, Feedback).
+- feedback with a screenshot and the last steps in the app, for fixing, and what became of it (14, Feedback).
 
 **Users.** v0.1 serves one person, but is ready for many: real login and every record tied to one account from day one. Only addresses on the **allowed-email list** can make an account.
 
@@ -389,7 +389,9 @@ See [ADR 0004](adr/0004-passkey-and-google-login-no-email.md).
 - **Also sent**: the **trail**, app version and build, browser and screen size, the phone's time zone, online, unsent count, the current screen, where the sheet was opened from, and Today's data as the phone showed it.
 - **Trail**: the last 100 steps of this visit, in memory only: screens opened, buttons and links pressed (by their label), API calls (method, path, answer, time taken), app errors (message and stack), the connection going and coming back. Nothing typed into a field.
 - **Offline**: Send stays off with "Needs a connection, try again." Feedback never joins the unsent list.
-- **Reading it**: `npm run feedback` (`--local` for the dev database, `--all` for handled ones too) writes each new one to `feedback-inbox/<id>/` (never committed): `note.md`, `context.json`, `trail.json`, `today.json` and the pictures. `npm run feedback -- --done <id>` marks one handled. A real problem then becomes an issue (without the user's money data: the repo is public).
+- **Reading it**: `npm run feedback` (`--local` for the dev database, `--all` for handled ones too) writes each new one to `feedback-inbox/<id>/` (never committed): `note.md`, `context.json`, `trail.json`, `today.json` and the pictures. A real problem then becomes an issue (without the user's money data: the repo is public).
+- **Answering it**: `npm run feedback -- --set <id> --status <status> [--reply <text>] [--ticket SAB-NN]` says where it is (`--done <id>` is short for status done). Statuses: new, seen, planned, building, ready (a fix is waiting to ship), done (shipped), not doing. The reply is one line of at most 280 characters, for the person who sent it; the ticket is the map ticket it became. Every value is checked before anything is written.
+- **Your feedback**: under **Send feedback** in Settings → Feedback, the user's own feedback, newest first (the last 50): the first line of what they wrote, the reply under it, Idea or Something's wrong with the day, and where it is in plain words: Sent, Seen, Planned, Being built, Fix ready, Done, Not doing. A feedback just sent shows at once as Sent. Shown only when there is some; nothing else of the row (pictures, trail, Today) comes back to the phone.
 - Feedback is the user's own data: in **Download my data** (the text, trail and details; the pictures only as `screenshotKept` / `pictureKept`) and removed with **Delete account**.
 
 ## 15. Stack and architecture

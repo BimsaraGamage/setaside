@@ -9,6 +9,7 @@ import { openFeedback } from "./Feedback";
 import { newId } from "./id";
 import { type PushState, type TurnOnProblem, usePush } from "./push";
 import { SignInSettings } from "./SignInSettings";
+import { YourFeedback } from "./YourFeedback";
 
 /** The six reminders' switches (spec 12), in the order of the spec. */
 const SWITCHES: { key: keyof ReminderSettings; label: string; hint: string }[] = [
@@ -314,6 +315,7 @@ export function Settings({
             <span className="tiny mute block">Something wrong, or an idea</span>
           </span>
         </button>
+        <YourFeedback />
       </section>
       <YourData />
       <SignInSettings onSignedOut={onSignedOut} />

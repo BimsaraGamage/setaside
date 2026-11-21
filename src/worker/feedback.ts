@@ -1,3 +1,4 @@
+import { desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import * as z from "zod";
@@ -11,6 +12,8 @@ export const PICTURE_MAX_BYTES = 300 * 1024;
 export const TRAIL_MAX = 100;
 
 const KB = 1024;
+/** Newest feedback shown under Your feedback. */
+const FEEDBACK_LIST_MAX = 50;
 /** The parts besides the pictures, as JSON text. */
 const LIMITS = { text: 4000, context: 4 * KB, trail: 64 * KB, today: 256 * KB } as const;
 
@@ -67,29 +70,53 @@ const BODY_MAX = Math.ceil((PICTURE_MAX_BYTES * 2 * 4) / 3) + LIMITS.trail + LIM
 
 /**
  * Send feedback (ticket SAB-55, spec 14 "Feedback"): one insert, the user's own row. Sent again
- * with the same id (a retry) it is saved once. Read by `npm run feedback`, never by the app.
+ * with the same id (a retry) it is saved once. Read in full by `npm run feedback`; the app only lists the
+ * user's own, with where each one is (`GET`, ticket SAB-60).
  */
-export const feedbackRoutes = new Hono<SignedIn>().post(
-  "/feedback",
-  bodyLimit({ maxSize: BODY_MAX, onError: (c) => c.json({ error: "too_big" as const }, 413) }),
-  json(newFeedback),
-  async (c) => {
+export const feedbackRoutes = new Hono<SignedIn>()
+  .get("/feedback", async (c) => {
     const { db, userId } = c.var;
-    const b = c.req.valid("json");
-    await db
-      .insert(feedback)
-      .values({
-        id: b.id,
-        userId,
-        kind: b.kind,
-        text: b.text.trim(),
-        context: JSON.stringify(b.context),
-        trail: JSON.stringify(b.trail),
-        today: b.today == null ? null : JSON.stringify(b.today),
-        screenshot: b.screenshot ?? null,
-        picture: b.picture ?? null,
+    const rows = await db
+      .select({
+        id: feedback.id,
+        kind: feedback.kind,
+        text: feedback.text,
+        createdAt: feedback.createdAt,
+        status: feedback.status,
+        reply: feedback.reply,
       })
-      .onConflictDoNothing();
-    return c.json({ ok: true as const }, 201);
-  },
-);
+      .from(feedback)
+      .where(eq(feedback.userId, userId))
+      .orderBy(desc(feedback.createdAt))
+      .limit(FEEDBACK_LIST_MAX);
+    const list = rows.map((r) => ({
+      ...r,
+      text: (r.text.split("\n")[0] ?? "").slice(0, 200),
+      createdAt: r.createdAt instanceof Date ? r.createdAt.getTime() : Number(r.createdAt),
+    }));
+    return c.json({ feedback: list });
+  })
+  .post(
+    "/feedback",
+    bodyLimit({ maxSize: BODY_MAX, onError: (c) => c.json({ error: "too_big" as const }, 413) }),
+    json(newFeedback),
+    async (c) => {
+      const { db, userId } = c.var;
+      const b = c.req.valid("json");
+      await db
+        .insert(feedback)
+        .values({
+          id: b.id,
+          userId,
+          kind: b.kind,
+          text: b.text.trim(),
+          context: JSON.stringify(b.context),
+          trail: JSON.stringify(b.trail),
+          today: b.today == null ? null : JSON.stringify(b.today),
+          screenshot: b.screenshot ?? null,
+          picture: b.picture ?? null,
+        })
+        .onConflictDoNothing();
+      return c.json({ ok: true as const }, 201);
+    },
+  );
