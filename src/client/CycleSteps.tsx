@@ -30,6 +30,8 @@ export interface Row {
   planId?: string;
   /** A payback to a person: the money borrowed (item 20). */
   personDebtId?: string;
+  /** A goal share: the savings goal it saves toward (SAB-68); never Every cycle. */
+  goalId?: string;
   /** Either of the user's currencies (spec 8); chosen on a new row only. */
   currency: string;
   text: string;
@@ -118,7 +120,12 @@ export function CommitmentsStep({
               onChange={(e) => change(i, { name: e.target.value })}
             />
           </label>
-          {!r.recurringId && !r.carriedFromId && (r.kind === "bill" || r.kind === "savings") && (
+          {r.goalId && (
+            <p className="tiny mute">
+              This cycle's share of a savings goal: what is left over the salary days before its date.
+            </p>
+          )}
+          {!r.recurringId && !r.carriedFromId && !r.goalId && (r.kind === "bill" || r.kind === "savings") && (
             <CurrencyChoice
               currencies={currencies}
               value={r.currency}
@@ -147,21 +154,24 @@ export function CommitmentsStep({
               <span className="tiny mute">After the next salary day: coming up only, not set aside.</span>
             )}
           </label>
-          {r.kind !== "savings_payback" && r.kind !== "plan_payment" && r.kind !== "person_payback" && (
-            <label className="row check">
-              <input
-                type="checkbox"
-                checked={r.everyCycle}
-                onChange={(e) => change(i, { everyCycle: e.target.checked })}
-              />
-              <span className="grow">
-                Every cycle
-                {r.recurringId && !r.everyCycle && (
-                  <span className="tiny mute block">Off: it stops repeating after this cycle.</span>
-                )}
-              </span>
-            </label>
-          )}
+          {r.kind !== "savings_payback" &&
+            r.kind !== "plan_payment" &&
+            r.kind !== "person_payback" &&
+            !r.goalId && (
+              <label className="row check">
+                <input
+                  type="checkbox"
+                  checked={r.everyCycle}
+                  onChange={(e) => change(i, { everyCycle: e.target.checked })}
+                />
+                <span className="grow">
+                  Every cycle
+                  {r.recurringId && !r.everyCycle && (
+                    <span className="tiny mute block">Off: it stops repeating after this cycle.</span>
+                  )}
+                </span>
+              </label>
+            )}
           {has(`commitment.${i}.`) && <p className="tiny bad">Check the name, amount and due date.</p>}
           <button type="button" className="btn" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
             Remove from this cycle

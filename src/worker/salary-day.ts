@@ -40,6 +40,7 @@ import {
   type RecurringBefore,
   recurringCommitment,
   type SalaryDayUndo,
+  savingsGoal,
   savingsMovement,
   spend,
 } from "./db/schema";
@@ -73,6 +74,8 @@ const salaryDayBody = z.object({
         cardId: z.uuid().nullish(),
         /** A payback to savings: the prepayment it pays back (item 14). */
         prepaymentId: z.uuid().nullish(),
+        /** A goal share (SAB-68): the savings goal it saves toward; a carried one keeps its goal. */
+        goalId: z.uuid().nullish(),
         name,
         /** Either of the user's currencies (spec 8); none: the spending currency. */
         currency: z.string().optional(),
@@ -411,6 +414,29 @@ export const salaryDay = new Hono<SignedIn>()
       }
     });
 
+    // Goal shares (SAB-68): a savings set-aside of one of the user's live goals, in its currency,
+    // never Every cycle; a carried one keeps the goal of the commitment it carries on.
+    const goalOf = (k: (typeof b.commitments)[number]) =>
+      k.carriedFromId ? (carriedById.get(k.carriedFromId)?.goalId ?? null) : (k.goalId ?? null);
+    const wantedGoals = [...new Set(b.commitments.flatMap((k) => (k.goalId ? [k.goalId] : [])))];
+    const myGoals = wantedGoals.length
+      ? await db.query.savingsGoal.findMany({
+          where: and(mine(savingsGoal), inArray(savingsGoal.id, wantedGoals)),
+          columns: { id: true, currency: true, stopped: true },
+        })
+      : [];
+    b.commitments.forEach((k, i) => {
+      const linked = goalOf(k);
+      if (linked === null) return;
+      if (k.kind !== "savings" || k.everyCycle) problems.push(`commitment.${i}.goal`);
+      else if (!k.carriedFromId) {
+        const found = myGoals.find((x) => x.id === linked);
+        if (!found || found.stopped || found.currency !== (k.currency ?? cur)) {
+          problems.push(`commitment.${i}.goal`);
+        }
+      }
+    });
+
     // Steps 2 and 3: the leftover is worked out here from the ending cycle's rows (spec 6).
     const entries = await entriesOf(c, now);
     const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
@@ -562,6 +588,7 @@ export const salaryDay = new Hono<SignedIn>()
           cardId: cardOf(k),
           planId: planOf(k),
           personDebtId: personDebtOf(k),
+          goalId: goalOf(k),
         }),
       );
       if (k.carriedFromId) {
@@ -628,6 +655,7 @@ export const salaryDay = new Hono<SignedIn>()
             planId: k.planId,
             personDebtId: k.personDebtId,
             prepaymentId: k.prepaymentId,
+            goalId: k.goalId,
           }),
           db
             .update(commitment)

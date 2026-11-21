@@ -6,6 +6,7 @@ import { type PlanEntry, planDrafts } from "./plan";
 import { type PrepaymentEntry, paybackDrafts } from "./prepayment";
 import type { Rate } from "./rate";
 import { type ComingUpEntry, type RecurringEntry, salaryDayDrafts } from "./salary-day";
+import { goalDrafts, type SavingsGoalEntry } from "./savings-goal";
 
 /** Where a set-aside of the next cycle belongs in the preview (spec 6). */
 export type NextCycleGroup = "bills" | "pots" | "savings" | "people" | "plans";
@@ -63,6 +64,8 @@ export function nextCyclePreview(a: {
   pots: { name: string; currency: string; usualAmountMinor: Minor; archived: boolean }[];
   prepayments: PrepaymentEntry[];
   plans: PlanEntry[];
+  /** Savings goals (SAB-68): each live one's fair share counts under Savings. */
+  goals?: SavingsGoalEntry[];
 }): NextCyclePreview {
   const startsOn = a.expectedSalaryOn;
   const open = a.commitments.filter((c) => c.state === "open");
@@ -77,15 +80,19 @@ export function nextCyclePreview(a: {
   };
   const paid: Record<string, Minor> = {};
   const planPaid: Record<string, Minor> = {};
+  const goalPaid: Record<string, Minor> = {};
   for (const c of open) {
     if (!inThisCycle(c.dueOn, a.expectedSalaryOn)) continue;
     add(paid, c.prepaymentId, stillToPayMinor(c));
     add(planPaid, c.planId, stillToPayMinor(c));
+    add(goalPaid, c.goalId, stillToPayMinor(c));
   }
   const planned: Record<string, Minor> = {};
   const planPlanned: Record<string, Minor> = {};
+  const goalPlanned: Record<string, Minor> = {};
   for (const d of drafts) add(planned, d.prepaymentId, d.plannedMinor);
   for (const d of drafts) add(planPlanned, d.planId, d.plannedMinor);
+  for (const d of drafts) add(goalPlanned, d.goalId, d.plannedMinor);
   const prepayments = a.prepayments.map((p) => ({
     ...p,
     paidBackMinor: p.paidBackMinor + (paid[p.id] ?? 0),
@@ -98,6 +105,11 @@ export function nextCyclePreview(a: {
       ...drafts,
       ...paybackDrafts(prepayments, startsOn, planned),
       ...planDrafts(plans, startsOn, nextSalaryOn, planPlanned),
+      ...goalDrafts(
+        a.goals ?? [],
+        { startedOn: startsOn, usualPayDay: a.usualPayDay },
+        { paid: goalPaid, planned: goalPlanned },
+      ),
     ].flatMap((d) => {
       const group = GROUP[d.kind];
       return group && d.plannedMinor > 0

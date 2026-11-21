@@ -54,6 +54,7 @@ describe("first use (item 3, spec 2)", () => {
       dayChoices: [],
       savings: [],
       prepayments: [],
+      goals: [],
       recurring: [],
       undoSalaryDay: false,
     });
@@ -110,6 +111,7 @@ describe("first use (item 3, spec 2)", () => {
       dayChoices: [],
       savings: [],
       prepayments: [],
+      goals: [],
       recurring: [],
       undoSalaryDay: false,
     });

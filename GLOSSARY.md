@@ -33,6 +33,8 @@ Working terms from charting (2026-11-10), sharpened by tickets 04, 11, 08 and 10
 - **Allowed-email list**: the Google addresses that may create an account while sign-up is closed (v1: Bimsara only).
 - **Card spend**: a spend paid by credit card. It lowers free money the day it is made, like cash; the money is then held for the card bill. Paying the card bill does not lower free money again.
 - **Instalment plan**: a debt paid back in fixed payments: a bank loan or a card instalment plan. Each pay cycle gets a commitment for the next payment. It shows payments made and left, amount paid and still owed, interest, and the last payment date; it can be paid off early. Avoid: loan (when card instalments are meant too).
+- **Savings goal**: something the user saves up for by a day, with a target ("Trip to Japan, Rs 600,000 by 1 Jun 2027"). Each pay cycle sets aside a fair share for it: what is left over the salary days before the date. Avoid: target pot, wish.
+- **Goal share**: the savings set-aside a savings goal makes in one pay cycle; moved into savings like any savings set-aside.
 - **Prepayment saving**: what paying a long period up front saved, against the normal monthly price the user typed, after any instalment interest.
 - **Card balance**: what is owed on one credit card: card spends add to it, card payments take it down. Its money is held, not part of free money or the leftover.
 - **Place**: somewhere the user's money sits: a bank account or cash in hand, in one currency. Its balance is what the user last typed (Set balance), moved by the entries saved since that name it (money paid from it, money that landed in it, Move money). For spending or Kept aside. Avoid: account (that is the person's sign-in account), wallet.

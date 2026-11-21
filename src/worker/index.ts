@@ -21,6 +21,7 @@ import { push } from "./push";
 import { sendReminders } from "./reminders-cron";
 import { salaryDay } from "./salary-day";
 import { savings } from "./savings";
+import { savingsGoals } from "./savings-goals";
 import { spends } from "./spends";
 import { type SignedIn, userCheck } from "./user-check";
 
@@ -41,6 +42,7 @@ const signedIn = new Hono<SignedIn>()
   .route("/", dayChoices)
   .route("/", savings)
   .route("/", prepayments)
+  .route("/", savingsGoals)
   .route("/", conversions)
   .route("/", cards)
   .route("/", plans)

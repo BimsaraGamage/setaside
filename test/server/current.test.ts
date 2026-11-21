@@ -422,6 +422,34 @@ async function seedFullMonth(userId: string, p: string) {
   rec("rec-visa", "Visa bill", "card_bill", "LKR", 50_000, 15, 1, { card_id: id("card-visa") });
   rec("rec-save", "Holiday", "savings", "LKR", 200_000, 20, 1);
 
+  // Savings goals (SAB-68): one with a share last cycle (part moved in dollars) and one this cycle; one stopped.
+  add("savings_goal", {
+    id: id("goal-japan"),
+    name: "Trip to Japan",
+    currency: "LKR",
+    target_minor: 60_000_000,
+    by_on: "2027-06-01",
+    start_minor: 1_000_000,
+  });
+  add("savings_goal", {
+    id: id("goal-car"),
+    name: "Car",
+    currency: "USD",
+    target_minor: 500_000,
+    by_on: "2028-01-01",
+    stopped: 1,
+    created_at: T0 + 1,
+  });
+  commit("k-l-japan", L, "Trip to Japan", "savings", "LKR", 8_000_000, "2026-10-25", {
+    goal_id: id("goal-japan"),
+    state: "finished",
+  });
+  pay("p-l-japan", "k-l-japan", "LKR", 7_000_000, "2026-10-26");
+  pay("p-l-japan-usd", "k-l-japan", "USD", 3_000, "2026-10-27", { covers_minor: 900_000 });
+  commit("k-c-japan", C, "Trip to Japan", "savings", "LKR", 8_200_000, "2026-11-25", {
+    goal_id: id("goal-japan"),
+  });
+
   // Places in list order (not the order made), each with its newest balance; one has none yet.
   const placeRow = (n: string, name: string, currency: string, kind: string, sort: number, archived = 0) =>
     add("place", { id: id(n), name, currency, kind, sort_order: sort, archived });

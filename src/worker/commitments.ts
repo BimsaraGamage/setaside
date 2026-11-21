@@ -130,6 +130,10 @@ export const commitments = new Hono<SignedIn>()
     if (b.kind && old.kind !== "bill" && old.kind !== "savings") {
       return c.json({ error: "invalid" as const, problems: ["kind"] }, 400);
     }
+    // A goal share (SAB-68) stays a savings set-aside and is never Every cycle: its goal makes the next one.
+    if (old.goalId && ((b.kind && b.kind !== "savings") || everyCycle)) {
+      return c.json({ error: "invalid" as const, problems: ["kind"] }, 400);
+    }
     const next = { ...old, ...b };
     // A carried one keeps its due day from last cycle (shown as late, item 12) until it is moved.
     const keptDue = next.dueOn === old.dueOn && old.dueOn < now.cycle.startedOn;

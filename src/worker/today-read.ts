@@ -4,6 +4,7 @@ import type { PersonDebtRows } from "./people";
 import type { PlanRows } from "./plans";
 import type { PrepaymentRow } from "./prepayments";
 import type { SavingsRows } from "./savings";
+import type { GoalRows } from "./savings-goals";
 import type { SignedIn } from "./user-check";
 
 /**
@@ -20,7 +21,7 @@ import type { SignedIn } from "./user-check";
  * - D1 caps bound values at 100 a statement: read by subquery, never `in (...ids)`.
  * - Every later read added to Today goes into this same batch (and its row type
  *   into `TodayRows`), not a query of its own. A batch counts each statement
- *   against the 50 queries a request on the free plan; this is 30 (was ~40).
+ *   against the 50 queries a request on the free plan; this is 32 (was ~40).
  */
 const CUR = `with cur as (select id, created_at from cycle where user_id = ?1 order by started_on desc, created_at desc limit 1)`;
 const LAST = `with last as (select id from cycle where user_id = ?1 order by started_on desc, created_at desc limit 1 offset 1)`;
@@ -96,7 +97,7 @@ const SQL = {
     from spend where user_id = ?1 and cycle_id = ${CUR_ID} order by spent_on desc, id desc`,
   commitments: `${CUR} select id, name, kind, currency, planned_minor as plannedMinor, due_on as dueOn, state,
       recurring_id as recurringId, carried_from_id as carriedFromId, prepayment_id as prepaymentId,
-      card_id as cardId, plan_id as planId, person_debt_id as personDebtId
+      card_id as cardId, plan_id as planId, person_debt_id as personDebtId, goal_id as goalId
     from commitment where user_id = ?1 and cycle_id = ${CUR_ID} order by due_on, name`,
   payments: `${CUR} select id, commitment_id as commitmentId, amount_minor as amountMinor, currency,
       covers_minor as coversMinor, paid_on as paidOn, place_id as placeId
@@ -182,6 +183,16 @@ const SQL = {
     from income where user_id = ?1 and person_debt_id is not null order by received_on, created_at`,
   debtsPaid: `select k.person_debt_id as personDebtId, ${COVERED} as covered ${PAYMENTS_OF("person_payback")}
     group by k.person_debt_id`,
+  // Savings goals (SAB-68) and every one of their shares, all cycles, with what its moves cover.
+  goals: `select id, name, currency, target_minor as targetMinor, by_on as byOn, start_minor as startMinor, stopped
+    from savings_goal where user_id = ?1 order by created_at, id`,
+  goalShares: `select k.id, k.goal_id as goalId, k.cycle_id as cycleId, y.started_on as startedOn,
+      k.planned_minor as plannedMinor, k.state,
+      coalesce((select sum(case when cp.currency = k.currency then cp.amount_minor else coalesce(cp.covers_minor, 0) end)
+        from commitment_payment cp where cp.commitment_id = k.id and cp.user_id = ?1), 0) as coveredMinor
+    from commitment k join cycle y on y.id = k.cycle_id
+    where k.user_id = ?1 and y.user_id = ?1 and k.goal_id is not null
+    order by y.started_on desc, k.created_at, k.id`,
   // Places with the balance last typed (ticket SAB-50) and what the entries saved since it was typed
   // moved (SAB-51; money out is below zero), all in one statement.
   places: `select p.id, p.name, p.currency, p.kind, p.archived, k.amount_minor as balanceMinor,
@@ -290,6 +301,8 @@ export interface TodayRows {
   debts: PersonDebtRows["debts"][number];
   debtIncomes: PersonDebtRows["incomes"][number];
   debtsPaid: PersonDebtRows["paid"][number];
+  goals: Row<GoalRows["goals"][number], "stopped">;
+  goalShares: GoalRows["shares"][number];
   places: {
     id: string;
     name: string;

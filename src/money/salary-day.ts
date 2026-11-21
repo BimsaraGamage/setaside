@@ -69,6 +69,7 @@ export interface ComingUpEntry extends CommitmentEntry {
   cardId?: string | null;
   planId?: string | null;
   personDebtId?: string | null;
+  goalId?: string | null;
   payments?: PaymentEntry[];
 }
 
@@ -94,6 +95,8 @@ export interface SalaryDayDraft {
   planId?: string;
   /** A payback to a person: the money borrowed it pays back (item 20). */
   personDebtId?: string;
+  /** A goal share: the savings goal it saves toward (SAB-68). */
+  goalId?: string;
 }
 
 /**
@@ -131,6 +134,7 @@ export function salaryDayDrafts(a: {
       ...(c.cardId ? { cardId: c.cardId } : {}),
       ...(c.planId ? { planId: c.planId } : {}),
       ...(c.personDebtId ? { personDebtId: c.personDebtId } : {}),
+      ...(c.goalId ? { goalId: c.goalId } : {}),
     });
   }
   for (const r of a.recurring) {

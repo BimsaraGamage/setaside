@@ -12,6 +12,7 @@ import {
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import type { CommitmentActions, CommitmentKind } from "./commitment-actions";
 import { type Commitment, cardBalance, dayLabel, entriesOf, type Ready, useToday } from "./data";
+import { goalShareNote } from "./Goals";
 import { newId } from "./id";
 import { NextCycleCard } from "./NextCycle";
 import { plannedGap } from "./Pay";
@@ -54,9 +55,12 @@ export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill
  * before what is paid; otherwise `paidNote`.
  */
 export function commitmentNote(
-  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans" | "people">,
+  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans" | "people" | "goals" | "cycle">,
   c: Commitment,
 ) {
+  // A goal share (SAB-68): saved toward its goal of the target, like "7 of 12".
+  const goal = goalShareNote(data, c);
+  if (goal) return [goal, paidNote(c)].filter(Boolean).join(" · ");
   if (c.kind === "person_payback") {
     return [paybackNote(data, c), paidNote(c)].filter(Boolean).join(" · ") || undefined;
   }
@@ -255,6 +259,9 @@ export function CommitmentPage({
   const cardBill = editing !== undefined && isCardBill(editing);
   // A payback to a person (item 20) keeps its kind and never repeats; it can be deleted.
   const personPayback = editing?.kind === "person_payback";
+  // A goal share (SAB-68) stays Savings and never repeats: its goal makes the next one.
+  const goal = editing?.goalId ? data.goals.find((g) => g.id === editing.goalId) : undefined;
+  const goalShare = Boolean(editing?.goalId);
   const [name, setName] = useState(editing?.name ?? "");
   const [text, setText] = useState(editing ? toText(editing.plannedMinor, cur) : "");
   const [dueOn, setDueOn] = useState(editing?.dueOn ?? today);
@@ -265,7 +272,7 @@ export function CommitmentPage({
   const plannedMinor = parseAmount(text, cur) ?? 0;
   const draft = { kind, name: name.trim(), plannedMinor, dueOn, everyCycle };
   const changed =
-    payback || personPayback
+    payback || personPayback || goalShare
       ? { name: draft.name, plannedMinor, dueOn }
       : cardBill
         ? { name: draft.name, plannedMinor, dueOn, everyCycle }
@@ -336,7 +343,14 @@ export function CommitmentPage({
             {card && <a href={`#Card/${card.id}`}>Open the card</a>}
           </p>
         )}
-        {!payback && !cardBill && !personPayback && (
+        {goalShare && (
+          <p className="tiny mute" data-testid="goal-share-note">
+            This cycle's share of {goal?.name ?? "a savings goal"}. Move it to savings when you put the money
+            aside. Salary day sets aside the next one.{" "}
+            {goal && <a href={`#Goal/${goal.id}`}>Open the goal</a>}
+          </p>
+        )}
+        {!payback && !cardBill && !personPayback && !goalShare && (
           <fieldset className="chips" aria-label="Kind">
             <button
               type="button"
@@ -407,7 +421,7 @@ export function CommitmentPage({
               : `From ${dayLabel(data.cycle.startedOn)}. Due after ${dayLabel(data.cycle.expectedSalaryOn)} means next cycle.`}
           </span>
         </label>
-        {!payback && !personPayback && (
+        {!payback && !personPayback && !goalShare && (
           <label className="row check">
             <input type="checkbox" checked={everyCycle} onChange={(e) => setEveryCycle(e.target.checked)} />
             <span className="grow">

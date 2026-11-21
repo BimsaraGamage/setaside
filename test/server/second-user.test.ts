@@ -249,6 +249,24 @@ const probes: Record<string, Probe> = {
     },
   }),
   "DELETE /api/prepayments/:id": (o) => ({ path: `/api/prepayments/${firstRow(o, "prepayment")}` }),
+  // Aimed at the first user's goal and commitment (SAB-68): must not take either over, change or delete the goal.
+  "POST /api/savings-goals": (o) => ({
+    path: "/api/savings-goals",
+    init: {
+      body: JSON.stringify({
+        id: firstRow(o, "savings_goal"),
+        name: "x",
+        targetMinor: 1,
+        byOn: "2999-01-01",
+        share: { id: firstRow(o, "commitment"), plannedMinor: 1 },
+      }),
+    },
+  }),
+  "PATCH /api/savings-goals/:id": (o) => ({
+    path: `/api/savings-goals/${firstRow(o, "savings_goal")}`,
+    init: { body: JSON.stringify({ name: "x", stopped: true }) },
+  }),
+  "DELETE /api/savings-goals/:id": (o) => ({ path: `/api/savings-goals/${firstRow(o, "savings_goal")}` }),
   // Aimed at the first user's plan, commitment and extra payment: must not take any over, pay or delete them.
   "POST /api/plans": (o) => ({
     path: "/api/plans",

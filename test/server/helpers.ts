@@ -123,6 +123,9 @@ export async function seedEveryTable(ownerId: string, endpoint: string) {
       "insert into place_move (id, user_id, from_place_id, to_place_id, amount_minor, created_at, updated_at) values (?, ?, ?, ?, 100000, ?, ?)",
     ).bind(crypto.randomUUID(), ownerId, plc, plc, now, now),
     env.DB.prepare(
+      "insert into savings_goal (id, user_id, name, currency, target_minor, by_on, start_minor, stopped, created_at, updated_at) values (?, ?, 'Trip to Japan', 'LKR', 60000000, '2027-06-01', 0, 0, ?, ?)",
+    ).bind(crypto.randomUUID(), ownerId, now, now),
+    env.DB.prepare(
       "insert into push_subscription (id, user_id, endpoint, p256dh, auth, created_at, updated_at) values (?, ?, ?, 'p', 'a', ?, ?)",
     ).bind(crypto.randomUUID(), ownerId, endpoint, now, now),
     env.DB.prepare(
