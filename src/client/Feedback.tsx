@@ -109,7 +109,7 @@ function contextOf(unsent: number, from: FeedbackFrom) {
   return {
     version: __APP_VERSION__,
     build: __BUILD_ID__,
-    browser: navigator.userAgent,
+    browser: navigator.userAgent.slice(0, 400),
     screen: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     online: navigator.onLine,

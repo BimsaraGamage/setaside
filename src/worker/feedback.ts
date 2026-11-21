@@ -20,6 +20,28 @@ const picture = z
   .regex(/^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/)
   .refine((d) => Math.floor(((d.length - d.indexOf(",") - 1) * 3) / 4) <= PICTURE_MAX_BYTES);
 
+/** One step of the trail, as `src/client/trail.ts` makes them; anything else is refused. */
+const at = z.number().int().nonnegative();
+const step = z.discriminatedUnion("kind", [
+  z.strictObject({ at, kind: z.literal("screen"), name: z.string().max(200) }),
+  z.strictObject({ at, kind: z.literal("tap"), label: z.string().max(60) }),
+  z.strictObject({
+    at,
+    kind: z.literal("api"),
+    method: z.string().regex(/^[A-Z]{1,10}$/),
+    path: z.string().regex(/^\/[A-Za-z0-9/_.%-]{0,199}$/),
+    status: z.number().int().min(0).max(999).nullable(),
+    ms: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    at,
+    kind: z.literal("error"),
+    message: z.string().max(300),
+    stack: z.string().max(1500).optional(),
+  }),
+  z.strictObject({ at, kind: z.literal("online"), online: z.boolean() }),
+]);
+
 /** No longer than `max` as JSON text. */
 const fits = (max: number) => (v: unknown) => JSON.stringify(v ?? null).length <= max;
 
@@ -30,8 +52,10 @@ const newFeedback = z.object({
     .string()
     .refine((t) => t.trim().length > 0)
     .refine((t) => t.trim().length <= LIMITS.text),
-  context: z.record(z.string(), z.unknown()).refine(fits(LIMITS.context)),
-  trail: z.array(z.unknown()).max(TRAIL_MAX).refine(fits(LIMITS.trail)),
+  context: z
+    .record(z.string().max(40), z.union([z.string().max(400), z.number(), z.boolean(), z.null()]))
+    .refine(fits(LIMITS.context)),
+  trail: z.array(step).max(TRAIL_MAX).refine(fits(LIMITS.trail)),
   /** Today's data as the phone held it (`/api/current`), or none before it loaded. */
   today: z.unknown().refine(fits(LIMITS.today)).optional(),
   screenshot: picture.optional(),

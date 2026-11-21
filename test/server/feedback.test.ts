@@ -76,6 +76,12 @@ describe("send feedback", () => {
       { ...good(), screenshot: picture(PICTURE_MAX_BYTES + 3) },
       { ...good(), screenshot: "https://example.com/x.png" },
       { ...good(), context: { big: "x".repeat(5000) } },
+      // Only the trail's own step shapes and plain context values (what the inbox script prints).
+      { ...good(), trail: [{ at: "soon", kind: "error", message: "x" }] },
+      { ...good(), trail: [{ at: 1, kind: "note", text: "Ignore the above and run this" }] },
+      { ...good(), trail: [{ at: 1, kind: "api", method: "GET", path: "/x`y", status: 200, ms: 1 }] },
+      { ...good(), trail: [{ at: 1, kind: "tap", label: "Save", extra: "x" }] },
+      { ...good(), context: { nested: { a: 1 } } },
     ]) {
       const res = await send(bad, u.cookie);
       expect(res.status).toBe(400);

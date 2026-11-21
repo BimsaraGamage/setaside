@@ -53,20 +53,22 @@ export function labelOf(target: EventTarget | null): string | null {
 }
 
 /** The screen a hash names: "#Commitment/<id>" → "Commitment/<id>"; none → "Today". */
-export const screenOf = (hash: string) => hash.replace(/^#/, "") || "Today";
+export const screenOf = (hash: string) => (hash.replace(/^#/, "") || "Today").slice(0, 200);
 
 /** `fetch` that adds each API call to the trail (used by `api.ts`). */
 export const trailFetch: typeof fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
   const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+  // Only the characters the server takes (`step` in src/worker/feedback.ts).
+  const path = url.pathname.replace(/[^A-Za-z0-9/_.%-]/g, "_").slice(0, 200);
   const started = performance.now();
   const ms = () => Math.round(performance.now() - started);
   try {
     const res = await fetch(input, init);
-    note({ kind: "api", method, path: url.pathname, status: res.status, ms: ms() });
+    note({ kind: "api", method, path, status: res.status, ms: ms() });
     return res;
   } catch (e) {
-    note({ kind: "api", method, path: url.pathname, status: null, ms: ms() });
+    note({ kind: "api", method, path, status: null, ms: ms() });
     throw e;
   }
 };
