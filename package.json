@@ -1,6 +1,6 @@
 {
   "name": "setaside",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "private": true,
   "description": "Set aside the commitments of each pay cycle and see the free money and daily allowance left.",
   "license": "MIT",
