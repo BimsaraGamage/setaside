@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.4...setaside-v0.1.5) (2026-11-21)
+
+
+### Features
+
+* place balances follow income, salary day, savings and people ([#82](https://github.com/BimsaraGamage/setaside/issues/82)) ([b362126](https://github.com/BimsaraGamage/setaside/commit/b362126f2a1bc92a15f5cb25fe0b94118c0588fc))
+
 ## [0.1.4](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.3...setaside-v0.1.4) (2026-11-20)
 
 
