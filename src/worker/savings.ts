@@ -2,7 +2,6 @@ import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkGoalTakeOut, checkIncome, checkSavingsMove, placeUsable, savingsTotal } from "../money";
-import { current } from "./current";
 import {
   commitment,
   commitmentPayment,
@@ -15,7 +14,7 @@ import {
   settings,
 } from "./db/schema";
 import { json } from "./json";
-import { placeId, placesUsable } from "./place-use";
+import { placeId } from "./place-use";
 import { GOAL_SAVED, type GoalSavedRow, goalSavedOf } from "./savings-goals";
 import { SAVINGS_SQL } from "./today-read";
 import type { SignedIn } from "./user-check";
@@ -259,6 +258,15 @@ interface PlaceRow {
   archived: number;
 }
 
+/** A savings movement or an income an Undo deletes (SAB-78), for `readForWrite`; `?2` is its id. */
+const MOVEMENT = `select cycle_id as cycleId, kind from savings_movement where user_id = ?1 and id = ?2`;
+const INCOME = `select cycle_id as cycleId, kind from income where user_id = ?1 and id = ?2`;
+
+interface OldRow {
+  cycleId: string;
+  kind: string;
+}
+
 /**
  * Savings and Add income (backlog item 10, spec 5): Put in, Take out (into free
  * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
@@ -327,11 +335,9 @@ export const savings = new Hono<SignedIn>()
   .delete("/savings-movements/:id", async (c) => {
     const { db, mine } = c.var;
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.savingsMovement.findFirst({
-      where: and(mine(savingsMovement), eq(savingsMovement.id, id)),
-      columns: { cycleId: true, kind: true },
-    });
+    // One D1 batch for the checks (SAB-78): `current()` and a Drizzle read were 3 D1 calls.
+    const { now, olds } = await readForWrite<{ olds: OldRow[] }>(c, { olds: [MOVEMENT, id] });
+    const old = olds[0];
     if (!now || !old || (old.kind !== "put_in" && old.kind !== "take_out")) {
       return c.json({ error: "not_found" as const }, 404);
     }
@@ -342,13 +348,24 @@ export const savings = new Hono<SignedIn>()
   .post("/incomes", json(newIncome), async (c) => {
     const { db, userId } = c.var;
     const b = c.req.valid("json");
-    const now = await current(c);
+    const { now, places } = await readForWrite<{ places: PlaceRow[] }>(c, {
+      places: [PLACE, b.placeId ?? null],
+    });
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
     const problems: string[] = checkIncome(row, now.currencies);
     // Borrowed money and money paid back go with their person entry (item 20, /api/people).
     if (row.kind === "borrowed" || row.kind === "paid_back") problems.push("kind");
-    if (!(await placesUsable(c, [row]))) problems.push("place");
+    if (
+      row.placeId &&
+      !placeUsable(
+        row.placeId,
+        row.currency,
+        places.map((p) => ({ ...p, archived: Number(p.archived) === 1 })),
+      )
+    ) {
+      problems.push("place");
+    }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(income).values({
@@ -369,11 +386,8 @@ export const savings = new Hono<SignedIn>()
   .delete("/incomes/:id", async (c) => {
     const { db, mine } = c.var;
     const id = c.req.param("id");
-    const now = await current(c);
-    const old = await db.query.income.findFirst({
-      where: and(mine(income), eq(income.id, id)),
-      columns: { cycleId: true, kind: true },
-    });
+    const { now, olds } = await readForWrite<{ olds: OldRow[] }>(c, { olds: [INCOME, id] });
+    const old = olds[0];
     // Salary and opening money are changed on salary day and first use, not here; borrowed
     // money goes with its person entry (item 20). Got it back (`paid_back`) is undone here.
     if (!now || !old || (old.kind !== "extra" && old.kind !== "loan" && old.kind !== "paid_back")) {
