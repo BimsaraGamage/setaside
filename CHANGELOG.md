@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.15...setaside-v0.1.16) (2026-11-22)
+
+
+### Features
+
+* spends to finish later, with a Today card and the spend nudge ([#116](https://github.com/BimsaraGamage/setaside/issues/116)) ([5d31c96](https://github.com/BimsaraGamage/setaside/commit/5d31c9669f3db5c549af24bd2f8d316df9d32fe5))
+
 ## [0.1.15](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.14...setaside-v0.1.15) (2026-11-22)
 
 
