@@ -1,0 +1,1 @@
+ALTER TABLE `savings_movement` ADD `note` text;

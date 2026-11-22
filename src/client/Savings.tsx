@@ -10,7 +10,7 @@ import {
   combinedSavingsMinor,
   debtProgress,
   formatMoney,
-  goalSavedMinor,
+  goalUnspentMinor,
   MONTHS_MAX,
   NAME_MAX,
   PERSON_NAME_MAX,
@@ -152,11 +152,14 @@ const lineName: Record<SavingsLine["kind"], string> = {
   payback: "Paid back",
   rate_gain: "Rate gain",
   plan_extra: "Paid off a plan",
+  goal_spend: "Goal spend",
 };
 
-/** A take-out's goal (SAB-69): "From Trip to Japan". */
+/** A take-out's goal (SAB-69): "From Trip to Japan"; a goal spend's (SAB-75): "Spent from Trip to Japan · Flights". */
 const goalName = (data: Ready, l: SavingsLine) => {
   const g = l.goalId ? data.goals.find((x) => x.id === l.goalId) : undefined;
+  if (l.kind === "goal_spend")
+    return [`Spent from ${g?.name ?? "a goal"}`, l.note].filter(Boolean).join(" · ");
   return g ? `From ${g.name}` : null;
 };
 
@@ -349,11 +352,13 @@ export function SavingsMovePage({
   const paybackMinor = parseAmount(paybackText, cur) ?? 0;
   const takeOut = kind === "take_out";
   const forPrepayment = takeOut && prepay;
-  // Goals in this currency with something saved toward them (SAB-67 pick 9).
+  // Goals in this currency with something left in them (SAB-67 pick 9; less goal spends, SAB-75).
   const goals = takeOut
     ? data.goals.flatMap((g) => {
-        const savedMinor = goalSavedMinor(goalEntry(data, g));
-        return g.currency === cur && savedMinor > 0 ? [{ g, savedMinor }] : [];
+        const entry = goalEntry(data, g);
+        const savedMinor = goalUnspentMinor(entry);
+        const spent = (entry.spentMinor ?? 0) > 0;
+        return g.currency === cur && savedMinor > 0 ? [{ g, savedMinor, spent }] : [];
       })
     : [];
   const fromGoal = forPrepayment ? undefined : goals.find((x) => x.g.id === goalId);
@@ -473,8 +478,8 @@ export function SavingsMovePage({
             {fromGoal && (
               <p className="tiny mute" data-testid="goal-take-out-note">
                 {problems.includes("goal_too_much")
-                  ? `More than is saved toward it (${formatMoney(fromGoal.savedMinor, cur)}).`
-                  : `${formatMoney(fromGoal.savedMinor, cur)} saved toward it. The next salary day's share grows to make it up.`}
+                  ? `More than is ${fromGoal.spent ? "left in it" : "saved toward it"} (${formatMoney(fromGoal.savedMinor, cur)}).`
+                  : `${formatMoney(fromGoal.savedMinor, cur)} ${fromGoal.spent ? "left in it" : "saved toward it"}. The next salary day's share grows to make it up.`}
               </p>
             )}
           </fieldset>

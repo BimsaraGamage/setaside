@@ -367,7 +367,9 @@ export const savingsMovement = sqliteTable(
     currency: text("currency").notNull(),
     /** Above zero: into savings; below zero: out of savings. */
     amountMinor: integer("amount_minor").notNull(),
-    kind: text("kind", { enum: ["put_in", "take_out", "opening", "prepayment", "plan_extra"] }).notNull(),
+    kind: text("kind", {
+      enum: ["put_in", "take_out", "opening", "prepayment", "plan_extra", "goal_spend"],
+    }).notNull(),
     movedOn: text("moved_on").notNull(),
     /** A prepayment's money out of savings (item 14). */
     prepaymentId: text("prepayment_id"),
@@ -379,9 +381,12 @@ export const savingsMovement = sqliteTable(
     placeId: text("place_id"),
     /**
      * Take out "from a goal" (SAB-69): the savings goal it takes from, lowering what is saved toward
-     * it; none takes from no goal. Only on a `take_out`.
+     * it; none takes from no goal. A `goal_spend` (SAB-75) always names its goal: money spent on the
+     * goal straight out of savings, still counted as saved toward it. Only on those two kinds.
      */
     goalId: text("goal_id"),
+    /** What a goal spend bought ("Flights", SAB-75); only on a `goal_spend`. */
+    note: text("note"),
     ...appTimestamps,
   },
   (t) => [

@@ -225,6 +225,13 @@
       "when": 1795363676570,
       "tag": "0031_spends_to_finish",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1795366856311,
+      "tag": "0032_goal_spends",
+      "breakpoints": true
     }
   ]
 }

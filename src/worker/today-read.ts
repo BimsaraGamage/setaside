@@ -82,7 +82,8 @@ const PLACE_MOVED: [sign: "-" | "+", column: string, from: string][] = [
  */
 export const SAVINGS_SQL = {
   savingsMoves: `select m.id, m.kind, m.cycle_id as cycleId, m.currency, m.amount_minor as amountMinor,
-      m.moved_on as movedOn, pp.name as name, ip.name as planName, m.goal_id as goalId
+      m.moved_on as movedOn, pp.name as name, ip.name as planName, m.goal_id as goalId,
+      m.note
     from savings_movement m
       left join prepayment pp on pp.id = m.prepayment_id and pp.user_id = ?1
       left join plan_extra_payment x on x.id = m.id and x.user_id = ?1
