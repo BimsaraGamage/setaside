@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.13](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.12...setaside-v0.1.13) (2026-11-22)
+
+
+### Features
+
+* take out of savings from a goal ([#109](https://github.com/BimsaraGamage/setaside/issues/109)) ([e96e25f](https://github.com/BimsaraGamage/setaside/commit/e96e25fa963ee787fe019fef0dba4006797f876c)), closes [#108](https://github.com/BimsaraGamage/setaside/issues/108)
+
+
+### Bug Fixes
+
+* the feedback job rides out a dropped connection ([#110](https://github.com/BimsaraGamage/setaside/issues/110)) ([cc0d1e0](https://github.com/BimsaraGamage/setaside/commit/cc0d1e02cc30079c4adbb53c11453db84a563890))
+
 ## [0.1.12](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.11...setaside-v0.1.12) (2026-11-21)
 
 
