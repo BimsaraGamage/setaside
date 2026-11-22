@@ -11,7 +11,9 @@ import {
   DENIED,
   doneStep,
   FIXED_REPLY,
+  looksOffline,
   looksSecret,
+  NET_WAITS_MS,
   quotaGate,
   refusedChanges,
   runPass,
@@ -283,6 +285,7 @@ function fakeDeps(rows: { id: string; status: string }[], answer?: unknown) {
     set: [] as Change[],
     git: [] as string[][],
     said: [] as string[],
+    slept: [] as number[],
   };
   const mapDir = fakeMap();
   const inboxRoot = mkdtempSync(join(tmpdir(), "fb-inbox-"));
@@ -325,6 +328,7 @@ function fakeDeps(rows: { id: string; status: string }[], answer?: unknown) {
     log: () => {},
     say: (l: string) => calls.said.push(l),
     now: () => Date.UTC(2026, 10, 21, 12),
+    sleep: (ms: number) => calls.slept.push(ms),
   };
   return { deps, calls, mapDir };
 }
@@ -586,6 +590,117 @@ describe("a pass", () => {
     await runPass({ ...deps, alive: () => true });
     expect(calls.set).toEqual([]);
     expect(calls.said).toEqual(["Another pass is running."]);
+  });
+});
+
+// Ticket SAB-71: on flaky Wi-Fi wrangler fails with `fetch failed` (its --json error on stdout, exit 1).
+describe("a dropped connection", () => {
+  const dropped = () =>
+    Object.assign(new Error("Command failed: npx wrangler d1 execute DB --remote --json"), {
+      status: 1,
+      stdout: '\n{\n  "error": {\n    "text": "fetch failed"\n  }\n}\n',
+      stderr: "",
+    });
+  /** Fails the first `n` calls as offline, then calls `then`. */
+  const flaky = <A extends unknown[], R>(n: number, then: (...a: A) => R) => {
+    let left = n;
+    return (...a: A) => {
+      if (left-- > 0) throw dropped();
+      return then(...a);
+    };
+  };
+
+  it("tells a dropped connection from other errors", () => {
+    expect(looksOffline(dropped())).toBe(true);
+    expect(looksOffline(new Error("getaddrinfo ENOTFOUND api.cloudflare.com"))).toBe(true);
+    expect(looksOffline(new Error("D1 down"))).toBe(false);
+    expect(
+      looksOffline({ message: "Command failed: x --reply fetch failed", stdout: "", stderr: "SQL error" }),
+    ).toBe(false);
+  });
+
+  it("tries a failed call again after a short wait, and the pass goes on", async () => {
+    const { deps, calls } = fakeDeps([{ id: later, status: "planned" }]);
+    const r = await runPass({ ...deps, d1: flaky(2, deps.d1) });
+    expect(calls.slept).toEqual(NET_WAITS_MS);
+    expect(r.skipped).toBeUndefined();
+    expect(calls.said).toEqual(["No new feedback."]);
+  });
+
+  it("still failing: one line, no throw, no row touched", async () => {
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+    const r = await runPass({ ...deps, d1: flaky(99, deps.d1) });
+    expect(r.skipped).toBe("offline");
+    expect(calls.said).toEqual(["Offline: try next pass"]);
+    expect(calls.slept).toHaveLength(NET_WAITS_MS.length);
+    expect(calls.set).toEqual([]);
+    expect(calls.claude).toEqual([]);
+    expect(existsSync(join(deps.stateDir, "lock"))).toBe(false);
+  });
+
+  it("passes other errors straight through, untried", async () => {
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+    const d1 = () => {
+      throw new Error("no such table: feedback");
+    };
+    await expect(runPass({ ...deps, d1 })).rejects.toThrow("no such table");
+    expect(calls.slept).toEqual([]);
+  });
+
+  it("after a row was set seen: the next pass makes the write this one couldn't, and charts no second ticket", async () => {
+    const { deps, calls, mapDir } = fakeDeps([{ id, status: "new" }], decision());
+    let online = false;
+    const set = (c: Change) => {
+      if (!online && c.status !== "seen") throw dropped();
+      calls.set.push(c);
+    };
+    const r1 = await runPass({ ...deps, set });
+    expect(r1.skipped).toBe("offline");
+    expect(calls.said.at(-1)).toBe("Offline: try next pass");
+    expect(calls.set).toEqual([{ id, status: "seen" }]); // the planned write was lost
+    expect(calls.claude).toHaveLength(1);
+
+    online = true;
+    const seenNow = [{ id, status: "seen" }]; // the next cheap look no longer sees it as new
+    await runPass({ ...deps, set, d1: () => seenNow });
+    expect(calls.set.at(-1)).toEqual({
+      id,
+      status: "planned",
+      reply: "Planned: Show the week's spends on Today",
+      ticket: "SAB-59",
+    });
+    expect(calls.claude).toHaveLength(1);
+    expect(execFileSync("ls", [join(mapDir, "issues")], { encoding: "utf8" }).match(/^59-/gm)).toHaveLength(
+      1,
+    );
+    // and nothing is owed after that
+    const before = calls.set.length;
+    await runPass({ ...deps, set, d1: () => [] });
+    expect(calls.set).toHaveLength(before);
+  });
+
+  it("a pass that stops after seen, before any outcome: the next pass puts it back as new and handles it", async () => {
+    const { deps, calls } = fakeDeps([{ id, status: "new" }], decision());
+    const git = (args: string[]) => {
+      if (args[0] === "worktree" && args[1] === "add") throw new Error("disk full");
+      return "";
+    };
+    await expect(runPass({ ...deps, git })).rejects.toThrow("disk full");
+    expect(calls.set).toEqual([{ id, status: "seen" }]);
+
+    await runPass(deps);
+    expect(calls.set[1]).toEqual({ id, status: "new" });
+    expect(calls.set.at(-1)?.status).toBe("planned");
+    expect(calls.claude).toHaveLength(1);
+  });
+
+  it("offline while paying what is owed: still owed next time", async () => {
+    const { deps, calls } = fakeDeps([], decision());
+    writeFileSync(join(deps.stateDir, "owed.json"), JSON.stringify({ [id]: { id, status: "new" } }));
+    const r = await runPass({ ...deps, set: flaky(99, deps.set) });
+    expect(r.skipped).toBe("offline");
+    await runPass(deps);
+    expect(calls.set).toEqual([{ id, status: "new" }]);
   });
 });
 
