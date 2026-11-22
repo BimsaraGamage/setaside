@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.15](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.14...setaside-v0.1.15) (2026-11-22)
+
+
+### Performance Improvements
+
+* goal delete, change and take-out read their checks in one D1 batch ([#114](https://github.com/BimsaraGamage/setaside/issues/114)) ([3ba686d](https://github.com/BimsaraGamage/setaside/commit/3ba686d64a0fcab986f07be509dd89fce3f7fdb6))
+
 ## [0.1.14](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.13...setaside-v0.1.14) (2026-11-22)
 
 
