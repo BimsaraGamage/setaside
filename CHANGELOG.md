@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.18...setaside-v0.1.19) (2026-11-22)
+
+
+### Features
+
+* spend from a savings goal and see what is spent and left ([#122](https://github.com/BimsaraGamage/setaside/issues/122)) ([86686fd](https://github.com/BimsaraGamage/setaside/commit/86686fd0e6b25c2f9f8a347f3369572b2fa81c74))
+
 ## [0.1.18](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.17...setaside-v0.1.18) (2026-11-22)
 
 
