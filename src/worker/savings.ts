@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkGoalTakeOut, checkIncome, checkSavingsMove, savingsTotal } from "../money";
+import { checkGoalTakeOut, checkIncome, checkSavingsMove, placeUsable, savingsTotal } from "../money";
 import { current } from "./current";
 import {
   commitment,
@@ -16,10 +16,10 @@ import {
 } from "./db/schema";
 import { json } from "./json";
 import { placeId, placesUsable } from "./place-use";
-import { goalSaved } from "./savings-goals";
+import { GOAL_SAVED, type GoalSavedRow, goalSavedOf } from "./savings-goals";
 import { SAVINGS_SQL } from "./today-read";
 import type { SignedIn } from "./user-check";
-import type { Read } from "./write-read";
+import { type Read, readForWrite } from "./write-read";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
@@ -250,6 +250,15 @@ const newIncome = z.object({
   placeId,
 });
 
+/** The place a Put in names (SAB-52), for `readForWrite`; `?2` is its id (null: none). */
+const PLACE = `select id, currency, archived from place where user_id = ?1 and id = ?2`;
+
+interface PlaceRow {
+  id: string;
+  currency: string;
+  archived: number;
+}
+
 /**
  * Savings and Add income (backlog item 10, spec 5): Put in, Take out (into free
  * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
@@ -262,17 +271,37 @@ export const savings = new Hono<SignedIn>()
   .post("/savings-movements", json(newMove), async (c) => {
     const { db, userId } = c.var;
     const b = c.req.valid("json");
-    const now = await current(c);
-    if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const currency = b.currency ?? now.settings.spendingCurrency;
-    const totalMinor = b.kind === "take_out" ? savingsTotal(await savingsLines(c), currency) : 0;
-    const problems: string[] = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
+    const takeOut = b.kind === "take_out";
     // Taken out into free money, the money stays in its place (spec 6).
     const inPlace = b.kind === "put_in" ? (b.placeId ?? null) : null;
-    if (!(await placesUsable(c, [{ placeId: inPlace, currency }]))) problems.push("place");
     const goalId = b.goalId ?? null;
+    // One D1 batch for every read (SAB-73): a take-out from a goal made ~10 D1 calls.
+    // Savings only for a take-out, the goal only when one is named.
+    const { now, places, saved, ...r } = await readForWrite<
+      Partial<SavingsReadRows> & { places: PlaceRow[]; saved?: GoalSavedRow[] }
+    >(c, {
+      ...(takeOut ? SAVINGS_READS : {}),
+      places: [PLACE, inPlace],
+      ...(goalId && takeOut ? { saved: [GOAL_SAVED, goalId] as const } : {}),
+    });
+    if (!now) return c.json({ error: "not_set_up" as const }, 404);
+    const currency = b.currency ?? now.settings.spendingCurrency;
+    const totalMinor = takeOut
+      ? savingsTotal(savingsLinesFrom(r as SavingsReadRows, now.settings.spendingCurrency), currency)
+      : 0;
+    const problems: string[] = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
+    if (
+      inPlace &&
+      !placeUsable(
+        inPlace,
+        currency,
+        places.map((p) => ({ ...p, archived: Number(p.archived) === 1 })),
+      )
+    ) {
+      problems.push("place");
+    }
     if (goalId) {
-      const goal = b.kind === "take_out" ? await goalSaved(c, goalId) : undefined;
+      const goal = saved && goalSavedOf(saved);
       if (!goal) problems.push("goal");
       else problems.push(...checkGoalTakeOut({ currency, amountMinor: b.amountMinor }, goal));
     }

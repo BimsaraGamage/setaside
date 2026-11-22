@@ -1,9 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
 import { checkSavingsGoal, goalLeftMinor, goalSavedMinor, savingsTotal } from "../money";
-import { current } from "./current";
-import { commitment, commitmentPayment, savingsGoal, savingsMovement } from "./db/schema";
+import { commitment, savingsGoal } from "./db/schema";
 import { json } from "./json";
 import { SAVINGS_READS, type SavingsReadRows, savingsLinesFrom } from "./savings";
 import type { Bit } from "./today-read";
@@ -100,40 +99,33 @@ const changeGoal = z
   })
   .partial();
 
-/** What payments on a goal's shares cover, all cycles (spec 5: saved toward it, less already saved). */
-async function movedToward(c: { var: SignedIn["Variables"] }, goalId: string): Promise<number> {
-  const { db, mine } = c.var;
-  const [row] = await db
-    .select({
-      moved: sql<number>`coalesce(sum(case when ${commitmentPayment.currency} = ${commitment.currency}
-        then ${commitmentPayment.amountMinor} else coalesce(${commitmentPayment.coversMinor}, 0) end), 0)`,
-    })
-    .from(commitmentPayment)
-    .innerJoin(commitment, eq(commitment.id, commitmentPayment.commitmentId))
-    .where(and(mine(commitmentPayment), mine(commitment), eq(commitment.goalId, goalId)));
-  return Number(row?.moved ?? 0);
+/**
+ * One of the user's goals with what is saved toward it (SAB-69), as one statement for
+ * `readForWrite` (SAB-73: Drizzle reads one after another took goal delete to 16 ms
+ * live): already saved, what its shares' payments cover (spec 5: saved toward it, less
+ * already saved) and what take-outs from it took, all cycles. `?2` is the goal id.
+ */
+export const GOAL_SAVED = `select g.currency, g.start_minor as startMinor,
+    (select coalesce(sum(case when p.currency = k.currency then p.amount_minor
+        else coalesce(p.covers_minor, 0) end), 0)
+      from commitment_payment p join commitment k on k.id = p.commitment_id
+      where p.user_id = ?1 and k.user_id = ?1 and k.goal_id = g.id) as movedMinor,
+    (select coalesce(sum(-m.amount_minor), 0) from savings_movement m
+      where m.user_id = ?1 and m.goal_id = g.id) as takenOutMinor
+  from savings_goal g where g.user_id = ?1 and g.id = ?2`;
+
+/** A `GOAL_SAVED` row. */
+export interface GoalSavedRow {
+  currency: string;
+  startMinor: number;
+  movedMinor: number;
+  takenOutMinor: number;
 }
 
-/**
- * One of the user's goals with what is saved toward it, for a take-out from it (SAB-69):
- * already saved, what its shares' payments cover and what take-outs from it took, all cycles.
- */
-export async function goalSaved(c: { var: SignedIn["Variables"] }, goalId: string) {
-  const { db, mine } = c.var;
-  const goal = await db.query.savingsGoal.findFirst({
-    where: and(mine(savingsGoal), eq(savingsGoal.id, goalId)),
-    columns: { currency: true, startMinor: true },
-  });
-  if (!goal) return undefined;
-  const [out] = await db
-    .select({ sum: sql<number>`coalesce(sum(-${savingsMovement.amountMinor}), 0)` })
-    .from(savingsMovement)
-    .where(and(mine(savingsMovement), eq(savingsMovement.goalId, goalId)));
-  return {
-    ...goal,
-    movedMinor: await movedToward(c, goalId),
-    takenOutMinor: Number(out?.sum ?? 0),
-  };
+/** The goal `GOAL_SAVED` read, sums as numbers; undefined when it is not the user's. */
+export function goalSavedOf(rows: GoalSavedRow[]): GoalSavedRow | undefined {
+  const g = rows[0];
+  return g && { ...g, movedMinor: Number(g.movedMinor), takenOutMinor: Number(g.takenOutMinor) };
 }
 
 /**
@@ -195,9 +187,12 @@ export const savingsGoals = new Hono<SignedIn>()
     const { db, mine } = c.var;
     const b = c.req.valid("json");
     const id = c.req.param("id");
-    const { now, found, ...r } = await readForWrite<SavingsReadRows & { found: GoalRow[] }>(c, {
+    const { now, found, saved, ...r } = await readForWrite<
+      SavingsReadRows & { found: GoalRow[]; saved: GoalSavedRow[] }
+    >(c, {
       ...SAVINGS_READS,
       found: [GOAL, id],
+      saved: [GOAL_SAVED, id],
     });
     const where = and(mine(savingsGoal), eq(savingsGoal.id, id));
     const row = found[0];
@@ -213,9 +208,9 @@ export const savingsGoals = new Hono<SignedIn>()
       keepByOn: old.byOn,
     });
     // Already saved can't go below what take-outs from it took less its moves (SAB-69).
-    if (b.startMinor !== undefined && !problems.includes("start")) {
-      const saved = await goalSaved(c, id);
-      if (saved && goalSavedMinor({ ...saved, startMinor: next.startMinor }) < 0) problems.push("start");
+    const goal = goalSavedOf(saved);
+    if (b.startMinor !== undefined && !problems.includes("start") && goal) {
+      if (goalSavedMinor({ ...goal, startMinor: next.startMinor }) < 0) problems.push("start");
     }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
@@ -233,13 +228,13 @@ export const savingsGoals = new Hono<SignedIn>()
   .delete("/savings-goals/:id", async (c) => {
     const { db, mine } = c.var;
     const id = c.req.param("id");
-    const now = await current(c);
+    // One D1 batch for every read, then the delete batch (SAB-73).
+    const { now, saved } = await readForWrite<{ saved: GoalSavedRow[] }>(c, { saved: [GOAL_SAVED, id] });
     const where = and(mine(savingsGoal), eq(savingsGoal.id, id));
-    const found = await db.query.savingsGoal.findFirst({ where, columns: { id: true } });
-    if (!now || !found) return c.json({ error: "not_found" as const }, 404);
+    const goal = goalSavedOf(saved);
+    if (!now || !goal) return c.json({ error: "not_found" as const }, 404);
     // Nothing moved toward it, and no take-out from it (SAB-69: it would lose its goal).
-    const saved = await goalSaved(c, id);
-    if (!saved || saved.movedMinor > 0 || saved.takenOutMinor > 0) {
+    if (goal.movedMinor > 0 || goal.takenOutMinor > 0) {
       return c.json({ error: "moved" as const }, 409);
     }
     await db.batch([
