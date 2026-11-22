@@ -8,7 +8,7 @@ import { type Spend, useCurrent } from "./data";
 import { EveryCyclePage, everyCycleActions } from "./EveryCycle";
 import { FeedbackHost, openFeedback } from "./Feedback";
 import { FirstUse } from "./FirstUse";
-import { GoalPage, goalActions } from "./Goals";
+import { GoalPage, GoalSpendPage, goalActions } from "./Goals";
 import { agoLabel, clearCopy, readCopy } from "./offline-copy";
 import { PastCyclePage, PastList } from "./Past";
 import { PayPage } from "./Pay";
@@ -41,6 +41,7 @@ const pages = {
   Savings: "Money",
   SavingsMove: "Money",
   Goal: "Money",
+  GoalSpend: "Money",
   AddIncome: "Money",
   ChangeDollars: "Money",
   Card: "Money",
@@ -185,7 +186,8 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
   // "#Place" adds a place; "#Place/<id>" opens one (ticket SAB-50).
   const place = tab === "Place" && id ? ready.places.find((p) => p.id === id) : undefined;
   // "#Goal" makes a savings goal; "#Goal/<id>" opens one (SAB-68).
-  const goal = tab === "Goal" && id ? ready.goals.find((g) => g.id === id) : undefined;
+  const goal =
+    (tab === "Goal" || tab === "GoalSpend") && id ? ready.goals.find((g) => g.id === id) : undefined;
   // "#Instalments" makes a plan; "#Instalments/<id>" opens one (item 19).
   const plan = tab === "Instalments" && id ? ready.plans.find((p) => p.id === id) : undefined;
   // "#Person/<id>" opens one person entry (item 20).
@@ -286,6 +288,17 @@ function SignedIn({ userId, onSignedOut }: { userId: string; onSignedOut: () => 
         {tab === "Goal" &&
           (!id || goal ? (
             <GoalPage key={id ?? "new"} data={ready} editing={goal} actions={goals} />
+          ) : (
+            <>
+              <a className="btn ghost link" href="#Savings">
+                ← Back
+              </a>
+              <p className="mute">This goal is no longer here.</p>
+            </>
+          ))}
+        {tab === "GoalSpend" &&
+          (goal ? (
+            <GoalSpendPage key={goal.id} data={ready} goal={goal} actions={goals} />
           ) : (
             <>
               <a className="btn ghost link" href="#Savings">

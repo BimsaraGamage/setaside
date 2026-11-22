@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+  checkGoalSpend,
   checkGoalTakeOut,
   checkSavingsGoal,
   fairShareMinor,
@@ -8,6 +9,7 @@ import {
   goalSavedMinor,
   goalSharesLeft,
   goalStatus,
+  goalUnspentMinor,
   type SavingsGoalEntry,
 } from "../../src/money";
 
@@ -115,6 +117,76 @@ describe("taking out from a goal (SAB-67 pick 9)", () => {
     const full = { ...japan, movedMinor: 60_000_000, shareCount: 7 };
     expect(goalStatus(full, [], cycle)).toEqual({ kind: "reached" });
     expect(goalStatus({ ...full, takenOutMinor: 1 }, [], cycle).kind).not.toBe("reached");
+  });
+});
+
+// SAB-79 · Spend from a savings goal (spec 5, decided in SAB-75).
+describe("spending from a goal (SAB-75)", () => {
+  const saved = { ...japan, movedMinor: 60_000_000, shareCount: 7 };
+  const spend = (amountMinor: number, note = "Flights") => ({ currency: "LKR", amountMinor, note });
+
+  it("still counts as saved toward it: progress, Reached and the fair share leave it out (pick 3)", () => {
+    const spent = { ...saved, spentMinor: 25_000_000 };
+    expect(goalSavedMinor(spent)).toBe(60_000_000);
+    const cycle = { startedOn: "2026-11-25", usualPayDay: 25, today: "2026-11-30" };
+    expect(goalStatus(spent, [], cycle)).toEqual({ kind: "reached" });
+    const half = { ...japan, movedMinor: 20_000_000, shareCount: 2 };
+    const at = { startedOn: "2026-12-25", usualPayDay: 25 };
+    const halfSpent: SavingsGoalEntry = { ...half, spentMinor: 10_000_000 };
+    expect(fairShareMinor(halfSpent, at)).toBe(fairShareMinor(half, at));
+  });
+
+  it("left is saved toward it less take-outs and spends, never below zero", () => {
+    expect(goalUnspentMinor({ ...saved, takenOutMinor: 2_000_000, spentMinor: 25_000_000 })).toBe(33_000_000);
+    expect(goalUnspentMinor({ ...saved, spentMinor: 70_000_000 })).toBe(0);
+  });
+
+  it("up to what is left, with a note, is fine (pick 4, 6)", () => {
+    expect(checkGoalSpend(spend(60_000_000), saved, 60_000_000)).toEqual([]);
+    expect(checkGoalSpend(spend(1), { ...saved, spentMinor: 59_999_999 }, 60_000_000)).toEqual([]);
+  });
+
+  it("more than is left in the goal is too much", () => {
+    expect(checkGoalSpend(spend(2), { ...saved, spentMinor: 59_999_999 }, 60_000_000)).toEqual([
+      "goal_too_much",
+    ]);
+    expect(checkGoalSpend(spend(59_000_001), { ...saved, takenOutMinor: 1_000_000 }, 60_000_000)).toEqual([
+      "goal_too_much",
+    ]);
+  });
+
+  it("more than the savings total in its currency is too much", () => {
+    expect(checkGoalSpend(spend(50_000_000), saved, 40_000_000)).toEqual(["too_much"]);
+  });
+
+  it("needs a note, an amount above zero and the goal's currency", () => {
+    expect(checkGoalSpend(spend(100, "  "), saved, 60_000_000)).toEqual(["note"]);
+    expect(checkGoalSpend(spend(100, "x".repeat(81)), saved, 60_000_000)).toEqual(["note"]);
+    expect(checkGoalSpend(spend(0), saved, 60_000_000)).toEqual(["amount"]);
+    expect(checkGoalSpend(spend(1.5), saved, 60_000_000)).toEqual(["amount"]);
+    expect(checkGoalSpend({ ...spend(100), currency: "USD" }, saved, 60_000_000)).toEqual(["goal"]);
+  });
+
+  it("a take-out from a goal is at most what is left after its spends", () => {
+    expect(
+      checkGoalTakeOut({ currency: "LKR", amountMinor: 35_000_001 }, { ...saved, spentMinor: 25_000_000 }),
+    ).toEqual(["goal_too_much"]);
+    expect(
+      checkGoalTakeOut({ currency: "LKR", amountMinor: 35_000_000 }, { ...saved, spentMinor: 25_000_000 }),
+    ).toEqual([]);
+  });
+
+  it("left never goes below zero, whatever is spent within the checks", () => {
+    fc.assert(
+      fc.property(fc.array(fc.integer({ min: 1, max: 30_000_000 }), { maxLength: 8 }), (amounts) => {
+        let spentMinor = 0;
+        for (const a of amounts) {
+          const g = { ...saved, spentMinor };
+          if (checkGoalSpend(spend(a), g, 1e12).length === 0) spentMinor += a;
+        }
+        expect(goalSavedMinor(saved) - spentMinor).toBeGreaterThanOrEqual(0);
+      }),
+    );
   });
 });
 

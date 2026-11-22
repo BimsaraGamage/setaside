@@ -429,3 +429,156 @@ describe("taking out of savings from a goal (spec 5)", () => {
     ).toBe(200);
   });
 });
+
+// SAB-79 · Spend from a savings goal (decided in SAB-75).
+describe("spending from a goal (spec 5)", () => {
+  interface Line {
+    id: string;
+    kind: string;
+    amountMinor: number;
+    currency: string;
+    goalId?: string;
+    note?: string;
+  }
+  interface Now {
+    savings: Line[];
+    places: { id: string; movedMinor: number }[];
+  }
+  const spend = (body: Record<string, unknown>, cookie: string) =>
+    send(
+      "POST",
+      "/api/savings-movements",
+      { id: id(), kind: "goal_spend", note: "Flights", ...body },
+      cookie,
+    );
+  const nowOf = async (cookie: string) => (await call("/api/current", {}, cookie)).json<Now>();
+
+  it("comes straight out of savings with its goal and note, up to what is left; its Undo puts it back", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 3_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    const tooMuch = await spend({ amountMinor: 3_000_001, goalId: goal.id }, cookie);
+    expect(await tooMuch.json()).toEqual({ error: "invalid", problems: ["goal_too_much"] });
+
+    const moveId = id();
+    const res = await send(
+      "POST",
+      "/api/savings-movements",
+      { id: moveId, kind: "goal_spend", amountMinor: 2_500_000, goalId: goal.id, note: "  Flights " },
+      cookie,
+    );
+    expect(res.status).toBe(201);
+    const line = (await nowOf(cookie)).savings.find((l) => l.id === moveId);
+    expect(line).toEqual(
+      expect.objectContaining({
+        kind: "goal_spend",
+        amountMinor: -2_500_000,
+        currency: "LKR",
+        goalId: goal.id,
+        note: "Flights",
+      }),
+    );
+    // Rs 5,000 left in it: spends and take-outs both stop there.
+    expect(await (await spend({ amountMinor: 500_001, goalId: goal.id }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal_too_much"],
+    });
+    const takeOut = await send(
+      "POST",
+      "/api/savings-movements",
+      { id: id(), kind: "take_out", amountMinor: 500_001, goalId: goal.id },
+      cookie,
+    );
+    expect(await takeOut.json()).toEqual({ error: "invalid", problems: ["goal_too_much"] });
+
+    expect((await send("DELETE", `/api/savings-movements/${moveId}`, undefined, cookie)).status).toBe(200);
+    expect((await spend({ amountMinor: 3_000_000, goalId: goal.id }, cookie)).status).toBe(201);
+  });
+
+  it("needs a note, its goal and no more than the savings total; it is in the goal's currency", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    expect(await (await spend({ amountMinor: 100, goalId: goal.id, note: " " }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["note"],
+    });
+    expect(await (await spend({ amountMinor: 100 }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal"],
+    });
+    expect(await (await spend({ amountMinor: 100, goalId: id() }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal"],
+    });
+    // The currency sent is ignored: the goal's is used.
+    const ok = await spend({ amountMinor: 100, goalId: goal.id, currency: "USD" }, cookie);
+    expect(ok.status).toBe(201);
+    // Savings drop below what is left in it (a plain take-out): the savings total is the limit.
+    await send(
+      "POST",
+      "/api/savings-movements",
+      { id: id(), kind: "take_out", amountMinor: 4_500_000 },
+      cookie,
+    );
+    expect(await (await spend({ amountMinor: 600_000, goalId: goal.id }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["too_much"],
+    });
+  });
+
+  it("never spends from another user's goal", async () => {
+    const { cookie } = await setUp();
+    const other = await signIn("demo");
+    const theirs = id();
+    const at = Date.now();
+    await env.DB.prepare(
+      `insert into savings_goal (id, user_id, name, currency, target_minor, by_on, start_minor, stopped, created_at, updated_at)
+       values (?, ?, 'Theirs', 'LKR', 100000, ?, 100000, 0, ?, ?)`,
+    )
+      .bind(theirs, other.id, later(100), at, at)
+      .run();
+    expect(await (await spend({ amountMinor: 1, goalId: theirs }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal"],
+    });
+    await env.DB.prepare("delete from savings_goal where id = ?").bind(theirs).run();
+  });
+
+  it("leaves the place it was paid from, not free money; the goal stays saved", async () => {
+    const { cookie } = await setUp();
+    const placeId = id();
+    const place = await send(
+      "POST",
+      "/api/places",
+      { id: placeId, name: "Savings account", kind: "kept", balance: { id: id(), amountMinor: 5_000_000 } },
+      cookie,
+    );
+    expect(place.status).toBe(201);
+    const goal = japan({ startMinor: 2_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    const before = await call("/api/current", {}, cookie).then((r) => r.json<Record<string, unknown>>());
+    expect((await spend({ amountMinor: 1_200_000, goalId: goal.id, placeId }, cookie)).status).toBe(201);
+    const after = await call("/api/current", {}, cookie).then((r) => r.json<Record<string, unknown>>());
+    const moved = (n: Record<string, unknown>) =>
+      (n.places as { id: string; movedMinor: number }[]).find((p) => p.id === placeId)?.movedMinor;
+    expect(Number(moved(after)) - Number(moved(before))).toBe(-1_200_000);
+    // Free money's entries are the same: no take-out, income or spend came from it.
+    for (const k of ["incomes", "spends", "commitments"]) expect(after[k]).toEqual(before[k]);
+    const g = (after.goals as Goal[]).find((x) => x.id === goal.id);
+    expect(g?.startMinor).toBe(2_000_000);
+  });
+
+  it("a goal spent from can't be deleted, nor its already saved go below what was spent", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    expect((await spend({ amountMinor: 700_000, goalId: goal.id }, cookie)).status).toBe(201);
+    expect((await send("DELETE", `/api/savings-goals/${goal.id}`, undefined, cookie)).status).toBe(409);
+    const lower = await send("PATCH", `/api/savings-goals/${goal.id}`, { startMinor: 600_000 }, cookie);
+    expect(await lower.json()).toEqual({ error: "invalid", problems: ["start"] });
+    expect(
+      (await send("PATCH", `/api/savings-goals/${goal.id}`, { startMinor: 700_000 }, cookie)).status,
+    ).toBe(200);
+  });
+});

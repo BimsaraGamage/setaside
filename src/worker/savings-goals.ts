@@ -111,21 +111,31 @@ export const GOAL_SAVED = `select g.currency, g.start_minor as startMinor,
       from commitment_payment p join commitment k on k.id = p.commitment_id
       where p.user_id = ?1 and k.user_id = ?1 and k.goal_id = g.id) as movedMinor,
     (select coalesce(sum(-m.amount_minor), 0) from savings_movement m
-      where m.user_id = ?1 and m.goal_id = g.id) as takenOutMinor
+      where m.user_id = ?1 and m.goal_id = g.id and m.kind = 'take_out') as takenOutMinor,
+    (select coalesce(sum(-m.amount_minor), 0) from savings_movement m
+      where m.user_id = ?1 and m.goal_id = g.id and m.kind = 'goal_spend') as spentMinor
   from savings_goal g where g.user_id = ?1 and g.id = ?2`;
 
-/** A `GOAL_SAVED` row. */
+/** A `GOAL_SAVED` row; `spentMinor` is what goal spends from it spent (SAB-75). */
 export interface GoalSavedRow {
   currency: string;
   startMinor: number;
   movedMinor: number;
   takenOutMinor: number;
+  spentMinor: number;
 }
 
 /** The goal `GOAL_SAVED` read, sums as numbers; undefined when it is not the user's. */
 export function goalSavedOf(rows: GoalSavedRow[]): GoalSavedRow | undefined {
   const g = rows[0];
-  return g && { ...g, movedMinor: Number(g.movedMinor), takenOutMinor: Number(g.takenOutMinor) };
+  return (
+    g && {
+      ...g,
+      movedMinor: Number(g.movedMinor),
+      takenOutMinor: Number(g.takenOutMinor),
+      spentMinor: Number(g.spentMinor),
+    }
+  );
 }
 
 /**
@@ -207,10 +217,12 @@ export const savingsGoals = new Hono<SignedIn>()
       savingsMinor: Math.max(savingsMinor, old.startMinor),
       keepByOn: old.byOn,
     });
-    // Already saved can't go below what take-outs from it took less its moves (SAB-69).
+    // Already saved can't go below what take-outs from it took and spends from it spent, less its
+    // moves (SAB-69, SAB-75): left in it never goes below zero.
     const goal = goalSavedOf(saved);
     if (b.startMinor !== undefined && !problems.includes("start") && goal) {
-      if (goalSavedMinor({ ...goal, startMinor: next.startMinor }) < 0) problems.push("start");
+      if (goalSavedMinor({ ...goal, startMinor: next.startMinor }) - goal.spentMinor < 0)
+        problems.push("start");
     }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
@@ -233,8 +245,8 @@ export const savingsGoals = new Hono<SignedIn>()
     const where = and(mine(savingsGoal), eq(savingsGoal.id, id));
     const goal = goalSavedOf(saved);
     if (!now || !goal) return c.json({ error: "not_found" as const }, 404);
-    // Nothing moved toward it, and no take-out from it (SAB-69: it would lose its goal).
-    if (goal.movedMinor > 0 || goal.takenOutMinor > 0) {
+    // Nothing moved toward it, and no take-out or goal spend from it (SAB-69, SAB-75: it would lose its goal).
+    if (goal.movedMinor > 0 || goal.takenOutMinor > 0 || goal.spentMinor > 0) {
       return c.json({ error: "moved" as const }, 409);
     }
     await db.batch([

@@ -24,6 +24,8 @@ export interface SavingsGoalEntry {
   movedMinor: Minor;
   /** What take-outs from it took (SAB-69), all cycles; none: 0. */
   takenOutMinor?: Minor;
+  /** What goal spends from it spent (SAB-75), all cycles; none: 0. Still counts as saved toward it. */
+  spentMinor?: Minor;
   /** How many shares it has had, all cycles (none yet: it starts on the next salary day). */
   shareCount: number;
 }
@@ -64,10 +66,13 @@ export function checkSavingsGoal(
 }
 
 type Saved = Pick<SavingsGoalEntry, "startMinor" | "movedMinor" | "takenOutMinor">;
+type Spent = Saved & Pick<SavingsGoalEntry, "spentMinor">;
 
 /**
  * Saved toward a goal (spec 5): already saved + what its shares' moves cover −
- * what take-outs from it took (SAB-69).
+ * what take-outs from it took (SAB-69). Goal spends (SAB-75) leave it as it is:
+ * spending on the goal is the goal doing its job, so progress, Reached and the
+ * fair share never ask to save it again.
  */
 export function goalSavedMinor(g: Saved): Minor {
   return g.startMinor + g.movedMinor - (g.takenOutMinor ?? 0);
@@ -78,19 +83,53 @@ export function goalLeftMinor(g: Saved & Pick<SavingsGoalEntry, "targetMinor">):
   return Math.max(0, g.targetMinor - goalSavedMinor(g));
 }
 
+/**
+ * **Left** in a goal (spec 5, SAB-75): saved toward it − what goal spends from it
+ * spent; what can still be spent from it or taken out of it. Never below zero.
+ */
+export function goalUnspentMinor(g: Spent): Minor {
+  return Math.max(0, goalSavedMinor(g) - (g.spentMinor ?? 0));
+}
+
 export type GoalTakeOutProblem = "goal" | "goal_too_much";
 
 /**
  * Checks Take out of savings "from a goal" (spec 5, SAB-67 pick 9): a goal in the
- * take-out's currency, and at most what is saved toward it. The savings total
- * check (`checkSavingsMove`) still applies.
+ * take-out's currency, and at most what is left in it (saved toward it less goal
+ * spends, SAB-75). The savings total check (`checkSavingsMove`) still applies.
  */
 export function checkGoalTakeOut(
   input: { currency: string; amountMinor: number },
-  g: Saved & Pick<SavingsGoalEntry, "currency">,
+  g: Spent & Pick<SavingsGoalEntry, "currency">,
 ): GoalTakeOutProblem[] {
   if (input.currency !== g.currency) return ["goal"];
-  return input.amountMinor > goalSavedMinor(g) ? ["goal_too_much"] : [];
+  return input.amountMinor > goalUnspentMinor(g) ? ["goal_too_much"] : [];
+}
+
+/** The longest note on a goal spend ("Flights"). */
+export const GOAL_SPEND_NOTE_MAX = 80;
+
+export type GoalSpendProblem = "goal" | "amount" | "note" | "goal_too_much" | "too_much";
+
+/**
+ * Checks Spend from this goal (spec 5, SAB-75): the goal's currency, an amount
+ * above zero, a note, at most what is left in the goal and at most the savings
+ * total in that currency (`totalMinor`). Past that it is a normal spend.
+ */
+export function checkGoalSpend(
+  input: { currency: string; amountMinor: number; note: string },
+  g: Spent & Pick<SavingsGoalEntry, "currency">,
+  totalMinor: Minor,
+): GoalSpendProblem[] {
+  const out: GoalSpendProblem[] = [];
+  if (input.currency !== g.currency) out.push("goal");
+  const amountOk = Number.isSafeInteger(input.amountMinor) && input.amountMinor > 0;
+  if (!amountOk) out.push("amount");
+  const note = input.note.trim();
+  if (!note || note.length > GOAL_SPEND_NOTE_MAX) out.push("note");
+  if (amountOk && input.amountMinor > goalUnspentMinor(g)) out.push("goal_too_much");
+  if (amountOk && input.amountMinor > totalMinor) out.push("too_much");
+  return out;
 }
 
 /**

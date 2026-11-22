@@ -107,6 +107,15 @@ test("move a goal's share to savings: its progress grows and it can no longer be
   await expect(page.getByTestId("goal-share")).toContainText("Moved");
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
 
+  // Free money now, to see a goal spend leave it as it is (SAB-79).
+  await page.getByRole("link", { name: "← Back" }).click();
+  await page.getByRole("link", { name: "← Back" }).click();
+  await tabs.getByRole("link", { name: "Today" }).click();
+  const freeBefore = (await page.getByTestId("free-money").textContent()) ?? "";
+  await tabs.getByRole("link", { name: "Money" }).click();
+  await page.getByRole("link", { name: /^Savings/ }).click();
+  await page.getByTestId("goal").click();
+
   // SAB-69: take Rs 5,000 out of savings from the goal: at most what is saved toward it.
   await page.getByRole("link", { name: "← Back" }).click();
   await page.getByRole("link", { name: "Take out" }).click();
@@ -129,4 +138,28 @@ test("move a goal's share to savings: its progress grows and it can no longer be
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByTestId("goal-progress")).toHaveText("Rs 25,000 of Rs 300,000");
   await expect(page.getByTestId("goal-taken-out")).toHaveCount(0);
+
+  // SAB-79: spend from the goal: straight out of savings, at most what is left; free money stays.
+  await page.getByRole("link", { name: "Spend from this goal" }).click();
+  await expect(page.getByTestId("goal-spend-left")).toHaveText("Rs 25,000 left in this goal");
+  await page.getByLabel("Amount (LKR)").fill("30000");
+  await page.getByLabel("What for").fill("Deposit");
+  await expect(page.getByTestId("goal-spend-too-much")).toContainText("Only Rs 25,000 left in this goal");
+  await expect(page.getByRole("button", { name: "Spend from this goal" })).toBeDisabled();
+  await page.getByLabel("Amount (LKR)").fill("8000");
+  await page.getByRole("button", { name: "Spend from this goal" }).click();
+  await expect(page.getByRole("status")).toContainText("Rs 8,000 spent from Laptop");
+  // Still saved toward it: progress stays; Saved · Spent · Left and the spend in its list.
+  await expect(page.getByTestId("goal-progress")).toHaveText("Rs 25,000 of Rs 300,000");
+  await expect(page.getByTestId("goal-saved")).toContainText("Rs 25,000");
+  await expect(page.getByTestId("goal-spent")).toContainText("Rs 8,000");
+  await expect(page.getByTestId("goal-left")).toContainText("Rs 17,000");
+  await expect(page.getByTestId("goal-out")).toContainText("Deposit");
+  await page.getByRole("link", { name: "← Back" }).click();
+  await expect(page.getByTestId("savings-total")).toHaveText("Rs 17,000");
+  await expect(page.getByTestId("goal")).toContainText("Rs 17,000 left");
+  await expect(page.getByText("Spent from Laptop · Deposit")).toBeVisible();
+  await page.getByRole("link", { name: "← Back" }).click();
+  await tabs.getByRole("link", { name: "Today" }).click();
+  await expect(page.getByTestId("free-money")).toHaveText(freeBefore);
 });

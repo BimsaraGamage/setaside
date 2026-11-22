@@ -1,7 +1,14 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkGoalTakeOut, checkIncome, checkSavingsMove, placeUsable, savingsTotal } from "../money";
+import {
+  checkGoalSpend,
+  checkGoalTakeOut,
+  checkIncome,
+  checkSavingsMove,
+  placeUsable,
+  savingsTotal,
+} from "../money";
 import { current } from "./current";
 import {
   commitment,
@@ -33,15 +40,18 @@ export interface SavingsLine {
     | "prepayment"
     | "payback"
     | "rate_gain"
-    | "plan_extra";
+    | "plan_extra"
+    | "goal_spend";
   cycleId: string;
   currency: string;
   amountMinor: number;
   on: string;
   /** The commitment's name for a set-aside or payback moved; the prepayment's or plan's name. */
   name: string | null;
-  /** Take out "from a goal" (SAB-69): the goal it took from; left out when none. */
+  /** Take out "from a goal" (SAB-69): the goal it took from; a goal spend's goal (SAB-75); left out when none. */
   goalId?: string;
+  /** What a goal spend bought ("Flights", SAB-75); left out on every other kind. */
+  note?: string;
 }
 
 /**
@@ -64,6 +74,7 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       name: prepayment.name,
       planName: instalmentPlan.name,
       goalId: savingsMovement.goalId,
+      note: savingsMovement.note,
     })
     .from(savingsMovement)
     .leftJoin(prepayment, and(eq(prepayment.id, savingsMovement.prepaymentId), mine(prepayment)))
@@ -118,6 +129,7 @@ export interface SavingsRows {
     name: string | null;
     planName: string | null;
     goalId: string | null;
+    note: string | null;
   }[];
   /** Incomes with part sent to savings. */
   incomes: {
@@ -182,7 +194,11 @@ export function savingsLinesOf(
 ): SavingsLine[] {
   const lines: SavingsLine[] = [
     ...moves.flatMap((m) =>
-      m.kind === "put_in" || m.kind === "take_out" || m.kind === "prepayment" || m.kind === "plan_extra"
+      m.kind === "put_in" ||
+      m.kind === "take_out" ||
+      m.kind === "prepayment" ||
+      m.kind === "plan_extra" ||
+      m.kind === "goal_spend"
         ? [
             {
               id: m.id,
@@ -193,6 +209,7 @@ export function savingsLinesOf(
               on: m.movedOn,
               name: m.kind === "prepayment" ? m.name : m.kind === "plan_extra" ? m.planName : null,
               ...(m.goalId ? { goalId: m.goalId } : {}),
+              ...(m.kind === "goal_spend" && m.note ? { note: m.note } : {}),
             },
           ]
         : [],
@@ -228,15 +245,24 @@ export function savingsLinesOf(
 
 const newMove = z.object({
   id: z.uuid(),
-  kind: z.enum(["put_in", "take_out"]),
+  /** `goal_spend`: Spend from this goal (SAB-75), straight out of savings, not via free money. */
+  kind: z.enum(["put_in", "take_out", "goal_spend"]),
   /** Either of the user's currencies (spec 8); none: the spending currency. */
   currency: z.string().optional(),
   /** Above zero; a take-out is stored below zero. */
   amountMinor: z.number().int(),
-  /** Put in: the place the money went into (SAB-52). A take-out stays where it is: it takes none. */
+  /**
+   * Put in: the place the money went into (SAB-52); a goal spend: the place it was paid from. A
+   * take-out stays where it is: it takes none.
+   */
   placeId,
-  /** Take out "from a goal" (SAB-69): one of the user's goals in its currency; none takes from no goal. */
+  /**
+   * Take out "from a goal" (SAB-69): one of the user's goals in its currency; none takes from no goal.
+   * A goal spend needs one: the goal it spends from (its currency is the goal's).
+   */
   goalId: z.uuid().nullish(),
+  /** A goal spend's note ("Flights"), required there; ignored on the other kinds. */
+  note: z.string().optional(),
 });
 
 const newIncome = z.object({
@@ -264,19 +290,23 @@ interface PlaceRow {
  * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
  * current cycle. Deletes are the toasts' Undo, current cycle only. Income and Put
  * in may name the place the money landed in (SAB-52). A take-out may name the
- * savings goal it takes from (SAB-69); its Undo puts it back toward the goal.
+ * savings goal it takes from (SAB-69); its Undo puts it back toward the goal. A
+ * goal spend (SAB-75) is money spent on a goal straight out of savings, not via
+ * free money: it names its goal, a note and maybe the place it was paid from.
  * The phone works out every number with the money rules.
  */
 export const savings = new Hono<SignedIn>()
   .post("/savings-movements", json(newMove), async (c) => {
     const { db, userId } = c.var;
     const b = c.req.valid("json");
-    const takeOut = b.kind === "take_out";
-    // Taken out into free money, the money stays in its place (spec 6).
-    const inPlace = b.kind === "put_in" ? (b.placeId ?? null) : null;
+    const goalSpend = b.kind === "goal_spend";
+    const takeOut = b.kind === "take_out" || goalSpend;
+    // Taken out into free money, the money stays in its place (spec 6); a goal spend leaves its place.
+    const inPlace = b.kind === "take_out" ? null : (b.placeId ?? null);
     const goalId = b.goalId ?? null;
+    const note = goalSpend ? (b.note ?? "").trim() : null;
     // One D1 batch for every read (SAB-73): a take-out from a goal made ~10 D1 calls.
-    // Savings only for a take-out, the goal only when one is named.
+    // Savings only for money out, the goal only when one is named.
     const { now, places, saved, ...r } = await readForWrite<
       Partial<SavingsReadRows> & { places: PlaceRow[]; saved?: GoalSavedRow[] }
     >(c, {
@@ -285,11 +315,20 @@ export const savings = new Hono<SignedIn>()
       ...(goalId && takeOut ? { saved: [GOAL_SAVED, goalId] as const } : {}),
     });
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
-    const currency = b.currency ?? now.settings.spendingCurrency;
+    const goal = saved && goalSavedOf(saved);
+    // A goal spend is in its goal's currency (SAB-75).
+    const currency = (goalSpend ? goal?.currency : undefined) ?? b.currency ?? now.settings.spendingCurrency;
     const totalMinor = takeOut
       ? savingsTotal(savingsLinesFrom(r as SavingsReadRows, now.settings.spendingCurrency), currency)
       : 0;
-    const problems: string[] = checkSavingsMove({ ...b, currency, totalMinor }, now.currencies);
+    const problems: string[] = goalSpend
+      ? !goal
+        ? ["goal"]
+        : checkGoalSpend({ currency, amountMinor: b.amountMinor, note: note ?? "" }, goal, totalMinor)
+      : checkSavingsMove(
+          { ...b, kind: b.kind as "put_in" | "take_out", currency, totalMinor },
+          now.currencies,
+        );
     if (
       inPlace &&
       !placeUsable(
@@ -300,8 +339,7 @@ export const savings = new Hono<SignedIn>()
     ) {
       problems.push("place");
     }
-    if (goalId) {
-      const goal = saved && goalSavedOf(saved);
+    if (goalId && !goalSpend) {
       if (!goal) problems.push("goal");
       else problems.push(...checkGoalTakeOut({ currency, amountMinor: b.amountMinor }, goal));
     }
@@ -312,11 +350,12 @@ export const savings = new Hono<SignedIn>()
         userId,
         cycleId: now.cycle.id,
         currency,
-        amountMinor: b.kind === "take_out" ? -b.amountMinor : b.amountMinor,
+        amountMinor: takeOut ? -b.amountMinor : b.amountMinor,
         kind: b.kind,
         movedOn: now.today,
         placeId: inPlace,
         goalId,
+        note,
       });
     } catch {
       // The id is already in use.
@@ -332,7 +371,7 @@ export const savings = new Hono<SignedIn>()
       where: and(mine(savingsMovement), eq(savingsMovement.id, id)),
       columns: { cycleId: true, kind: true },
     });
-    if (!now || !old || (old.kind !== "put_in" && old.kind !== "take_out")) {
+    if (!now || !old || (old.kind !== "put_in" && old.kind !== "take_out" && old.kind !== "goal_spend")) {
       return c.json({ error: "not_found" as const }, 404);
     }
     if (old.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);

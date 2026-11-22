@@ -1,13 +1,16 @@
 import { useState } from "react";
 import {
   addDays,
+  checkGoalSpend,
   checkSavingsGoal,
   coveredMinor,
   fairShareMinor,
   formatMoney,
+  GOAL_SPEND_NOTE_MAX,
   type GoalStatus,
   goalSavedMinor,
   goalStatus,
+  goalUnspentMinor,
   NAME_MAX,
   parseAmount,
   type SavingsGoalEntry,
@@ -18,6 +21,7 @@ import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { type Commitment, dayLabel, entriesOf, type Goal, type Ready, useToday } from "./data";
 import { newId } from "./id";
+import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
 import { toText } from "./SpendSheet";
 import type { Toaster } from "./toast";
 
@@ -39,6 +43,13 @@ const add = (id: string, d: GoalFields & { currency: string }, share: number) =>
 const change = (id: string, d: Partial<GoalFields & { stopped: boolean }>) =>
   ok(api.api["savings-goals"][":id"].$patch({ param: { id }, json: d }));
 const remove = (id: string) => ok(api.api["savings-goals"][":id"].$delete({ param: { id } }));
+const addSpend = (id: string, goalId: string, amountMinor: number, note: string, placeId: string | null) =>
+  ok(
+    api.api["savings-movements"].$post({
+      json: { id, kind: "goal_spend", goalId, amountMinor, note, placeId },
+    }),
+  );
+const removeSpend = (id: string) => ok(api.api["savings-movements"][":id"].$delete({ param: { id } }));
 
 /** Add, change, stop, start again and delete savings goals (SAB-68); each success shows a toast. */
 export function goalActions({ done }: Toaster) {
@@ -72,8 +83,18 @@ export function goalActions({ done }: Toaster) {
       change(g.id, { stopped: false }).then((ok) =>
         done(ok, { text: `${g.name} started again`, undo: () => change(g.id, { stopped: true }) }),
       ),
-    /** Delete, only while nothing was moved toward it or taken out of it: its share this cycle goes too. */
+    /** Delete, only while nothing was moved toward it, taken out of it or spent from it: its share this cycle goes too. */
     remove: (g: Goal) => remove(g.id).then((ok) => done(ok, { text: `${g.name} deleted` })),
+    /** Spend from this goal (SAB-75): straight out of savings, not via free money; Undo deletes it. */
+    spend: (g: Goal, amountMinor: number, note: string, placeId: string | null) => {
+      const id = newId();
+      return addSpend(id, g.id, amountMinor, note, placeId).then((ok) =>
+        done(ok, {
+          text: `${formatMoney(amountMinor, g.currency)} spent from ${g.name}`,
+          undo: () => removeSpend(id),
+        }),
+      );
+    },
   };
 }
 
@@ -94,6 +115,13 @@ export function takenOutOf(data: Pick<Ready, "savings" | "cycle">, g: Pick<Goal,
   return n;
 }
 
+/** What goal spends from a goal spent (SAB-75), all cycles. */
+export function spentOf(data: Pick<Ready, "savings">, g: Pick<Goal, "id">) {
+  let n = 0;
+  for (const l of data.savings) if (l.kind === "goal_spend" && l.goalId === g.id) n -= l.amountMinor;
+  return n;
+}
+
 type GoalData = Pick<Ready, "commitments" | "cycle" | "savings">;
 
 /**
@@ -109,6 +137,7 @@ export function goalEntry(data: GoalData, g: Goal): SavingsGoalEntry {
     movedMinor:
       earlier.reduce((n, s) => n + s.coveredMinor, 0) + now.reduce((n, c) => n + coveredMinor(c), 0),
     takenOutMinor: takenOutOf(data, g),
+    spentMinor: spentOf(data, g),
     shareCount: earlier.length + now.length,
   };
 }
@@ -191,7 +220,8 @@ export function GoalsCard({ data }: { data: Ready }) {
         <p className="tiny mute">Save up for something by a day: each salary day sets aside a fair share.</p>
       )}
       {data.goals.map((g) => {
-        const saved = goalSavedMinor(goalEntry(data, g));
+        const entry = goalEntry(data, g);
+        const saved = goalSavedMinor(entry);
         return (
           <a key={g.id} className="stack link tap" href={`#Goal/${g.id}`} data-testid="goal">
             <div className="li">
@@ -199,6 +229,8 @@ export function GoalsCard({ data }: { data: Ready }) {
                 {g.name}
                 <span className="tiny mute block">
                   By {dayLabel(g.byOn)} · {statusText(statusOf(data, g, today), g.currency)}
+                  {(entry.spentMinor ?? 0) > 0 &&
+                    ` · ${formatMoney(goalUnspentMinor(entry), g.currency)} left`}
                 </span>
               </span>
               <b className="small">{progressText(saved, g)}</b>
@@ -405,6 +437,13 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
   const g = editing;
   const entry = goalEntry(data, g);
   const saved = goalSavedMinor(entry);
+  const takenOut = entry.takenOutMinor ?? 0;
+  const spent = entry.spentMinor ?? 0;
+  const left = goalUnspentMinor(entry);
+  // Its spends and take-outs, newest first (`data.savings` is newest first).
+  const outs = data.savings.filter(
+    (l) => l.goalId === g.id && (l.kind === "goal_spend" || l.kind === "take_out"),
+  );
   const status = statusOf(data, g, today);
   const changed =
     fields.name !== g.name || targetMinor !== g.targetMinor || byOn !== g.byOn || startMinor !== g.startMinor;
@@ -438,6 +477,41 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
             {formatMoney(entry.takenOutMinor ?? 0, g.currency)} taken out of it
           </p>
         )}
+        {left > 0 && (
+          <a className="btn link" href={`#GoalSpend/${g.id}`}>
+            Spend from this goal
+          </a>
+        )}
+      </section>
+      <section className="card" aria-labelledby="goal-money-h">
+        <h3 id="goal-money-h">Saved · Spent · Left</h3>
+        <div className="li" data-testid="goal-saved">
+          <span className="grow">Saved</span>
+          <b className="small">{formatMoney(g.startMinor + entry.movedMinor, g.currency)}</b>
+        </div>
+        {takenOut > 0 && (
+          <div className="li" data-testid="goal-total-taken-out">
+            <span className="grow">Taken out</span>
+            <b className="small">{formatMoney(takenOut, g.currency)}</b>
+          </div>
+        )}
+        <div className="li" data-testid="goal-spent">
+          <span className="grow">Spent</span>
+          <b className="small">{formatMoney(spent, g.currency)}</b>
+        </div>
+        <div className="li" data-testid="goal-left">
+          <span className="grow">Left</span>
+          <b className="small">{formatMoney(left, g.currency)}</b>
+        </div>
+        {outs.map((l) => (
+          <div key={l.id} className="li" data-testid="goal-out">
+            <span className="date">
+              <b>{dayLabel(l.on)}</b>
+            </span>
+            <span className="grow">{l.kind === "goal_spend" ? (l.note ?? "Spent") : "Taken out"}</span>
+            <b className="small bad">−{formatMoney(-l.amountMinor, g.currency)}</b>
+          </div>
+        ))}
       </section>
       <section className="card" aria-labelledby="shares-h">
         <h3 id="shares-h">Shares</h3>
@@ -493,7 +567,7 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
             Stop this goal
           </button>
         )}
-        {entry.movedMinor === 0 && !entry.takenOutMinor && (
+        {entry.movedMinor === 0 && !takenOut && !spent && (
           <button
             type="button"
             className="btn grow"
@@ -505,6 +579,99 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
         )}
       </div>
       {g.stopped && <p className="tiny mute">Stopped: salary day sets nothing aside for it.</p>}
+    </>
+  );
+}
+
+const SPEND_PROBLEM: Record<string, string> = {
+  note: "Say what it was for.",
+  too_much: "More than your savings in this currency.",
+};
+
+/**
+ * Spend from this goal (spec 5, 10, SAB-75): amount, note (what it bought), the
+ * place it was paid from; dated today. The money goes straight out of savings to
+ * the thing bought, not through free money, so the allowance stays as it is.
+ * At most what is left in the goal: past that it is a normal spend.
+ */
+export function GoalSpendPage({ data, goal, actions }: { data: Ready; goal: Goal; actions: GoalActions }) {
+  const [text, setText] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const cur = goal.currency;
+  const entry = goalEntry(data, goal);
+  const left = goalUnspentMinor(entry);
+  const amountMinor = amountOf(text, cur);
+  const place = usePlaceChoice(data.places, cur, "out");
+  const problems = checkGoalSpend(
+    { currency: cur, amountMinor, note },
+    entry,
+    savingsTotal(data.savings, cur),
+  );
+  const shown = problems.filter(
+    (p) =>
+      !(p === "note" && note === "") &&
+      p !== "amount" &&
+      p !== "goal" &&
+      // One "too much" line: the goal's, when both are over.
+      !(p === "too_much" && problems.includes("goal_too_much")),
+  );
+
+  async function save() {
+    setBusy(true);
+    setFailed(false);
+    place.remember();
+    const done = await actions.spend(goal, amountMinor, note.trim(), place.placeId);
+    setBusy(false);
+    if (done) window.location.hash = `Goal/${goal.id}`;
+    else setFailed(true);
+  }
+
+  return (
+    <>
+      <div className="row">
+        <a className="btn ghost link" href={`#Goal/${goal.id}`}>
+          ← Back
+        </a>
+      </div>
+      <h1>Spend from {goal.name}</h1>
+      <section className="card stack">
+        <p className="small" data-testid="goal-spend-left">
+          {formatMoney(left, cur)} left in this goal
+        </p>
+        <AmountInput label="Amount" text={text} currency={cur} onChange={setText} />
+        <label className="field">
+          What for
+          <input
+            value={note}
+            maxLength={GOAL_SPEND_NOTE_MAX}
+            placeholder="Flights, the hotel…"
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </label>
+        <PlaceChoice label="Paid from" choice={place} />
+        {problems.includes("goal_too_much") && (
+          <p className="small bad" data-testid="goal-spend-too-much">
+            Only {formatMoney(left, cur)} left in this goal. Spend the rest as a normal spend.
+          </p>
+        )}
+        {shown
+          .filter((p) => SPEND_PROBLEM[p])
+          .map((p) => (
+            <p key={p} className="small bad">
+              {SPEND_PROBLEM[p]}
+            </p>
+          ))}
+        <p className="tiny mute">
+          Straight out of savings: what you can spend today stays the same. It still counts as saved toward
+          the goal.
+        </p>
+      </section>
+      {failed && <p className="error">Not saved. Check the connection and try again.</p>}
+      <button type="button" className="btn pri" disabled={busy || problems.length > 0} onClick={save}>
+        Spend from this goal
+      </button>
     </>
   );
 }

@@ -255,7 +255,8 @@ export interface SavingsLine {
     | "prepayment"
     | "payback"
     | "rate_gain"
-    | "plan_extra";
+    | "plan_extra"
+    | "goal_spend";
   cycleId: string;
   currency: string;
   /** Below zero: money out of savings. */
@@ -263,8 +264,10 @@ export interface SavingsLine {
   on: string;
   /** The commitment's name for a set-aside or payback moved; the prepayment's name. */
   name: string | null;
-  /** Take out "from a goal" (SAB-69): the savings goal it took from; none: from no goal. */
+  /** Take out "from a goal" (SAB-69): the savings goal it took from; a goal spend's goal (SAB-75); none: from no goal. */
   goalId?: string;
+  /** What a goal spend bought ("Flights", SAB-75). */
+  note?: string;
 }
 
 export interface Pot {
