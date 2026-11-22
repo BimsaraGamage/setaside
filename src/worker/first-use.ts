@@ -195,7 +195,7 @@ export async function currentData(c: { var: Pick<SignedIn["Variables"], "db" | "
         }
       : null,
     incomes: r.incomes,
-    spends: r.spends.map((x) => ({ ...x, oneOff: bool(x.oneOff) })),
+    spends: r.spends.map((x) => ({ ...x, oneOff: bool(x.oneOff), toFinish: bool(x.toFinish) })),
     // Every pot (they last across cycles) with this cycle's amount, if it has one.
     pots: r.pots.map((p) => ({ ...p, archived: bool(p.archived) })),
     // Cards with what they owed before this cycle (item 18); the phone adds this cycle's rows.

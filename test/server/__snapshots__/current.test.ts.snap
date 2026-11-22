@@ -850,6 +850,7 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "placeId": null,
       "potId": null,
       "spentOn": "2026-11-27",
+      "toFinish": false,
     },
     {
       "amountMinor": 2000,
@@ -861,6 +862,7 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "placeId": null,
       "potId": "full-pot-a",
       "spentOn": "2026-11-27",
+      "toFinish": false,
     },
     {
       "amountMinor": 75000,
@@ -872,6 +874,7 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "placeId": null,
       "potId": null,
       "spentOn": "2026-11-26",
+      "toFinish": false,
     },
     {
       "amountMinor": 50000,
@@ -883,6 +886,7 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "placeId": null,
       "potId": "full-pot-b",
       "spentOn": "2026-11-26",
+      "toFinish": false,
     },
     {
       "amountMinor": 185000,
@@ -894,6 +898,7 @@ exports[`GET /api/current > returns a full month in two currencies, every field 
       "placeId": null,
       "potId": null,
       "spentOn": "2026-11-25",
+      "toFinish": false,
     },
   ],
   "undoSalaryDay": true,

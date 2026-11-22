@@ -28,9 +28,13 @@ export function SpendRow({
   card?: string;
   onOpen: () => void;
 }) {
-  const tags = [spend.unsent && "Not sent", pot && `${pot} pot`, card, spend.oneOff && "One-off"].filter(
-    Boolean,
-  );
+  const tags = [
+    spend.toFinish && "To finish",
+    spend.unsent && "Not sent",
+    pot && `${pot} pot`,
+    card,
+    spend.oneOff && "One-off",
+  ].filter(Boolean);
   return (
     <button type="button" className="li tap" onClick={onOpen}>
       <span className="grow">

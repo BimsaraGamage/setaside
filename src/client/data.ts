@@ -332,6 +332,8 @@ export interface Spend {
   cardId: string | null;
   /** The place the money came out of (SAB-51); null or none moves no place. */
   placeId?: string | null;
+  /** A spend to finish (SAB-76): saved quickly, asked about until finished. */
+  toFinish?: boolean;
   /** Made on this phone and not sent yet (item 24). */
   unsent?: boolean;
 }

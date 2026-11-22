@@ -117,7 +117,7 @@ const SQL = {
       received_on as receivedOn
     from income where user_id = ?1 and cycle_id = ${CUR_ID}`,
   spends: `${CUR} select id, spent_on as spentOn, currency, amount_minor as amountMinor, note, pot_id as potId,
-      card_id as cardId, one_off as oneOff, place_id as placeId
+      card_id as cardId, one_off as oneOff, place_id as placeId, to_finish as toFinish
     from spend where user_id = ?1 and cycle_id = ${CUR_ID} order by spent_on desc, id desc`,
   commitments: `${CUR} select id, name, kind, currency, planned_minor as plannedMinor, due_on as dueOn, state,
       recurring_id as recurringId, carried_from_id as carriedFromId, prepayment_id as prepaymentId,
@@ -252,6 +252,7 @@ export interface TodayRows {
     cardId: string | null;
     oneOff: Bit;
     placeId: string | null;
+    toFinish: Bit;
   };
   commitments: Omit<typeof commitment.$inferSelect, "userId" | "cycleId" | "createdAt" | "updatedAt">;
   payments: {

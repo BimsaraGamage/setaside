@@ -22,6 +22,8 @@ export interface SpendDraft {
   placeId?: string | null;
   /** Left out of the spending speed (item 8). */
   oneOff: boolean;
+  /** A spend to finish (SAB-76); none (a draft queued before it) means finished. */
+  toFinish?: boolean;
 }
 
 export interface PaymentDraft {

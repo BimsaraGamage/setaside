@@ -1,0 +1,1 @@
+ALTER TABLE `spend` ADD `to_finish` integer DEFAULT false NOT NULL;

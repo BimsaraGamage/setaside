@@ -398,6 +398,11 @@ a.btn.add {
   height: 1.4rem;
   accent-color: var(--ink);
 }
+/* The spend sheet's Finish later, beside Save (SAB-77). */
+.finish-later {
+  gap: 0.5rem;
+  white-space: nowrap;
+}
 .li.done {
   opacity: 0.7;
 }
