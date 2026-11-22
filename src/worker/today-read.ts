@@ -76,6 +76,30 @@ const PLACE_MOVED: [sign: "-" | "+", column: string, from: string][] = [
   ["+", "received_minor", "conversion where to_place_id = p.id"],
 ];
 
+/**
+ * The rows of `savingsLines` as fixed SQL (spec 5): Today's batch reads them, and so does
+ * a write that checks against today's savings (`SAVINGS_READS` in `savings.ts`, SAB-72).
+ */
+export const SAVINGS_SQL = {
+  savingsMoves: `select m.id, m.kind, m.cycle_id as cycleId, m.currency, m.amount_minor as amountMinor,
+      m.moved_on as movedOn, pp.name as name, ip.name as planName, m.goal_id as goalId
+    from savings_movement m
+      left join prepayment pp on pp.id = m.prepayment_id and pp.user_id = ?1
+      left join plan_extra_payment x on x.id = m.id and x.user_id = ?1
+      left join instalment_plan ip on ip.id = x.plan_id and ip.user_id = ?1
+    where m.user_id = ?1`,
+  savingsIncomes: `select id, kind, cycle_id as cycleId, currency, to_savings_minor as toSavingsMinor,
+      received_on as receivedOn
+    from income where user_id = ?1 and to_savings_minor > 0`,
+  savingsSetAsides: `select cp.id, k.cycle_id as cycleId, cp.currency, cp.amount_minor as amountMinor,
+      cp.paid_on as "on", k.name, k.kind
+    from commitment_payment cp join commitment k on k.id = cp.commitment_id
+    where cp.user_id = ?1 and k.user_id = ?1 and k.kind in ('savings', 'savings_payback')
+    order by cp.paid_on desc`,
+  savingsGains: `select id, cycle_id as cycleId, gain_minor as gainMinor, done_on as doneOn
+    from conversion where user_id = ?1 and gain_minor > 0`,
+} as const;
+
 const SQL = {
   settings: `select salary_currency as salaryCurrency, spending_currency as spendingCurrency,
       home_time_zone as homeTimeZone, usual_pay_day as usualPayDay, asked_time_zone as askedTimeZone,
@@ -112,23 +136,7 @@ const SQL = {
   dayChoices: `${CUR} select day_on as dayOn, choice from day_choice
     where user_id = ?1 and cycle_id = ${CUR_ID} order by day_on`,
   // Savings (spec 5): the rows of `savingsLines`.
-  savingsMoves: `select m.id, m.kind, m.cycle_id as cycleId, m.currency, m.amount_minor as amountMinor,
-      m.moved_on as movedOn, pp.name as name, ip.name as planName, m.goal_id as goalId
-    from savings_movement m
-      left join prepayment pp on pp.id = m.prepayment_id and pp.user_id = ?1
-      left join plan_extra_payment x on x.id = m.id and x.user_id = ?1
-      left join instalment_plan ip on ip.id = x.plan_id and ip.user_id = ?1
-    where m.user_id = ?1`,
-  savingsIncomes: `select id, kind, cycle_id as cycleId, currency, to_savings_minor as toSavingsMinor,
-      received_on as receivedOn
-    from income where user_id = ?1 and to_savings_minor > 0`,
-  savingsSetAsides: `select cp.id, k.cycle_id as cycleId, cp.currency, cp.amount_minor as amountMinor,
-      cp.paid_on as "on", k.name, k.kind
-    from commitment_payment cp join commitment k on k.id = cp.commitment_id
-    where cp.user_id = ?1 and k.user_id = ?1 and k.kind in ('savings', 'savings_payback')
-    order by cp.paid_on desc`,
-  savingsGains: `select id, cycle_id as cycleId, gain_minor as gainMinor, done_on as doneOn
-    from conversion where user_id = ?1 and gain_minor > 0`,
+  ...SAVINGS_SQL,
   // Prepayments from savings with their payback so far (item 14).
   prepayments: `select pp.id, pp.name, pp.currency, pp.total_minor as totalMinor, pp.payback_minor as paybackMinor,
       pp.normal_monthly_minor as normalMonthlyMinor, pp.months, m.moved_on as startedOn
@@ -205,7 +213,7 @@ const SQL = {
 } as const satisfies Record<keyof TodayRows, string>;
 
 /** D1 gives booleans as 0 and 1. */
-type Bit = 0 | 1;
+export type Bit = 0 | 1;
 type Row<T, Bits extends keyof T = never> = Omit<T, Bits> & { [K in Bits]: Bit };
 type Settings = typeof settings.$inferSelect;
 type Kind<T extends { kind: unknown }> = T["kind"];
