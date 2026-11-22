@@ -13,6 +13,7 @@ import {
   isComingUp,
   leftoverOf,
   paidItOn,
+  placeUsable,
   salaryCarriedOf,
   salaryLeftoverOf,
   staysInPlaces,
@@ -20,7 +21,7 @@ import {
   unpaidAtEnd,
   usualDayOf,
 } from "../money";
-import { countingRateOf, current } from "./current";
+import { current } from "./current";
 import {
   card,
   commitment,
@@ -45,8 +46,18 @@ import {
   spend,
 } from "./db/schema";
 import { json } from "./json";
-import { placeId, placesUsable } from "./place-use";
+import { placeId } from "./place-use";
+import {
+  ENTRIES_READS,
+  type EntriesRows,
+  entriesFrom,
+  type SalaryDayRows,
+  salaryDayReads,
+  templateBefore,
+} from "./salary-day-read";
+import { bool } from "./today-read";
 import type { SignedIn } from "./user-check";
+import { readForWrite } from "./write-read";
 
 const name = z.string().transform((n) => n.trim());
 
@@ -134,88 +145,11 @@ const salaryDayBody = z.object({
   }),
 });
 
-/** The current cycle's entries, as the money rules need them: its leftover, a conversion's split. */
-export async function entriesOf(
-  c: { var: SignedIn["Variables"] },
-  now: NonNullable<Awaited<ReturnType<typeof current>>>,
-) {
-  const { db, mine } = c.var;
-  const id = now.cycle.id;
-  const incomes = await db.query.income.findMany({
-    where: and(mine(income), eq(income.cycleId, id)),
-    columns: { kind: true, currency: true, amountMinor: true, toSavingsMinor: true, receivedOn: true },
-  });
-  const spends = await db.query.spend.findMany({
-    where: and(mine(spend), eq(spend.cycleId, id)),
-    columns: { spentOn: true, currency: true, amountMinor: true, potId: true, oneOff: true },
-  });
-  const commitments = await db.query.commitment.findMany({
-    where: and(mine(commitment), eq(commitment.cycleId, id)),
-  });
-  // A subquery: D1 caps bound values at 100.
-  const payments = await db.query.commitmentPayment.findMany({
-    where: and(
-      mine(commitmentPayment),
-      inArray(
-        commitmentPayment.commitmentId,
-        db
-          .select({ id: commitment.id })
-          .from(commitment)
-          .where(and(mine(commitment), eq(commitment.cycleId, id))),
-      ),
-    ),
-  });
-  const pots = await db
-    .select({
-      id: pot.id,
-      currency: pot.currency,
-      archived: pot.archived,
-      amountMinor: potAllocation.amountMinor,
-    })
-    .from(potAllocation)
-    .innerJoin(pot, eq(pot.id, potAllocation.potId))
-    .where(and(mine(pot), eq(potAllocation.cycleId, id)));
-  const takeOuts = await db.query.savingsMovement.findMany({
-    where: and(mine(savingsMovement), eq(savingsMovement.cycleId, id), eq(savingsMovement.kind, "take_out")),
-    columns: { currency: true, amountMinor: true, movedOn: true },
-  });
-  const conversions = await db.query.conversion.findMany({
-    where: and(mine(conversion), eq(conversion.cycleId, id)),
-    columns: { givenMinor: true, receivedMinor: true, gainMinor: true },
-  });
-  // Pay extra from free money (item 19) comes out of this cycle's free money.
-  const planExtras = await db.query.planExtraPayment.findMany({
-    where: and(
-      mine(planExtraPayment),
-      eq(planExtraPayment.cycleId, id),
-      eq(planExtraPayment.paidFrom, "free"),
-    ),
-    columns: { currency: true, amountMinor: true },
-  });
-  // Money lent to people in this cycle (item 20) came out of its free money.
-  const lent = await db.query.personDebt.findMany({
-    where: and(mine(personDebt), eq(personDebt.cycleId, id), eq(personDebt.direction, "lent")),
-    columns: { currency: true, amountMinor: true },
-  });
-  return {
-    spendingCurrency: now.settings.spendingCurrency,
-    salaryCurrency: now.settings.salaryCurrency,
-    countingRate: await countingRateOf(c),
-    reserveRate: now.cycle.reserveRate,
-    conversions,
-    startedOn: now.cycle.startedOn,
-    expectedSalaryOn: now.cycle.expectedSalaryOn,
-    incomes,
-    spends,
-    commitments: commitments.map((k) => ({
-      ...k,
-      payments: payments.filter((p) => p.commitmentId === k.id),
-    })),
-    pots,
-    takenOut: takeOuts.map((t) => ({ ...t, amountMinor: -t.amountMinor })),
-    planExtras,
-    lent,
-  } satisfies ClosingEntries;
+/** The current cycle's entries, as the money rules need them, read in one batch (SAB-74). */
+export async function entriesOf(c: { var: SignedIn["Variables"] }) {
+  const { now, ...r } = await readForWrite<EntriesRows>(c, ENTRIES_READS);
+  if (!now) throw new Error("entries of a user not set up");
+  return entriesFrom(r, now);
 }
 
 const changeRecurring = z.object({ active: z.boolean() });
@@ -298,10 +232,28 @@ export const salaryDay = new Hono<SignedIn>()
   .post("/salary-day", json(salaryDayBody), async (c) => {
     const { db, mine, userId } = c.var;
     const b = c.req.valid("json");
-    const now = await current(c);
+    const carriedIds = b.commitments.flatMap((k) => (k.carriedFromId ? [k.carriedFromId] : []));
+    const named = (pick: (k: (typeof b.commitments)[number]) => string | null | undefined) =>
+      b.commitments.flatMap((k) => {
+        const v = pick(k);
+        return v ? [v] : [];
+      });
+    // Every check and the ending cycle's entries in one D1 batch (SAB-74); the write is the second call.
+    const { now, ...r } = await readForWrite<SalaryDayRows>(
+      c,
+      salaryDayReads({
+        carried: carriedIds,
+        prepayments: named((k) => k.prepaymentId),
+        cards: named((k) => k.cardId),
+        plans: named((k) => k.planId),
+        goals: named((k) => k.goalId),
+        places: [b.placeId, ...b.close.unpaid.map((u) => u.placeId)].flatMap((v) => (v ? [v] : [])),
+        templates: named((k) => k.recurringId),
+      }),
+    );
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const cur = now.settings.spendingCurrency;
-    const myPots = await db.query.pot.findMany({ where: mine(pot) });
+    const myPots = r.pots.map((p) => ({ ...p, archived: bool(p.archived) }));
     const known = new Map(myPots.map((p) => [p.id, p]));
     const potRows = b.pots.map((p) => {
       const old = known.get(p.id);
@@ -324,12 +276,7 @@ export const salaryDay = new Hono<SignedIn>()
     });
 
     // Carried on: open commitments of the ending cycle due after its salary day, once each.
-    const carriedIds = b.commitments.flatMap((k) => (k.carriedFromId ? [k.carriedFromId] : []));
-    const carried = carriedIds.length
-      ? await db.query.commitment.findMany({
-          where: and(mine(commitment), inArray(commitment.id, carriedIds)),
-        })
-      : [];
+    const carried = r.carried;
     const comingUp = new Set(
       carried
         .filter((k) => k.cycleId === now.cycle.id && isComingUp(k, now.cycle.expectedSalaryOn))
@@ -344,14 +291,7 @@ export const salaryDay = new Hono<SignedIn>()
     const carriedById = new Map(carried.map((k) => [k.id, k]));
     const prepaymentOf = (k: (typeof b.commitments)[number]) =>
       k.carriedFromId ? (carriedById.get(k.carriedFromId)?.prepaymentId ?? null) : (k.prepaymentId ?? null);
-    const wanted = [...new Set(b.commitments.flatMap((k) => (k.prepaymentId ? [k.prepaymentId] : [])))];
-    const myPrepayments = wanted.length
-      ? await db.query.prepayment.findMany({
-          where: and(mine(prepayment), inArray(prepayment.id, wanted)),
-          columns: { id: true },
-        })
-      : [];
-    const prepaymentIds = new Set(myPrepayments.map((p) => p.id));
+    const prepaymentIds = new Set(r.prepayments.map((p) => p.id));
     b.commitments.forEach((k, i) => {
       const linked = prepaymentOf(k);
       const payback = k.kind === "savings_payback";
@@ -364,13 +304,7 @@ export const salaryDay = new Hono<SignedIn>()
     // Card bills (item 18): one of the user's cards, in its currency; a carried one keeps its card.
     const cardOf = (k: (typeof b.commitments)[number]) =>
       k.carriedFromId ? (carriedById.get(k.carriedFromId)?.cardId ?? null) : (k.cardId ?? null);
-    const wantedCards = [...new Set(b.commitments.flatMap((k) => (k.cardId ? [k.cardId] : [])))];
-    const myCards = wantedCards.length
-      ? await db.query.card.findMany({
-          where: and(mine(card), inArray(card.id, wantedCards)),
-          columns: { id: true, currency: true },
-        })
-      : [];
+    const myCards = r.cards;
     b.commitments.forEach((k, i) => {
       const linked = cardOf(k);
       const bill = k.kind === "card_bill";
@@ -385,13 +319,7 @@ export const salaryDay = new Hono<SignedIn>()
     // one keeps the plan of the commitment it carries on.
     const planOf = (k: (typeof b.commitments)[number]) =>
       k.carriedFromId ? (carriedById.get(k.carriedFromId)?.planId ?? null) : (k.planId ?? null);
-    const wantedPlans = [...new Set(b.commitments.flatMap((k) => (k.planId ? [k.planId] : [])))];
-    const myPlans = wantedPlans.length
-      ? await db.query.instalmentPlan.findMany({
-          where: and(mine(instalmentPlan), inArray(instalmentPlan.id, wantedPlans)),
-          columns: { id: true, currency: true, paidOffOn: true },
-        })
-      : [];
+    const myPlans = r.plans;
     b.commitments.forEach((k, i) => {
       const linked = planOf(k);
       const payment = k.kind === "plan_payment";
@@ -418,13 +346,7 @@ export const salaryDay = new Hono<SignedIn>()
     // never Every cycle; a carried one keeps the goal of the commitment it carries on.
     const goalOf = (k: (typeof b.commitments)[number]) =>
       k.carriedFromId ? (carriedById.get(k.carriedFromId)?.goalId ?? null) : (k.goalId ?? null);
-    const wantedGoals = [...new Set(b.commitments.flatMap((k) => (k.goalId ? [k.goalId] : [])))];
-    const myGoals = wantedGoals.length
-      ? await db.query.savingsGoal.findMany({
-          where: and(mine(savingsGoal), inArray(savingsGoal.id, wantedGoals)),
-          columns: { id: true, currency: true, stopped: true },
-        })
-      : [];
+    const myGoals = r.goals.map((g) => ({ ...g, stopped: bool(g.stopped) }));
     b.commitments.forEach((k, i) => {
       const linked = goalOf(k);
       if (linked === null) return;
@@ -438,7 +360,7 @@ export const salaryDay = new Hono<SignedIn>()
     });
 
     // Steps 2 and 3: the leftover is worked out here from the ending cycle's rows (spec 6).
-    const entries = await entriesOf(c, now);
+    const entries = entriesFrom(r, now);
     const unpaid = unpaidAtEnd(entries.commitments, now.cycle.expectedSalaryOn);
     const leftover = leftoverOf(entries, b.close.unpaid);
     const salaryLeftover = salaryLeftoverOf(entries, b.close.unpaid);
@@ -476,16 +398,12 @@ export const salaryDay = new Hono<SignedIn>()
         currency: unpaidById.get(u.id)?.currency ?? cur,
       })),
     ];
-    if (!(await placesUsable(c, placeUses))) problems.push("place");
+    const places = r.places.map((p) => ({ ...p, archived: bool(p.archived) }));
+    if (!placeUses.every((u) => !u.placeId || placeUsable(u.placeId, u.currency, places)))
+      problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
 
-    const recurringIds = b.commitments.flatMap((k) => (k.recurringId ? [k.recurringId] : []));
-    const templates = recurringIds.length
-      ? await db.query.recurringCommitment.findMany({
-          where: and(mine(recurringCommitment), inArray(recurringCommitment.id, recurringIds)),
-        })
-      : [];
-    const haveTemplate = new Map(templates.map((t) => [t.id, t]));
+    const haveTemplate = new Map(r.templates.map((t) => [t.id, templateBefore(t)]));
 
     // One time for every row salary day writes: Undo is allowed while nothing is newer (item 13).
     const at = new Date();
@@ -510,7 +428,7 @@ export const salaryDay = new Hono<SignedIn>()
         startedOn: b.receivedOn,
         expectedSalaryOn: b.expectedSalaryOn,
         // The counting rate when salary day was confirmed (spec 8): rupee set-asides are reserved at it.
-        reserveRate: b.countingRate?.rate ?? entries.countingRate ?? null,
+        reserveRate: b.countingRate?.rate ?? now.countingRate ?? null,
       }),
       db.insert(income).values({
         ...stamp,
