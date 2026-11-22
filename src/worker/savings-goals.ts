@@ -5,8 +5,19 @@ import { checkSavingsGoal, goalLeftMinor, goalSavedMinor, savingsTotal } from ".
 import { current } from "./current";
 import { commitment, commitmentPayment, savingsGoal, savingsMovement } from "./db/schema";
 import { json } from "./json";
-import { savingsLines } from "./savings";
+import { SAVINGS_READS, type SavingsReadRows, savingsLinesFrom } from "./savings";
+import type { Bit } from "./today-read";
 import type { SignedIn } from "./user-check";
+import { readForWrite } from "./write-read";
+
+/*
+ * What a goal write checks against is read with "now" and today's savings in one D1
+ * batch (SAB-72): live, making a goal with Drizzle reads one after another took
+ * 13-18 ms CPU (ticket SAB-70), over the free plan's 10 ms.
+ */
+const GOAL_COUNT = `select count(*) as n from savings_goal where user_id = ?1`;
+const GOAL = `select id, name, currency, target_minor as targetMinor, by_on as byOn, start_minor as startMinor, stopped
+  from savings_goal where user_id = ?1 and id = ?2`;
 
 /** One goal share, any cycle, as Today's read brings it (`today-read.ts`). */
 export interface GoalShareLine {
@@ -34,6 +45,9 @@ export interface GoalRows {
   }[];
   shares: GoalShareLine[];
 }
+
+/** One goal as D1 gives it (`stopped` 0 or 1). */
+type GoalRow = Omit<GoalRows["goals"][number], "stopped"> & { stopped: Bit };
 
 /** A goal with what is moved toward it and its shares, newest cycle first, for the phone. */
 export type GoalLine = GoalRows["goals"][number] & {
@@ -132,12 +146,15 @@ export async function goalSaved(c: { var: SignedIn["Variables"] }, goalId: strin
  */
 export const savingsGoals = new Hono<SignedIn>()
   .post("/savings-goals", json(newGoal), async (c) => {
-    const { db, mine, userId } = c.var;
+    const { db, userId } = c.var;
     const { share, ...b } = c.req.valid("json");
-    const now = await current(c);
+    const { now, count, ...r } = await readForWrite<SavingsReadRows & { count: { n: number }[] }>(c, {
+      ...SAVINGS_READS,
+      count: [GOAL_COUNT],
+    });
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const row = { ...b, currency: b.currency ?? now.settings.spendingCurrency };
-    const savingsMinor = savingsTotal(await savingsLines(c), row.currency);
+    const savingsMinor = savingsTotal(savingsLinesFrom(r, now.settings.spendingCurrency), row.currency);
     const problems: string[] = checkSavingsGoal(row, { ...now.currencies, today: now.today, savingsMinor });
     const firstShare = share && share.plannedMinor !== 0 ? share : null;
     if (
@@ -149,8 +166,7 @@ export const savingsGoals = new Hono<SignedIn>()
       problems.push("share");
     }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
-    const others = await db.query.savingsGoal.findMany({ where: mine(savingsGoal), columns: { id: true } });
-    if (others.length >= GOALS_MAX) return c.json({ error: "too_many" as const }, 409);
+    if (Number(count[0]?.n ?? 0) >= GOALS_MAX) return c.json({ error: "too_many" as const }, 409);
     const add = db.insert(savingsGoal).values({ ...row, userId });
     try {
       if (firstShare) {
@@ -179,12 +195,16 @@ export const savingsGoals = new Hono<SignedIn>()
     const { db, mine } = c.var;
     const b = c.req.valid("json");
     const id = c.req.param("id");
-    const now = await current(c);
+    const { now, found, ...r } = await readForWrite<SavingsReadRows & { found: GoalRow[] }>(c, {
+      ...SAVINGS_READS,
+      found: [GOAL, id],
+    });
     const where = and(mine(savingsGoal), eq(savingsGoal.id, id));
-    const old = await db.query.savingsGoal.findFirst({ where });
-    if (!now || !old) return c.json({ error: "not_found" as const }, 404);
+    const row = found[0];
+    if (!now || !row) return c.json({ error: "not_found" as const }, 404);
+    const old = { ...row, stopped: Number(row.stopped) === 1 };
     const next = { ...old, ...b };
-    const savingsMinor = savingsTotal(await savingsLines(c), old.currency);
+    const savingsMinor = savingsTotal(savingsLinesFrom(r, now.settings.spendingCurrency), old.currency);
     const problems = checkSavingsGoal(next, {
       ...now.currencies,
       today: now.today,

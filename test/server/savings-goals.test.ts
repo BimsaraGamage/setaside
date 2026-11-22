@@ -149,6 +149,20 @@ describe("adding a savings goal (spec 5)", () => {
     );
     expect(await share.json()).toMatchObject({ problems: ["share"] });
   });
+
+  it("already saved may be all of today's savings; keeps at most 20 goals (SAB-72: one batch read)", async () => {
+    const { cookie } = await setUp();
+    const all = await send("POST", "/api/savings-goals", { ...japan(), startMinor: 5_000_000 }, cookie);
+    expect(all.status).toBe(201);
+    for (let n = 1; n < 20; n++) {
+      expect((await send("POST", "/api/savings-goals", japan({ name: `Goal ${n}` }), cookie)).status).toBe(
+        201,
+      );
+    }
+    const more = await send("POST", "/api/savings-goals", japan({ name: "One more" }), cookie);
+    expect(more.status).toBe(409);
+    expect(await more.json()).toMatchObject({ error: "too_many" });
+  });
 });
 
 describe("changing, stopping and deleting a goal (spec 5)", () => {
@@ -169,6 +183,20 @@ describe("changing, stopping and deleting a goal (spec 5)", () => {
       stopped: true,
       currency: "LKR",
     });
+  });
+
+  it("a stopped goal stays stopped when only its name changes; already saved stays within savings (SAB-72)", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    await send("PATCH", `/api/savings-goals/${goal.id}`, { stopped: true }, cookie);
+    expect((await send("PATCH", `/api/savings-goals/${goal.id}`, { name: "Japan" }, cookie)).status).toBe(
+      200,
+    );
+    expect((await currentOf(cookie)).goals[0]).toMatchObject({ name: "Japan", stopped: true });
+    const over = await send("PATCH", `/api/savings-goals/${goal.id}`, { startMinor: 5_000_001 }, cookie);
+    expect(await over.json()).toMatchObject({ problems: ["start"] });
+    expect((await send("PATCH", `/api/savings-goals/${id()}`, { name: "x" }, cookie)).status).toBe(404);
   });
 
   it("deletes a goal and this cycle's share while nothing was moved; not after a move", async () => {

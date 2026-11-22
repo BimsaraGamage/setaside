@@ -17,7 +17,9 @@ import {
 import { json } from "./json";
 import { placeId, placesUsable } from "./place-use";
 import { goalSaved } from "./savings-goals";
+import { SAVINGS_SQL } from "./today-read";
 import type { SignedIn } from "./user-check";
+import type { Read } from "./write-read";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
 export interface SavingsLine {
@@ -138,6 +140,39 @@ export interface SavingsRows {
   }[];
   /** Conversions with a rate gain. */
   gains: { id: string; cycleId: string; gainMinor: number; doneOn: string }[];
+}
+
+/**
+ * The savings statements for `readForWrite` (SAB-72): a write that checks against
+ * today's savings reads them in the same one batch as its other checks, instead of
+ * `savingsLines` (Drizzle reads one after another).
+ */
+export const SAVINGS_READS = {
+  savingsMoves: [SAVINGS_SQL.savingsMoves],
+  savingsIncomes: [SAVINGS_SQL.savingsIncomes],
+  savingsSetAsides: [SAVINGS_SQL.savingsSetAsides],
+  savingsGains: [SAVINGS_SQL.savingsGains],
+} as const satisfies Record<string, Read>;
+
+/** The rows `SAVINGS_READS` gives. */
+export type SavingsReadRows = {
+  savingsMoves: SavingsRows["moves"];
+  savingsIncomes: SavingsRows["incomes"];
+  savingsSetAsides: SavingsRows["setAsides"];
+  savingsGains: SavingsRows["gains"];
+};
+
+/** Savings lines from `SAVINGS_READS`' rows (the same lines `savingsLines` gives). */
+export function savingsLinesFrom(r: SavingsReadRows, spendingCurrency: string): SavingsLine[] {
+  return savingsLinesOf(
+    {
+      moves: r.savingsMoves,
+      incomes: r.savingsIncomes,
+      setAsides: r.savingsSetAsides,
+      gains: r.savingsGains,
+    },
+    spendingCurrency,
+  );
 }
 
 /** Savings lines from their rows, newest first; rate gains need the spending currency. */

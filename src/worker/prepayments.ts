@@ -6,8 +6,9 @@ import { current } from "./current";
 import { commitment, commitmentPayment, prepayment, savingsMovement } from "./db/schema";
 import { json } from "./json";
 import { placeId, placesUsable } from "./place-use";
-import { savingsLines } from "./savings";
+import { SAVINGS_READS, type SavingsReadRows, savingsLinesFrom } from "./savings";
 import type { SignedIn } from "./user-check";
+import { readForWrite } from "./write-read";
 
 /** One prepayment with what has been moved back so far, for Savings and salary day. */
 export interface PrepaymentLine {
@@ -93,10 +94,11 @@ export const prepayments = new Hono<SignedIn>()
   .post("/prepayments", json(newPrepayment), async (c) => {
     const { db, userId } = c.var;
     const b = c.req.valid("json");
-    const now = await current(c);
+    // "Now" and today's savings in one D1 batch (SAB-72), not Drizzle reads one after another.
+    const { now, ...r } = await readForWrite<SavingsReadRows>(c, SAVINGS_READS);
     if (!now) return c.json({ error: "not_set_up" as const }, 404);
     const currency = b.currency ?? now.settings.spendingCurrency;
-    const savingsMinor = savingsTotal(await savingsLines(c), currency);
+    const savingsMinor = savingsTotal(savingsLinesFrom(r, now.settings.spendingCurrency), currency);
     const problems: string[] = checkPrepayment({ ...b, currency }, { ...now.currencies, savingsMinor });
     if (!(await placesUsable(c, [{ placeId: b.placeId, currency }]))) problems.push("place");
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
