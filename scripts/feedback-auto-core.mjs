@@ -16,6 +16,7 @@
 // commit the changed paths must all be in src/, test/ or e2e/; git runs without hooks or fsmonitor; replies and
 // titles that look like a key, a token or an e-mail address are replaced by a fixed text.
 //
+// A dropped connection (SAB-71) ends a pass with one line, exit 0, and no row left stranded: see "A dropped connection".
 // It never opens a PR, merges, deploys or releases: a pushed branch waits for a person's yes.
 // Everything that reaches outside goes through `deps`, so the tests run a whole pass without Claude,
 // wrangler or the network.
@@ -561,6 +562,7 @@ const isOpen = (file) => !/^## Answer\s*$/m.test(readFileSync(file, "utf8"));
  *   npm(args, cwd, timeoutMs) → {code, output} · loggedIn() · gate() → [go, line] · notify(title, body)
  *   check(name, work) → {code} (sandboxed) · log(entry) · say(line) · now() (ms) · repo · mapDir · inboxRoot
  *   stateDir · workRoot (outside home) · checker (path of scripts/feedback-check.mjs in the main checkout)
+ *   sleep(ms)? (blocks; default a real wait) between tries of a D1 call that failed as offline
  */
 export async function runPass(deps) {
   const lock = join(deps.stateDir, "lock");
@@ -569,10 +571,93 @@ export async function runPass(deps) {
     deps.say("Another pass is running.");
     return { ran: 0, done: 0, skipped: "locked" };
   }
+  const sleep = deps.sleep ?? sleepSync;
+  const net = {
+    ...deps,
+    d1: retrying(deps.d1, sleep),
+    set: retrying(deps.set, sleep),
+    inbox: retrying(deps.inbox, sleep),
+  };
   try {
-    return await pass(deps);
+    payOwed(net);
+    return await pass(net);
+  } catch (e) {
+    if (!(e instanceof Offline)) throw e;
+    deps.say("Offline: try next pass");
+    return { ran: 0, done: 0, skipped: "offline" };
   } finally {
     rmSync(lock, { force: true });
+  }
+}
+
+// ---- A dropped connection (ticket SAB-71).
+//
+// On flaky Wi-Fi a wrangler call fails with `fetch failed`. Each call to D1 (d1, set, inbox) is tried again after a
+// short wait; still failing, the pass stops with one line and exits 0. A row the pass set `seen` is never stranded:
+// before each status write, the write still owed is saved (owed.json in the state folder), and the next pass makes
+// the owed ones first. Owed after `seen` is `new` (picked up again); during a build it is `planned`.
+
+export const NET_WAITS_MS = [3000, 10_000];
+const OFFLINE =
+  /fetch failed|ENOTFOUND|EAI_AGAIN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|socket hang up|UND_ERR_/;
+
+/** A failed call that looks like a dropped connection: by wrangler's output, or the error itself when it has none. */
+export function looksOffline(e) {
+  const out = `${e?.stdout ?? ""}${e?.stderr ?? ""}`;
+  return OFFLINE.test(out || String(e?.message ?? e));
+}
+
+export class Offline extends Error {}
+
+/** fn, tried again after each wait while it fails as offline; then Offline. Other errors pass straight through. */
+export function retrying(fn, sleep, waits = NET_WAITS_MS) {
+  return (...args) => {
+    for (let i = 0; ; i++) {
+      try {
+        return fn(...args);
+      } catch (e) {
+        if (!looksOffline(e)) throw e;
+        if (i >= waits.length) throw new Offline("offline", { cause: e });
+        sleep(waits[i]);
+      }
+    }
+  };
+}
+
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+const owedFile = (deps) => join(deps.stateDir, "owed.json");
+
+function readOwed(deps) {
+  try {
+    const o = JSON.parse(readFileSync(owedFile(deps), "utf8"));
+    return o && typeof o === "object" ? o : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Saves the status write still owed for this feedback (keep = false: nothing owed any more). */
+function owe(deps, change, keep = true) {
+  const o = readOwed(deps);
+  if (keep) o[change.id] = change;
+  else delete o[change.id];
+  writeFileSync(owedFile(deps), `${JSON.stringify(o, null, 2)}\n`);
+}
+
+/** A status write that the next pass makes instead if this one can't. */
+function settle(deps, change) {
+  owe(deps, change);
+  deps.set(change);
+  owe(deps, change, false);
+}
+
+/** First in a pass: the writes an earlier pass couldn't make. */
+function payOwed(deps) {
+  for (const change of Object.values(readOwed(deps))) {
+    if (!UUID.test(String(change?.id))) continue;
+    settle(deps, change);
+    deps.say(`${short(change.id)}: wrote the ${change.status} an earlier pass couldn't.`);
   }
 }
 
@@ -745,9 +830,10 @@ function failed(deps, id, why, line) {
   state[id] = { tries, last: line };
   writeState(deps, state);
   if (tries < MAX_TRIES) {
-    deps.set({ id, status: "new" });
+    settle(deps, { id, status: "new" });
     deps.say(`${short(id)}: ${line} Tried again next pass.`);
   } else {
+    owe(deps, { id }, false);
     noticeOnce(deps, `gave-up-${short(id)}`, "Feedback job: gave up on one", `${short(id)}: ${line}`);
     deps.say(`${short(id)}: ${line} Left as seen (tried ${tries} times).`);
   }
@@ -767,6 +853,7 @@ function snapshotMap(mapDir, to) {
 
 async function handleOne(deps, id) {
   const sid = short(id);
+  owe(deps, { id, status: "new" }); // a pass that stops before an outcome: the next one puts it back
   deps.set({ id, status: "seen" });
   const branch = `fb/${sid}`;
   // One run at a time (the lock), and nothing of an earlier one is left to read.
@@ -837,13 +924,13 @@ async function handleOne(deps, id) {
 
   if (decision.action === "not doing") {
     removeWork();
-    deps.set({ id, status: "not doing", reply });
+    settle(deps, { id, status: "not doing", reply });
     return false;
   }
   if (decision.action === "later") {
     removeWork();
     addFog(deps.mapDir, `From feedback \`${sid}\` (${date}): ${oneLine(decision.question)}`);
-    deps.set({ id, status: "planned", reply });
+    settle(deps, { id, status: "planned", reply });
     return false;
   }
   if (decision.action === "link") {
@@ -854,7 +941,7 @@ async function handleOne(deps, id) {
       f,
       `${date}: feedback \`${sid}\` (${decision.kind}) points here (feedback job): ${oneLine(decision.why)}`,
     );
-    deps.set({ id, status: "planned", reply, ticket: decision.ticket });
+    settle(deps, { id, status: "planned", reply, ticket: decision.ticket });
     return false;
   }
   if (decision.action === "plan") {
@@ -865,7 +952,7 @@ async function handleOne(deps, id) {
       date,
       sessions: `feedback job (charted from feedback ${sid})`,
     });
-    deps.set({ id, status: "planned", reply, ticket: tk.code });
+    settle(deps, { id, status: "planned", reply, ticket: tk.code });
     deps.say(`${sid}: charted ${tk.code} · ${tk.title}`);
     return false;
   }
@@ -877,6 +964,7 @@ async function handleOne(deps, id) {
     date,
     sessions: `feedback job (claimed, building ${branch})`,
   });
+  owe(deps, { id, status: "planned", reply, ticket: tk.code }); // a pass that stops mid-build: left planned
   deps.set({ id, status: "building", reply, ticket: tk.code });
   deps.say(`${sid}: charted ${tk.code} · ${tk.title}; building on ${branch}`);
   const planned = (why) => {
@@ -885,7 +973,7 @@ async function handleOne(deps, id) {
       tk.file,
       `${day(deps.now())}: the feedback job's build stopped: ${why} Left for a normal session.`,
     );
-    deps.set({ id, status: "planned", reply, ticket: tk.code });
+    settle(deps, { id, status: "planned", reply, ticket: tk.code });
     deps.say(`${sid}: build stopped (${why}); left as planned`);
     removeWork();
   };
@@ -963,7 +1051,7 @@ async function handleOne(deps, id) {
     `${day(deps.now())}: the feedback job pushed branch \`${branch}\` (all checks green). Next: a PR after Bimsara's yes, then the build routine (the squash commit keeps \`Feedback: ${id}\`).`,
   );
   const ready = `A fix is ready and waits to ship: ${tk.title}`;
-  deps.set({ id, status: "ready", reply: [...ready].slice(0, REPLY_MAX).join(""), ticket: tk.code });
+  settle(deps, { id, status: "ready", reply: [...ready].slice(0, REPLY_MAX).join(""), ticket: tk.code });
   deps.say(`${sid}: ready on ${branch}`);
   removeWork();
   return false;
