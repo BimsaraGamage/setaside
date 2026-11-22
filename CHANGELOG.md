@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.13...setaside-v0.1.14) (2026-11-22)
+
+
+### Performance Improvements
+
+* goal and prepayment writes read their checks in one D1 batch ([#112](https://github.com/BimsaraGamage/setaside/issues/112)) ([d816573](https://github.com/BimsaraGamage/setaside/commit/d8165733b6686c32f4c6f29607fedd111037f2a6))
+
 ## [0.1.13](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.12...setaside-v0.1.13) (2026-11-22)
 
 
