@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.16...setaside-v0.1.17) (2026-11-22)
+
+
+### Performance Improvements
+
+* salary day reads its checks and the ending cycle in one D1 batch ([#118](https://github.com/BimsaraGamage/setaside/issues/118)) ([f6b0708](https://github.com/BimsaraGamage/setaside/commit/f6b07080372d485d160422b59d841f8f12a9dcbe))
+
 ## [0.1.16](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.15...setaside-v0.1.16) (2026-11-22)
 
 
