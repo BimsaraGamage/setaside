@@ -106,4 +106,27 @@ test("move a goal's share to savings: its progress grows and it can no longer be
   await expect(page.getByTestId("goal-progress")).toHaveText("Rs 25,000 of Rs 300,000");
   await expect(page.getByTestId("goal-share")).toContainText("Moved");
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+  // SAB-69: take Rs 5,000 out of savings from the goal: at most what is saved toward it.
+  await page.getByRole("link", { name: "← Back" }).click();
+  await page.getByRole("link", { name: "Take out" }).click();
+  await page.getByLabel("Amount (LKR)").fill("30000");
+  await page.getByRole("group", { name: "From a goal?" }).getByRole("button", { name: "Laptop" }).click();
+  await expect(page.getByTestId("goal-take-out-note")).toContainText(
+    "More than is saved toward it (Rs 25,000)",
+  );
+  await expect(page.getByRole("button", { name: "Take out", exact: true })).toBeDisabled();
+  await page.getByLabel("Amount (LKR)").fill("5000");
+  await expect(page.getByTestId("goal-take-out-note")).toContainText("The next salary day's share grows");
+  await page.getByRole("button", { name: "Take out", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("Rs 5,000 taken out of savings");
+  await expect(page.getByText("From Laptop")).toBeVisible();
+  await page.getByTestId("goal").click();
+  await expect(page.getByTestId("goal-progress")).toHaveText("Rs 20,000 of Rs 300,000");
+  await expect(page.getByTestId("goal-taken-out")).toHaveText("Rs 5,000 taken out of it");
+
+  // Undo of the take-out puts it back toward the goal.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByTestId("goal-progress")).toHaveText("Rs 25,000 of Rs 300,000");
+  await expect(page.getByTestId("goal-taken-out")).toHaveCount(0);
 });

@@ -263,6 +263,8 @@ export interface SavingsLine {
   on: string;
   /** The commitment's name for a set-aside or payback moved; the prepayment's name. */
   name: string | null;
+  /** Take out "from a goal" (SAB-69): the savings goal it took from; none: from no goal. */
+  goalId?: string;
 }
 
 export interface Pot {

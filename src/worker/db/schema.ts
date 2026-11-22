@@ -375,12 +375,18 @@ export const savingsMovement = sqliteTable(
      * or leaves with its `plan_extra_payment`.
      */
     placeId: text("place_id"),
+    /**
+     * Take out "from a goal" (SAB-69): the savings goal it takes from, lowering what is saved toward
+     * it; none takes from no goal. Only on a `take_out`.
+     */
+    goalId: text("goal_id"),
     ...appTimestamps,
   },
   (t) => [
     index("savings_movement_user_id_idx").on(t.userId, t.movedOn),
     index("savings_movement_cycle_id_idx").on(t.cycleId),
     index("savings_movement_place_id_idx").on(t.placeId, t.createdAt),
+    index("savings_movement_goal_id_idx").on(t.goalId),
   ],
 );
 

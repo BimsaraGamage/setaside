@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkIncome, checkSavingsMove, savingsTotal } from "../money";
+import { checkGoalTakeOut, checkIncome, checkSavingsMove, savingsTotal } from "../money";
 import { current } from "./current";
 import {
   commitment,
@@ -16,6 +16,7 @@ import {
 } from "./db/schema";
 import { json } from "./json";
 import { placeId, placesUsable } from "./place-use";
+import { goalSaved } from "./savings-goals";
 import type { SignedIn } from "./user-check";
 
 /** One line of the Savings movements list; `amountMinor` below zero is money out. */
@@ -37,6 +38,8 @@ export interface SavingsLine {
   on: string;
   /** The commitment's name for a set-aside or payback moved; the prepayment's or plan's name. */
   name: string | null;
+  /** Take out "from a goal" (SAB-69): the goal it took from; left out when none. */
+  goalId?: string;
 }
 
 /**
@@ -58,6 +61,7 @@ export async function savingsLines(c: { var: SignedIn["Variables"] }): Promise<S
       movedOn: savingsMovement.movedOn,
       name: prepayment.name,
       planName: instalmentPlan.name,
+      goalId: savingsMovement.goalId,
     })
     .from(savingsMovement)
     .leftJoin(prepayment, and(eq(prepayment.id, savingsMovement.prepaymentId), mine(prepayment)))
@@ -111,6 +115,7 @@ export interface SavingsRows {
     movedOn: string;
     name: string | null;
     planName: string | null;
+    goalId: string | null;
   }[];
   /** Incomes with part sent to savings. */
   incomes: {
@@ -152,6 +157,7 @@ export function savingsLinesOf(
               amountMinor: m.amountMinor,
               on: m.movedOn,
               name: m.kind === "prepayment" ? m.name : m.kind === "plan_extra" ? m.planName : null,
+              ...(m.goalId ? { goalId: m.goalId } : {}),
             },
           ]
         : [],
@@ -194,6 +200,8 @@ const newMove = z.object({
   amountMinor: z.number().int(),
   /** Put in: the place the money went into (SAB-52). A take-out stays where it is: it takes none. */
   placeId,
+  /** Take out "from a goal" (SAB-69): one of the user's goals in its currency; none takes from no goal. */
+  goalId: z.uuid().nullish(),
 });
 
 const newIncome = z.object({
@@ -211,7 +219,8 @@ const newIncome = z.object({
  * Savings and Add income (backlog item 10, spec 5): Put in, Take out (into free
  * money) and extra income (or loan money received as cash, item 19) split to savings and free money, dated today in the
  * current cycle. Deletes are the toasts' Undo, current cycle only. Income and Put
- * in may name the place the money landed in (SAB-52).
+ * in may name the place the money landed in (SAB-52). A take-out may name the
+ * savings goal it takes from (SAB-69); its Undo puts it back toward the goal.
  * The phone works out every number with the money rules.
  */
 export const savings = new Hono<SignedIn>()
@@ -226,6 +235,12 @@ export const savings = new Hono<SignedIn>()
     // Taken out into free money, the money stays in its place (spec 6).
     const inPlace = b.kind === "put_in" ? (b.placeId ?? null) : null;
     if (!(await placesUsable(c, [{ placeId: inPlace, currency }]))) problems.push("place");
+    const goalId = b.goalId ?? null;
+    if (goalId) {
+      const goal = b.kind === "take_out" ? await goalSaved(c, goalId) : undefined;
+      if (!goal) problems.push("goal");
+      else problems.push(...checkGoalTakeOut({ currency, amountMinor: b.amountMinor }, goal));
+    }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     try {
       await db.insert(savingsMovement).values({
@@ -237,6 +252,7 @@ export const savings = new Hono<SignedIn>()
         kind: b.kind,
         movedOn: now.today,
         placeId: inPlace,
+        goalId,
       });
     } catch {
       // The id is already in use.

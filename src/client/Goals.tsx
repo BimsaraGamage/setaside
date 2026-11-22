@@ -72,7 +72,7 @@ export function goalActions({ done }: Toaster) {
       change(g.id, { stopped: false }).then((ok) =>
         done(ok, { text: `${g.name} started again`, undo: () => change(g.id, { stopped: true }) }),
       ),
-    /** Delete, only while nothing was moved toward it: its share this cycle goes too. */
+    /** Delete, only while nothing was moved toward it or taken out of it: its share this cycle goes too. */
     remove: (g: Goal) => remove(g.id).then((ok) => done(ok, { text: `${g.name} deleted` })),
   };
 }
@@ -83,17 +83,32 @@ export type GoalActions = ReturnType<typeof goalActions>;
 const sharesNow = (data: Pick<Ready, "commitments">, g: Goal) =>
   data.commitments.filter((c) => c.goalId === g.id);
 
+/** What take-outs from a goal took (SAB-69), all cycles, or only this cycle's. */
+export function takenOutOf(data: Pick<Ready, "savings" | "cycle">, g: Pick<Goal, "id">, thisCycle = false) {
+  let n = 0;
+  for (const l of data.savings) {
+    if (l.kind === "take_out" && l.goalId === g.id && (!thisCycle || l.cycleId === data.cycle.id)) {
+      n -= l.amountMinor;
+    }
+  }
+  return n;
+}
+
+type GoalData = Pick<Ready, "commitments" | "cycle" | "savings">;
+
 /**
  * A goal as the money rules need it: moved toward it = earlier cycles' shares (from the server)
- * plus this cycle's, counted from this cycle's commitments and their payments.
+ * plus this cycle's, counted from this cycle's commitments and their payments; less take-outs
+ * from it (SAB-69).
  */
-export function goalEntry(data: Pick<Ready, "commitments" | "cycle">, g: Goal): SavingsGoalEntry {
+export function goalEntry(data: GoalData, g: Goal): SavingsGoalEntry {
   const earlier = g.shares.filter((s) => s.cycleId !== data.cycle.id);
   const now = sharesNow(data, g);
   return {
     ...g,
     movedMinor:
       earlier.reduce((n, s) => n + s.coveredMinor, 0) + now.reduce((n, c) => n + coveredMinor(c), 0),
+    takenOutMinor: takenOutOf(data, g),
     shareCount: earlier.length + now.length,
   };
 }
@@ -109,6 +124,8 @@ export function statusOf(data: Ready, g: Goal, today: string): GoalStatus {
     startedOn: data.cycle.startedOn,
     usualPayDay: data.settings.usualPayDay,
     today,
+    // A take-out this cycle grows the next salary day's share, not this one (SAB-69).
+    takenOutNowMinor: takenOutOf(data, g, true),
   });
 }
 
@@ -137,7 +154,7 @@ export function progressText(saved: number, g: Pick<Goal, "targetMinor" | "curre
 }
 
 /** Next up's note on a goal share (spec 10): "120,000 of 600,000", like "7 of 12". */
-export function goalShareNote(data: Pick<Ready, "goals" | "commitments" | "cycle">, c: Commitment) {
+export function goalShareNote(data: Pick<Ready, "goals"> & GoalData, c: Commitment) {
   const g = c.goalId ? data.goals.find((x) => x.id === c.goalId) : undefined;
   return g ? progressText(goalSavedMinor(goalEntry(data, g)), g) : undefined;
 }
@@ -416,6 +433,11 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
         {g.startMinor > 0 && (
           <p className="tiny mute">{formatMoney(g.startMinor, g.currency)} already saved when made</p>
         )}
+        {(entry.takenOutMinor ?? 0) > 0 && (
+          <p className="tiny mute" data-testid="goal-taken-out">
+            {formatMoney(entry.takenOutMinor ?? 0, g.currency)} taken out of it
+          </p>
+        )}
       </section>
       <section className="card" aria-labelledby="shares-h">
         <h3 id="shares-h">Shares</h3>
@@ -471,7 +493,7 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
             Stop this goal
           </button>
         )}
-        {entry.movedMinor === 0 && (
+        {entry.movedMinor === 0 && !entry.takenOutMinor && (
           <button
             type="button"
             className="btn grow"
