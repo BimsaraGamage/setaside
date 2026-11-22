@@ -22,6 +22,8 @@ export interface SavingsGoalEntry {
   stopped: boolean;
   /** What payments on its shares cover, all cycles. */
   movedMinor: Minor;
+  /** What take-outs from it took (SAB-69), all cycles; none: 0. */
+  takenOutMinor?: Minor;
   /** How many shares it has had, all cycles (none yet: it starts on the next salary day). */
   shareCount: number;
 }
@@ -61,14 +63,34 @@ export function checkSavingsGoal(
   return out;
 }
 
-/** Saved toward a goal (spec 5): already saved + what its shares' moves cover. */
-export function goalSavedMinor(g: Pick<SavingsGoalEntry, "startMinor" | "movedMinor">): Minor {
-  return g.startMinor + g.movedMinor;
+type Saved = Pick<SavingsGoalEntry, "startMinor" | "movedMinor" | "takenOutMinor">;
+
+/**
+ * Saved toward a goal (spec 5): already saved + what its shares' moves cover −
+ * what take-outs from it took (SAB-69).
+ */
+export function goalSavedMinor(g: Saved): Minor {
+  return g.startMinor + g.movedMinor - (g.takenOutMinor ?? 0);
 }
 
 /** What is still to save for a goal; never below zero. */
-export function goalLeftMinor(g: Pick<SavingsGoalEntry, "targetMinor" | "startMinor" | "movedMinor">): Minor {
+export function goalLeftMinor(g: Saved & Pick<SavingsGoalEntry, "targetMinor">): Minor {
   return Math.max(0, g.targetMinor - goalSavedMinor(g));
+}
+
+export type GoalTakeOutProblem = "goal" | "goal_too_much";
+
+/**
+ * Checks Take out of savings "from a goal" (spec 5, SAB-67 pick 9): a goal in the
+ * take-out's currency, and at most what is saved toward it. The savings total
+ * check (`checkSavingsMove`) still applies.
+ */
+export function checkGoalTakeOut(
+  input: { currency: string; amountMinor: number },
+  g: Saved & Pick<SavingsGoalEntry, "currency">,
+): GoalTakeOutProblem[] {
+  if (input.currency !== g.currency) return ["goal"];
+  return input.amountMinor > goalSavedMinor(g) ? ["goal_too_much"] : [];
 }
 
 /**
@@ -95,7 +117,7 @@ export function goalSharesLeft(a: { byOn: Day; startedOn: Day; usualPayDay: numb
  * share only what is left. 0 once nothing is left.
  */
 export function fairShareMinor(
-  g: Pick<SavingsGoalEntry, "currency" | "targetMinor" | "byOn" | "startMinor" | "movedMinor">,
+  g: Saved & Pick<SavingsGoalEntry, "currency" | "targetMinor" | "byOn">,
   a: { startedOn: Day; usualPayDay: number; plannedMinor?: Minor },
 ): Minor {
   const left = goalLeftMinor(g) - (a.plannedMinor ?? 0);
@@ -166,12 +188,14 @@ export type GoalStatus =
  * that share; else this cycle's share (planned, or moved if more, finished ones
  * at what was moved) against the fair share counted from the cycle's start: at
  * it, "Rs X a cycle · N cycles left", below it Behind by the gap. No separate
- * on-track maths: the fair share is the plan.
+ * on-track maths: the fair share is the plan. A take-out this cycle
+ * (`takenOutNowMinor`) is not in that start, so it never makes this cycle Behind:
+ * the next salary day's share grows instead (SAB-69).
  */
 export function goalStatus(
   g: SavingsGoalEntry,
   sharesNow: GoalShareNow[],
-  cycle: { startedOn: Day; usualPayDay: number; today: Day },
+  cycle: { startedOn: Day; usualPayDay: number; today: Day; takenOutNowMinor?: Minor },
 ): GoalStatus {
   const left = goalLeftMinor(g);
   if (left <= 0) return { kind: "reached" };
@@ -191,7 +215,14 @@ export function goalStatus(
     shareNow += s.open ? Math.max(s.plannedMinor, s.coveredMinor) : s.coveredMinor;
   }
   const at = { startedOn: cycle.startedOn, usualPayDay: cycle.usualPayDay };
-  const fair = fairShareMinor({ ...g, movedMinor: g.movedMinor - movedNow }, at);
+  const fair = fairShareMinor(
+    {
+      ...g,
+      movedMinor: g.movedMinor - movedNow,
+      takenOutMinor: (g.takenOutMinor ?? 0) - (cycle.takenOutNowMinor ?? 0),
+    },
+    at,
+  );
   if (shareNow < fair) return { kind: "behind", shortMinor: fair - shareNow };
   return { kind: "on_plan", shareMinor: fair, cyclesLeft: goalSharesLeft({ byOn: g.byOn, ...at }) };
 }

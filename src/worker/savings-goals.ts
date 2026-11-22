@@ -1,9 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import * as z from "zod";
-import { checkSavingsGoal, goalLeftMinor, savingsTotal } from "../money";
+import { checkSavingsGoal, goalLeftMinor, goalSavedMinor, savingsTotal } from "../money";
 import { current } from "./current";
-import { commitment, commitmentPayment, savingsGoal } from "./db/schema";
+import { commitment, commitmentPayment, savingsGoal, savingsMovement } from "./db/schema";
 import { json } from "./json";
 import { savingsLines } from "./savings";
 import type { SignedIn } from "./user-check";
@@ -101,6 +101,28 @@ async function movedToward(c: { var: SignedIn["Variables"] }, goalId: string): P
 }
 
 /**
+ * One of the user's goals with what is saved toward it, for a take-out from it (SAB-69):
+ * already saved, what its shares' payments cover and what take-outs from it took, all cycles.
+ */
+export async function goalSaved(c: { var: SignedIn["Variables"] }, goalId: string) {
+  const { db, mine } = c.var;
+  const goal = await db.query.savingsGoal.findFirst({
+    where: and(mine(savingsGoal), eq(savingsGoal.id, goalId)),
+    columns: { currency: true, startMinor: true },
+  });
+  if (!goal) return undefined;
+  const [out] = await db
+    .select({ sum: sql<number>`coalesce(sum(-${savingsMovement.amountMinor}), 0)` })
+    .from(savingsMovement)
+    .where(and(mine(savingsMovement), eq(savingsMovement.goalId, goalId)));
+  return {
+    ...goal,
+    movedMinor: await movedToward(c, goalId),
+    takenOutMinor: Number(out?.sum ?? 0),
+  };
+}
+
+/**
  * Savings goals (ticket SAB-68, spec 5): add (with its first share set aside at
  * once, due today, unless 0), change, stop or start again, and delete while
  * nothing was moved toward it. A goal belongs to no cycle, so these never take
@@ -170,6 +192,11 @@ export const savingsGoals = new Hono<SignedIn>()
       savingsMinor: Math.max(savingsMinor, old.startMinor),
       keepByOn: old.byOn,
     });
+    // Already saved can't go below what take-outs from it took less its moves (SAB-69).
+    if (b.startMinor !== undefined && !problems.includes("start")) {
+      const saved = await goalSaved(c, id);
+      if (saved && goalSavedMinor({ ...saved, startMinor: next.startMinor }) < 0) problems.push("start");
+    }
     if (problems.length) return c.json({ error: "invalid" as const, problems }, 400);
     await db
       .update(savingsGoal)
@@ -190,7 +217,11 @@ export const savingsGoals = new Hono<SignedIn>()
     const where = and(mine(savingsGoal), eq(savingsGoal.id, id));
     const found = await db.query.savingsGoal.findFirst({ where, columns: { id: true } });
     if (!now || !found) return c.json({ error: "not_found" as const }, 404);
-    if ((await movedToward(c, id)) > 0) return c.json({ error: "moved" as const }, 409);
+    // Nothing moved toward it, and no take-out from it (SAB-69: it would lose its goal).
+    const saved = await goalSaved(c, id);
+    if (!saved || saved.movedMinor > 0 || saved.takenOutMinor > 0) {
+      return c.json({ error: "moved" as const }, 409);
+    }
     await db.batch([
       // This cycle's shares go with it; an ended cycle's rows stay as they are (locked).
       db

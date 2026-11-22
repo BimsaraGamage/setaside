@@ -113,7 +113,7 @@ const SQL = {
     where user_id = ?1 and cycle_id = ${CUR_ID} order by day_on`,
   // Savings (spec 5): the rows of `savingsLines`.
   savingsMoves: `select m.id, m.kind, m.cycle_id as cycleId, m.currency, m.amount_minor as amountMinor,
-      m.moved_on as movedOn, pp.name as name, ip.name as planName
+      m.moved_on as movedOn, pp.name as name, ip.name as planName, m.goal_id as goalId
     from savings_movement m
       left join prepayment pp on pp.id = m.prepayment_id and pp.user_id = ?1
       left join plan_extra_payment x on x.id = m.id and x.user_id = ?1

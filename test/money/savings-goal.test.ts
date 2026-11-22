@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+  checkGoalTakeOut,
   checkSavingsGoal,
   fairShareMinor,
   goalDrafts,
@@ -21,6 +22,7 @@ const japan: SavingsGoalEntry = {
   startMinor: 0,
   stopped: false,
   movedMinor: 0,
+  takenOutMinor: 0,
   shareCount: 0,
 };
 
@@ -73,6 +75,46 @@ describe("checking a savings goal (spec 5)", () => {
 describe("saved toward a goal (spec 5)", () => {
   it("is already saved plus what its shares' moves cover", () => {
     expect(goalSavedMinor({ ...japan, startMinor: 1_000_000, movedMinor: 2_500_000 })).toBe(3_500_000);
+  });
+
+  // SAB-69 · Take out of savings from a goal (SAB-67 pick 9).
+  it("less what take-outs from it took", () => {
+    expect(
+      goalSavedMinor({ ...japan, startMinor: 1_000_000, movedMinor: 2_500_000, takenOutMinor: 500_000 }),
+    ).toBe(3_000_000);
+  });
+});
+
+describe("taking out from a goal (SAB-67 pick 9)", () => {
+  const saved = { ...japan, movedMinor: 2_500_000 };
+
+  it("up to what is saved toward it, in its currency, is fine", () => {
+    expect(checkGoalTakeOut({ currency: "LKR", amountMinor: 2_500_000 }, saved)).toEqual([]);
+  });
+
+  it("more than is saved toward it is too much", () => {
+    expect(checkGoalTakeOut({ currency: "LKR", amountMinor: 2_500_001 }, saved)).toEqual(["goal_too_much"]);
+    expect(
+      checkGoalTakeOut({ currency: "LKR", amountMinor: 2_000_001 }, { ...saved, takenOutMinor: 500_000 }),
+    ).toEqual(["goal_too_much"]);
+  });
+
+  it("a goal in the other currency can't be named", () => {
+    expect(checkGoalTakeOut({ currency: "USD", amountMinor: 100 }, saved)).toEqual(["goal"]);
+  });
+
+  it("a take-out makes what is left bigger, so the next fair share grows", () => {
+    const at = { startedOn: "2026-12-25", usualPayDay: 25 };
+    const before = fairShareMinor(saved, at);
+    const after = fairShareMinor({ ...saved, takenOutMinor: 1_000_000 }, at);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("a take-out from a reached goal makes it no longer reached", () => {
+    const cycle = { startedOn: "2026-11-25", usualPayDay: 25, today: "2026-11-30" };
+    const full = { ...japan, movedMinor: 60_000_000, shareCount: 7 };
+    expect(goalStatus(full, [], cycle)).toEqual({ kind: "reached" });
+    expect(goalStatus({ ...full, takenOutMinor: 1 }, [], cycle).kind).not.toBe("reached");
   });
 });
 
@@ -213,6 +255,16 @@ describe("a goal's status line (spec 10)", () => {
     expect(goalStatus(g, [{ plannedMinor: 8_571_500, coveredMinor: 8_571_500, open: false }], cycle)).toEqual(
       { kind: "on_plan", shareMinor: 8_571_500, cyclesLeft: 7 },
     );
+  });
+
+  it("a take-out this cycle doesn't make this cycle's share Behind: the next salary day's share grows", () => {
+    const g = { ...japan, shareCount: 1, takenOutMinor: 5_000_000, startMinor: 5_000_000 };
+    expect(
+      goalStatus(g, [{ plannedMinor: 7_857_200, coveredMinor: 0, open: true }], {
+        ...cycle,
+        takenOutNowMinor: 5_000_000,
+      }),
+    ).toEqual({ kind: "on_plan", shareMinor: 7_857_200, cyclesLeft: 7 });
   });
 
   it("a goal with no share yet starts next salary day", () => {

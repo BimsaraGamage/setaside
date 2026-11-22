@@ -290,3 +290,114 @@ describe("salary day fills each goal's share (spec 6 step 4)", () => {
     expect(undo.status).toBe(200);
   });
 });
+
+// SAB-69 · Take out of savings from a goal (SAB-67 pick 9).
+describe("taking out of savings from a goal (spec 5)", () => {
+  interface Line {
+    id: string;
+    kind: string;
+    amountMinor: number;
+    goalId?: string;
+  }
+  const takeOut = (body: Record<string, unknown>, cookie: string) =>
+    send("POST", "/api/savings-movements", { id: id(), kind: "take_out", ...body }, cookie);
+  const linesOf = async (cookie: string) =>
+    (await (await call("/api/current", {}, cookie)).json<{ savings: Line[] }>()).savings;
+
+  it("names the goal, up to what is saved toward it; its Undo puts it back", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    const tooMuch = await takeOut({ amountMinor: 1_000_001, goalId: goal.id }, cookie);
+    expect(tooMuch.status).toBe(400);
+    expect(await tooMuch.json()).toEqual({ error: "invalid", problems: ["goal_too_much"] });
+
+    const moveId = id();
+    const res = await send(
+      "POST",
+      "/api/savings-movements",
+      { id: moveId, kind: "take_out", amountMinor: 400_000, goalId: goal.id },
+      cookie,
+    );
+    expect(res.status).toBe(201);
+    expect((await linesOf(cookie)).find((l) => l.id === moveId)).toMatchObject({
+      kind: "take_out",
+      amountMinor: -400_000,
+      goalId: goal.id,
+    });
+    // Only Rs 6,000 is left saved toward it now.
+    const again = await takeOut({ amountMinor: 600_001, goalId: goal.id }, cookie);
+    expect(await again.json()).toEqual({ error: "invalid", problems: ["goal_too_much"] });
+
+    // Undo: the take-out goes, so Rs 10,000 can come out of it again.
+    expect((await send("DELETE", `/api/savings-movements/${moveId}`, undefined, cookie)).status).toBe(200);
+    expect((await takeOut({ amountMinor: 1_000_000, goalId: goal.id }, cookie)).status).toBe(201);
+  });
+
+  it("a goal's share moves count toward what can come out of it", async () => {
+    const { cookie } = await setUp();
+    const goal = japan();
+    const shareId = id();
+    await send(
+      "POST",
+      "/api/savings-goals",
+      { ...goal, share: { id: shareId, plannedMinor: 500_000 } },
+      cookie,
+    );
+    expect((await takeOut({ amountMinor: 1, goalId: goal.id }, cookie)).status).toBe(400);
+    await send(
+      "POST",
+      `/api/commitments/${shareId}/payments`,
+      { id: id(), amountMinor: 300_000, paidOn: today(), currency: "LKR" },
+      cookie,
+    );
+    expect((await takeOut({ amountMinor: 300_000, goalId: goal.id }, cookie)).status).toBe(201);
+  });
+
+  it("never names an unknown goal, another user's goal, or a Put in", async () => {
+    const { cookie } = await setUp();
+    expect(await (await takeOut({ amountMinor: 1, goalId: id() }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal"],
+    });
+    // Another user's goal, saved straight into the table.
+    const other = await signIn("demo");
+    const theirs = id();
+    const at = Date.now();
+    await env.DB.prepare(
+      `insert into savings_goal (id, user_id, name, currency, target_minor, by_on, start_minor, stopped, created_at, updated_at)
+       values (?, ?, 'Theirs', 'LKR', 100000, ?, 100000, 0, ?, ?)`,
+    )
+      .bind(theirs, other.id, later(100), at, at)
+      .run();
+    expect(await (await takeOut({ amountMinor: 1, goalId: theirs }, cookie)).json()).toEqual({
+      error: "invalid",
+      problems: ["goal"],
+    });
+    await env.DB.prepare("delete from savings_goal where id = ?").bind(theirs).run();
+
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    const put = await send(
+      "POST",
+      "/api/savings-movements",
+      { id: id(), kind: "put_in", amountMinor: 1, goalId: goal.id },
+      cookie,
+    );
+    expect(await put.json()).toEqual({ error: "invalid", problems: ["goal"] });
+  });
+
+  it("a goal with a take-out from it can't be deleted, nor its already saved go below what came out", async () => {
+    const { cookie } = await setUp();
+    const goal = japan({ startMinor: 1_000_000 });
+    await send("POST", "/api/savings-goals", goal, cookie);
+    expect((await takeOut({ amountMinor: 700_000, goalId: goal.id }, cookie)).status).toBe(201);
+    const del = await send("DELETE", `/api/savings-goals/${goal.id}`, undefined, cookie);
+    expect(del.status).toBe(409);
+    const lower = await send("PATCH", `/api/savings-goals/${goal.id}`, { startMinor: 600_000 }, cookie);
+    expect(await lower.json()).toEqual({ error: "invalid", problems: ["start"] });
+    expect(
+      (await send("PATCH", `/api/savings-goals/${goal.id}`, { startMinor: 700_000 }, cookie)).status,
+    ).toBe(200);
+  });
+});

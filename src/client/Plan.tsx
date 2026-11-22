@@ -55,7 +55,7 @@ export const isCardBill = (c: Pick<Commitment, "kind">) => c.kind === "card_bill
  * before what is paid; otherwise `paidNote`.
  */
 export function commitmentNote(
-  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans" | "people" | "goals" | "cycle">,
+  data: Pick<Ready, "cards" | "spends" | "commitments" | "plans" | "people" | "goals" | "cycle" | "savings">,
   c: Commitment,
 ) {
   // A goal share (SAB-68): saved toward its goal of the target, like "7 of 12".

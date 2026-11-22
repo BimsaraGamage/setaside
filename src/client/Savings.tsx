@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   ADD_INCOME_KINDS,
+  checkGoalTakeOut,
   checkGotBack,
   checkIncome,
   checkPersonDebt,
@@ -9,6 +10,7 @@ import {
   combinedSavingsMinor,
   debtProgress,
   formatMoney,
+  goalSavedMinor,
   MONTHS_MAX,
   NAME_MAX,
   PERSON_NAME_MAX,
@@ -22,7 +24,7 @@ import {
 import { api } from "./api";
 import { CurrencyChoice, currenciesOf, currencyContext } from "./CurrencyChoice";
 import { dayLabel, entriesOf, type Ready, type SavingsLine, useToday } from "./data";
-import { GoalsCard } from "./Goals";
+import { GoalsCard, goalEntry } from "./Goals";
 import { newId } from "./id";
 import type { PeopleActions } from "./People";
 import { PlaceChoice, usePlaceChoice } from "./PlaceChoice";
@@ -37,7 +39,13 @@ const addMove = (
   amountMinor: number,
   currency: string,
   placeId: string | null,
-) => ok(api.api["savings-movements"].$post({ json: { id, kind, amountMinor, currency, placeId } }));
+  goalId: string | null,
+) =>
+  ok(
+    api.api["savings-movements"].$post({
+      json: { id, kind, amountMinor, currency, placeId, ...(goalId ? { goalId } : {}) },
+    }),
+  );
 const removeMove = (id: string) => ok(api.api["savings-movements"][":id"].$delete({ param: { id } }));
 const addIncome = (
   id: string,
@@ -75,15 +83,19 @@ const removePrepayment = (id: string) => ok(api.api.prepayments[":id"].$delete({
 /** Put in, Take out and Add income; each success shows a toast with Undo (spec 5). */
 export function savingsActions({ done }: Toaster) {
   return {
-    /** Put in names the place the money went into (spec 6); a take-out stays where it is. */
+    /**
+     * Put in names the place the money went into (spec 6); a take-out stays where it is and may
+     * name the savings goal it takes from (SAB-69).
+     */
     move: (
       kind: "put_in" | "take_out",
       amountMinor: number,
       currency: string,
       placeId: string | null = null,
+      goalId: string | null = null,
     ) => {
       const id = newId();
-      return addMove(id, kind, amountMinor, currency, placeId).then((ok) =>
+      return addMove(id, kind, amountMinor, currency, placeId, goalId).then((ok) =>
         done(ok, {
           text:
             kind === "take_out"
@@ -140,6 +152,12 @@ const lineName: Record<SavingsLine["kind"], string> = {
   payback: "Paid back",
   rate_gain: "Rate gain",
   plan_extra: "Paid off a plan",
+};
+
+/** A take-out's goal (SAB-69): "From Trip to Japan". */
+const goalName = (data: Ready, l: SavingsLine) => {
+  const g = l.goalId ? data.goals.find((x) => x.id === l.goalId) : undefined;
+  return g ? `From ${g.name}` : null;
 };
 
 /** One amount field: digits only, in the spending currency. */
@@ -279,7 +297,9 @@ export function SavingsPage({ data }: { data: Ready }) {
             </span>
             <span className="grow">
               {lineName[l.kind]}
-              {l.name && <span className="tiny mute block">{l.name}</span>}
+              {(l.name ?? goalName(data, l)) && (
+                <span className="tiny mute block">{l.name ?? goalName(data, l)}</span>
+              )}
             </span>
             <b className={`small${l.amountMinor < 0 ? " bad" : ""}`}>
               {l.amountMinor < 0 ? "−" : "+"}
@@ -315,6 +335,8 @@ export function SavingsMovePage({
   const today = useToday(data.settings.homeTimeZone);
   const [text, setText] = useState("");
   const [prepay, setPrepay] = useState(false);
+  /** Take out "from a goal" (SAB-69): the goal's id, or null for not from a goal. */
+  const [goalId, setGoalId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [paybackText, setPaybackText] = useState("");
   const [monthlyText, setMonthlyText] = useState("");
@@ -327,6 +349,14 @@ export function SavingsMovePage({
   const paybackMinor = parseAmount(paybackText, cur) ?? 0;
   const takeOut = kind === "take_out";
   const forPrepayment = takeOut && prepay;
+  // Goals in this currency with something saved toward them (SAB-67 pick 9).
+  const goals = takeOut
+    ? data.goals.flatMap((g) => {
+        const savedMinor = goalSavedMinor(goalEntry(data, g));
+        return g.currency === cur && savedMinor > 0 ? [{ g, savedMinor }] : [];
+      })
+    : [];
+  const fromGoal = forPrepayment ? undefined : goals.find((x) => x.g.id === goalId);
   const place = usePlaceChoice(data.places, cur, takeOut ? "out" : "in", takeOut && !prepay);
   const cycles =
     paybackMinor > 0 && paybackMinor <= amountMinor ? paybackCycles(amountMinor, paybackMinor) : 0;
@@ -343,7 +373,10 @@ export function SavingsMovePage({
         { name, currency: cur, totalMinor: amountMinor, paybackMinor, normalMonthlyMinor, months },
         { ...currencyContext(data), savingsMinor: total },
       )
-    : checkSavingsMove({ kind, currency: cur, amountMinor, totalMinor: total }, currencyContext(data));
+    : [
+        ...checkSavingsMove({ kind, currency: cur, amountMinor, totalMinor: total }, currencyContext(data)),
+        ...(fromGoal ? checkGoalTakeOut({ currency: cur, amountMinor }, goalEntry(data, fromGoal.g)) : []),
+      ];
   const entries = entriesOf(data);
   // A prepayment does not come to free money; its first payback is set aside today.
   const payback = {
@@ -378,7 +411,7 @@ export function SavingsMovePage({
           months,
           placeId: place.placeId,
         })
-      : await actions.move(kind, amountMinor, cur, place.placeId);
+      : await actions.move(kind, amountMinor, cur, place.placeId, fromGoal?.g.id ?? null);
     setBusy(false);
     if (ok) window.location.hash = "Savings";
     else setFailed(true);
@@ -395,6 +428,7 @@ export function SavingsMovePage({
           value={cur}
           onChange={(c) => {
             setCur(c);
+            setGoalId(null);
             setText("");
             setPaybackText("");
             setMonthlyText("");
@@ -415,6 +449,34 @@ export function SavingsMovePage({
                 Yes, pay back
               </button>
             </div>
+          </fieldset>
+        )}
+        {takeOut && !prepay && goals.length > 0 && (
+          <fieldset className="stack" aria-label="From a goal?">
+            <span className="small">From a goal?</span>
+            <div className="chips">
+              <button type="button" className="btn" aria-pressed={!fromGoal} onClick={() => setGoalId(null)}>
+                Not from a goal
+              </button>
+              {goals.map(({ g }) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className="btn"
+                  aria-pressed={fromGoal?.g.id === g.id}
+                  onClick={() => setGoalId(g.id)}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
+            {fromGoal && (
+              <p className="tiny mute" data-testid="goal-take-out-note">
+                {problems.includes("goal_too_much")
+                  ? `More than is saved toward it (${formatMoney(fromGoal.savedMinor, cur)}).`
+                  : `${formatMoney(fromGoal.savedMinor, cur)} saved toward it. The next salary day's share grows to make it up.`}
+              </p>
+            )}
           </fieldset>
         )}
         {forPrepayment && (
