@@ -15,6 +15,8 @@ export interface SpendEntry {
   oneOff?: boolean;
   /** The card it was paid with (spec 9): adds to that card's balance. */
   cardId?: string | null;
+  /** Saved quickly, to finish later (SAB-76): counts like any spend; the spend nudge asks about it. */
+  toFinish?: boolean;
 }
 
 export interface SpendInput {

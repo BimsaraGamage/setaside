@@ -18,6 +18,7 @@ const draftOf = (s: Spend): SpendDraft => ({
   cardId: s.cardId,
   placeId: s.placeId ?? null,
   oneOff: s.oneOff,
+  toFinish: s.toFinish ?? false,
 });
 
 /** What the toast says after a new spend was put in the queue and sent (or not yet). */

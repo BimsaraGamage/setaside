@@ -6,6 +6,7 @@ import {
   type Reminder,
   type ReminderInput,
   reminders,
+  reminderText,
   timeIn,
 } from "../../src/money";
 
@@ -280,6 +281,54 @@ describe("spend nudge (spec 12, reminder 6: in the evening, skipped on a day wit
       { time: "22:00" },
     );
     expect(kinds(reminders(i))).not.toContain("spend_nudge");
+  });
+});
+
+describe("spends to finish (SAB-76, spec 12 reminder 6: the nudge also asks about them)", () => {
+  const toFinish = (spentOn: string) => ({ spentOn, currency: "LKR", amountMinor: 100, toFinish: true });
+  const nudge = (list: Reminder[]) => list.find((r) => r.kind === "spend_nudge");
+
+  it("on a day with no spend, the nudge counts this cycle's spends to finish", () => {
+    const i = input({ spends: [toFinish("2026-11-08"), toFinish("2026-11-09")] }, { time: "21:00" });
+    expect(nudge(reminders(i))).toEqual({ kind: "spend_nudge", spentToday: false, toFinish: 2 });
+  });
+
+  it("is still given on a day with a spend while some are to finish", () => {
+    const i = input(
+      {
+        spends: [{ spentOn: "2026-11-10", currency: "LKR", amountMinor: 100 }, toFinish("2026-11-10")],
+      },
+      { time: "21:15" },
+    );
+    expect(nudge(reminders(i))).toEqual({ kind: "spend_nudge", spentToday: true, toFinish: 1 });
+  });
+
+  it("waits for the nudge time and follows the nudge switch", () => {
+    const spends = [toFinish("2026-11-10")];
+    expect(nudge(reminders(input({ spends }, { time: "20:45" })))).toBeUndefined();
+    const off = input({ spends }, { time: "22:00", settings: { ...DEFAULT_REMINDERS, spendNudge: false } });
+    expect(nudge(reminders(off))).toBeUndefined();
+  });
+
+  it("is skipped on a day with a spend when none are to finish", () => {
+    const i = input(
+      { spends: [{ spentOn: "2026-11-10", currency: "LKR", amountMinor: 100, toFinish: false }] },
+      { time: "22:00" },
+    );
+    expect(nudge(reminders(i))).toBeUndefined();
+  });
+});
+
+describe("spend nudge words (spec 12)", () => {
+  it("asks for today's spends, and names the spends to finish", () => {
+    expect(reminderText({ kind: "spend_nudge", spentToday: false, toFinish: 0 })).toBe(
+      "Any spends today? Add them with +",
+    );
+    expect(reminderText({ kind: "spend_nudge", spentToday: false, toFinish: 2 })).toBe(
+      "Any spends today? Add them with + · 2 spends to finish",
+    );
+    expect(reminderText({ kind: "spend_nudge", spentToday: true, toFinish: 1 })).toBe("1 spend to finish");
+    expect(reminderText({ kind: "spend_nudge", spentToday: true, toFinish: 3 })).toBe("3 spends to finish");
   });
 });
 

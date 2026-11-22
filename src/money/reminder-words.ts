@@ -34,6 +34,11 @@ export function inDaysLabel(n: number): string {
   return `in ${n} day${n === 1 ? "" : "s"}`;
 }
 
+/** "1 spend to finish", "2 spends to finish" (SAB-76). */
+export function toFinishLabel(n: number): string {
+  return `${n} spend${n === 1 ? "" : "s"} to finish`;
+}
+
 /** One reminder in words, as the list and the morning summary say it (spec 12). */
 export function reminderText(r: Reminder): string {
   switch (r.kind) {
@@ -64,8 +69,12 @@ export function reminderText(r: Reminder): string {
       if (asks.length > 0) parts.push(`Salary day will ask about ${asks.join(" and ")}`);
       return parts.join(" · ");
     }
-    case "spend_nudge":
-      return "Any spends today? Add them with +";
+    case "spend_nudge": {
+      const ask = "Any spends today? Add them with +";
+      if (r.toFinish === 0) return ask;
+      const finish = toFinishLabel(r.toFinish);
+      return r.spentToday ? finish : `${ask} · ${finish}`;
+    }
   }
 }
 

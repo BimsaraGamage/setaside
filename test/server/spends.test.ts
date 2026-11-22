@@ -69,6 +69,7 @@ describe("spends (item 4, spec 7)", () => {
         cardId: null,
         oneOff: false,
         placeId: null,
+        toFinish: false,
       },
     ]);
   });
@@ -184,12 +185,33 @@ describe("spends (item 4, spec 7)", () => {
         cardId: null,
         oneOff: false,
         placeId: null,
+        toFinish: false,
       },
     ]);
     const ahead = await send("PATCH", `/api/spends/${id}`, { spentOn: addDays(today(), 1) }, cookie);
     expect(ahead.status).toBe(400);
     const missing = await send("PATCH", `/api/spends/${crypto.randomUUID()}`, { amountMinor: 1 }, cookie);
     expect(missing.status).toBe(404);
+  });
+
+  it("saves a spend to finish, and a change finishes it (SAB-76)", async () => {
+    const { cookie } = await setUp();
+    const id = crypto.randomUUID();
+    const res = await send(
+      "POST",
+      "/api/spends",
+      { id, spentOn: today(), amountMinor: 900, toFinish: true },
+      cookie,
+    );
+    expect(res.status).toBe(201);
+    expect(await spendsOf(cookie)).toMatchObject([{ id, amountMinor: 900, note: null, toFinish: true }]);
+    // Changing other fields keeps it to finish; the sheet's Save sends toFinish false.
+    await send("PATCH", `/api/spends/${id}`, { note: "taxi" }, cookie);
+    expect(await spendsOf(cookie)).toMatchObject([{ id, note: "taxi", toFinish: true }]);
+    await send("PATCH", `/api/spends/${id}`, { amountMinor: 950, toFinish: false }, cookie);
+    expect(await spendsOf(cookie)).toMatchObject([{ id, amountMinor: 950, toFinish: false }]);
+    const bad = await send("PATCH", `/api/spends/${id}`, { toFinish: "yes" }, cookie);
+    expect(bad.status).toBe(400);
   });
 
   it("deletes a spend for real; undo adds it back with the same id", async () => {

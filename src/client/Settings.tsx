@@ -18,7 +18,11 @@ const SWITCHES: { key: keyof ReminderSettings; label: string; hint: string }[] =
   { key: "runningOut", label: "Running out", hint: "Free money or a pot is tight or runs out" },
   { key: "salaryLate", label: "Salary late", hint: "From the day after it was expected" },
   { key: "questions", label: "Questions waiting", hint: "Underspend and salary day questions" },
-  { key: "spendNudge", label: "Spend nudge", hint: "In the evening, if nothing was added today" },
+  {
+    key: "spendNudge",
+    label: "Spend nudge",
+    hint: "In the evening, if nothing was added today or a spend is to finish",
+  },
 ];
 
 const DEVICE_NOTE: Record<Exclude<PushState, "loading">, string> = {

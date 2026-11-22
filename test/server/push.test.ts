@@ -47,7 +47,7 @@ const devices = async (userId: string) =>
  * A user in their second cycle (salary entered) with Rent due today and the phone
  * bill in 2 days, on Fri 20 Nov, and one device with alerts on.
  */
-async function cycleWithBills(more: { spendToday?: boolean; settings?: string } = {}) {
+async function cycleWithBills(more: { spendToday?: boolean; toFinish?: boolean; settings?: string } = {}) {
   const u = await freshUser();
   const s = crypto.randomUUID();
   const c = crypto.randomUUID();
@@ -71,9 +71,9 @@ async function cycleWithBills(more: { spendToday?: boolean; settings?: string } 
   ]);
   if (more.spendToday) {
     await env.DB.prepare(
-      "insert into spend (id, user_id, cycle_id, spent_on, amount_minor, currency, created_at, updated_at) values (?, ?, ?, '2026-11-20', 50000, 'LKR', ?, ?)",
+      "insert into spend (id, user_id, cycle_id, spent_on, amount_minor, currency, to_finish, created_at, updated_at) values (?, ?, ?, '2026-11-20', 50000, 'LKR', ?, ?, ?)",
     )
-      .bind(crypto.randomUUID(), u.id, c, now, now)
+      .bind(crypto.randomUUID(), u.id, c, more.toFinish ? 1 : 0, now, now)
       .run();
   }
   if (more.settings) await env.DB.prepare(`update settings set ${more.settings} where id = ?`).bind(s).run();
@@ -227,6 +227,14 @@ describe("the reminder cron (item 26, spec 12)", () => {
     const spent = await cycleWithBills({ spendToday: true });
     await sendReminders(env, EVENING, svc.fetcher);
     expect(to(svc.sent, spent.device)).toEqual([]);
+  });
+
+  it("sends the spend nudge on a day with a spend while one is to finish (SAB-76)", async () => {
+    const u = await cycleWithBills({ spendToday: true, toFinish: true });
+    const svc = pushService();
+    await sendReminders(env, EVENING, svc.fetcher);
+    await sendReminders(env, EVENING, svc.fetcher);
+    expect(to(svc.sent, u.device).map((s) => s.message.body)).toEqual(["1 spend to finish"]);
   });
 
   it("removes a device the push service says is gone, and tries again tomorrow", async () => {

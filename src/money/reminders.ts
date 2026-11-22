@@ -117,8 +117,11 @@ export type Reminder =
       overMinor: Minor;
       currency: string;
     }
-  /** 6 · Spend nudge: from the nudge time on a day with no spend. */
-  | { kind: "spend_nudge" };
+  /**
+   * 6 · Spend nudge: from the nudge time on a day with no spend, or while this cycle has
+   * spends to finish (SAB-76).
+   */
+  | { kind: "spend_nudge"; spentToday: boolean; toFinish: number };
 
 export interface ReminderInput {
   entries: CycleEntries;
@@ -228,8 +231,11 @@ export function reminders(input: ReminderInput): Reminder[] {
     }
   }
 
-  if (on.spendNudge && input.time >= on.nudgeAt && !entries.spends.some((s) => s.spentOn === today)) {
-    out.push({ kind: "spend_nudge" });
+  if (on.spendNudge && input.time >= on.nudgeAt) {
+    const spentToday = entries.spends.some((s) => s.spentOn === today);
+    // The entries are the current cycle's: an ended cycle's spends to finish are not asked about.
+    const toFinish = entries.spends.filter((s) => s.toFinish).length;
+    if (!spentToday || toFinish > 0) out.push({ kind: "spend_nudge", spentToday, toFinish });
   }
   return out;
 }

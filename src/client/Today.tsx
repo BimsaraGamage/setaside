@@ -9,6 +9,7 @@ import {
   setAsideMinor,
   stillToPayMinor,
   todayView,
+  toFinishLabel,
 } from "../money";
 import { dayLabel, entriesOf, inDaysLabel, potEntry, type Ready, type Spend, useToday } from "./data";
 import { agoLabel } from "./offline-copy";
@@ -66,8 +67,29 @@ function NextUpRow({
   );
 }
 
+/** "2 spends to finish" (SAB-76): this cycle's spends to finish, each opening the spend sheet; hidden when none. */
+function ToFinishCard({ data, onOpen }: { data: Ready; onOpen: (spend: Spend) => void }) {
+  const list = data.spends.filter((s) => s.toFinish);
+  if (list.length === 0) return null;
+  return (
+    <section className="card" aria-labelledby="to-finish-h" data-testid="to-finish">
+      <h3 id="to-finish-h">{toFinishLabel(list.length)}</h3>
+      {list.map((s) => (
+        <button key={s.id} type="button" className="li tap" onClick={() => onOpen(s)}>
+          <span className="grow">
+            {dayLabel(s.spentOn)}
+            <span className="tiny mute block">{s.note || "no note"}</span>
+          </span>
+          <b>{formatMoney(s.amountMinor, s.currency)}</b>
+        </button>
+      ))}
+    </section>
+  );
+}
+
 /**
- * Today (spec 10): header, the reminders list (item 25), the salary-late card (item 13), the underspend card, main card with the daily
+ * Today (spec 10): header, the reminders list (item 25), the salary-late card (item 13), the underspend card,
+ * the spends to finish (SAB-76), main card with the daily
  * allowance, verdict, today's spends and the speed line, Next up, pots with
  * their verdicts, the + button.
  */
@@ -142,6 +164,8 @@ export function Today({
           actions={dayChoices}
         />
       )}
+
+      <ToFinishCard data={data} onOpen={(s) => onEdit(s, today)} />
 
       <section className="card main" aria-labelledby="today-h">
         <h3 id="today-h">You can spend today</h3>

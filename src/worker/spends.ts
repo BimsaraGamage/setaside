@@ -32,6 +32,8 @@ const newSpend = z.object({
   placeId,
   /** Left out of the spending speed (item 8). */
   oneOff: z.boolean().optional(),
+  /** A spend to finish (SAB-76): saved quickly, finished later. */
+  toFinish: z.boolean().optional(),
   /** Sent from the phone's unsent queue (item 24): a spend from an ended cycle moves into this one. */
   queued: z.boolean().optional(),
 });
@@ -45,6 +47,7 @@ const changeSpend = z
     cardId,
     placeId,
     oneOff: z.boolean(),
+    toFinish: z.boolean(),
   })
   .partial();
 
@@ -66,7 +69,7 @@ const HOLDERS_OF_SPEND = (table: "pot" | "card" | "place") =>
 
 /** The signed-in user's spend with this id. */
 const SPEND = `select id, cycle_id as cycleId, spent_on as spentOn, amount_minor as amountMinor, currency, note,
-    pot_id as potId, card_id as cardId, one_off as oneOff, place_id as placeId
+    pot_id as potId, card_id as cardId, one_off as oneOff, place_id as placeId, to_finish as toFinish
   from spend where user_id = ?1 and id = ?2`;
 
 interface SpendRow {
@@ -80,6 +83,7 @@ interface SpendRow {
   cardId: string | null;
   oneOff: number;
   placeId: string | null;
+  toFinish: number;
 }
 
 /** The holder with this id, as the one-item list `checkSpend` takes; none when there is no such one. */
@@ -92,7 +96,7 @@ function only(rows: Holder[], id: string | null | undefined) {
  * Spends (backlog items 4, 7 and 8, spec 4, 7 and 10): add, change and delete, in
  * the current cycle only (ended cycles are locked), from free money or a pot in
  * use, marked one-off or not, out of a place or none (SAB-51; a card spend never
- * has one). The phone works out every number.
+ * has one), to finish later or not (SAB-76). The phone works out every number.
  */
 export const spends = new Hono<SignedIn>()
   .post("/spends", json(newSpend), async (c) => {
@@ -126,6 +130,7 @@ export const spends = new Hono<SignedIn>()
       // A card spend moves no place until the card bill is paid (spec 6).
       placeId: b.cardId ? null : (b.placeId ?? null),
       oneOff: b.oneOff ?? false,
+      toFinish: b.toFinish ?? false,
       // A spend is in its pot's currency (a salary-currency pot's, spec 8), else the spending currency.
       currency: inPot[0]?.currency ?? now.settings.spendingCurrency,
     };
@@ -172,7 +177,7 @@ export const spends = new Hono<SignedIn>()
     const row = found[0];
     if (!now || !row) return c.json({ error: "not_found" as const }, 404);
     if (row.cycleId !== now.cycle.id) return c.json({ error: "locked" as const }, 409);
-    const old = { ...row, oneOff: bool(row.oneOff) };
+    const old = { ...row, oneOff: bool(row.oneOff), toFinish: bool(row.toFinish) };
     const nextPotId = b.potId === undefined ? old.potId : b.potId;
     const inPot = only(pots, nextPotId);
     const nextCardId = b.cardId === undefined ? old.cardId : b.cardId;
@@ -209,6 +214,7 @@ export const spends = new Hono<SignedIn>()
         cardId: next.cardId,
         placeId: next.placeId,
         oneOff: next.oneOff,
+        toFinish: next.toFinish,
       })
       .where(and(mine(spend), eq(spend.id, id)));
     return c.json({ ok: true as const });

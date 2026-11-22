@@ -204,6 +204,8 @@ export const spend = sqliteTable(
     oneOff: integer("one_off", { mode: "boolean" }).notNull().default(false),
     /** The place the money came out of (SAB-51); none moves no place. Never set on a card spend. */
     placeId: text("place_id"),
+    /** A spend to finish (SAB-76): saved quickly, counts like any spend, asked about until finished. */
+    toFinish: integer("to_finish", { mode: "boolean" }).notNull().default(false),
     ...appTimestamps,
   },
   (t) => [

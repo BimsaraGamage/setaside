@@ -44,8 +44,8 @@ export function toText(minor: number, currency: string): string {
  * The spend sheet (spec 10): date chip, amount on a number pad, the live
  * "left today" (or "from <pot> pot") line, the place it is paid from (starts on
  * the one used last; hidden without places and on a card), note, Free money or a pot, Card
- * (with the card choice when there are several, item 18), One-off, Save.
- * Opened with a spend, it edits it and can delete it.
+ * (with the card choice when there are several, item 18), One-off, Finish later beside Save (SAB-76).
+ * Opened with a spend, it edits it and can delete it; opened with a spend to finish, Save finishes it.
  */
 export function SpendSheet({
   data,
@@ -76,6 +76,8 @@ export function SpendSheet({
   const [potId, setPotId] = useState<string | null>(editing?.potId ?? null);
   // One-off: still uses free money, left out of the spending speed (spec 7).
   const [oneOff, setOneOff] = useState(editing?.oneOff ?? false);
+  // Finish later (SAB-76): always starts off, so saving a spend to finish finishes it.
+  const [toFinish, setToFinish] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const days = useMemo(() => cycleDays(today, data.cycle.startedOn), [today, data.cycle.startedOn]);
@@ -160,7 +162,7 @@ export function SpendSheet({
   }
 
   const save = () => {
-    const d = { spentOn, amountMinor, note: draft.note, potId, cardId, placeId, oneOff };
+    const d = { spentOn, amountMinor, note: draft.note, potId, cardId, placeId, oneOff, toFinish };
     // The next spend starts on this place (a card spend leaves the choice as it was).
     if (cardId === null && placeChoices.length > 0) rememberPlace(data.places, cur, placeId);
     return run(() => (editing ? actions.change(editing, cur, d) : actions.add(newId(), cur, d)));
@@ -333,6 +335,11 @@ export function SpendSheet({
               Delete
             </button>
           )}
+          {/* Next to Save (SAB-77): a quick save is amount, Finish later, Save; no extra height. */}
+          <label className="row check finish-later">
+            <input type="checkbox" checked={toFinish} onChange={(e) => setToFinish(e.target.checked)} />
+            Finish later
+          </label>
           <button
             type="button"
             className="btn pri grow"
