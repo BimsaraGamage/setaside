@@ -65,7 +65,7 @@ export const conversions = new Hono<SignedIn>()
     if (!(await placesUsable(c, places))) {
       return c.json({ error: "invalid" as const, problems: ["place"] }, 400);
     }
-    const split = conversionSplit(await entriesOf(c, now), b.givenMinor, b.receivedMinor);
+    const split = conversionSplit(await entriesOf(c), b.givenMinor, b.receivedMinor);
     if (!split.rate) return c.json({ error: "invalid" as const, problems: ["rate"] }, 400);
     const at = new Date();
     try {
