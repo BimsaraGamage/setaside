@@ -15,9 +15,10 @@ import type { SignedIn } from "./user-check";
  */
 const NOW = `select s.salary_currency as salaryCurrency, s.spending_currency as spendingCurrency,
     s.home_time_zone as homeTimeZone, cur.id as cycleId, cur.started_on as cycleStartedOn,
+    cur.expected_salary_on as cycleExpectedSalaryOn, cur.reserve_rate as cycleReserveRate,
     (select rate from counting_rate where user_id = ?1 order by set_at desc, id desc limit 1) as countingRate
   from settings s
-    join (select id, started_on from cycle where user_id = ?1
+    join (select id, started_on, expected_salary_on, reserve_rate from cycle where user_id = ?1
       order by started_on desc, created_at desc limit 1) cur
   where s.user_id = ?1 limit 1`;
 
@@ -25,7 +26,7 @@ const NOW = `select s.salary_currency as salaryCurrency, s.spending_currency as 
 export interface WriteNow {
   settings: { salaryCurrency: string; spendingCurrency: string; homeTimeZone: string };
   currencies: Currencies;
-  cycle: { id: string; startedOn: string };
+  cycle: { id: string; startedOn: string; expectedSalaryOn: string; reserveRate: string | null };
   today: string;
   /** The newest counting rate the user set (spec 8); null with none. */
   countingRate: string | null;
@@ -37,6 +38,8 @@ interface NowRow {
   homeTimeZone: string;
   cycleId: string;
   cycleStartedOn: string;
+  cycleExpectedSalaryOn: string;
+  cycleReserveRate: string | null;
   countingRate: string | null;
 }
 
@@ -67,7 +70,12 @@ export async function readForWrite<R extends Record<string, unknown[]>>(
           homeTimeZone: row.homeTimeZone,
         },
         currencies: currenciesOf(row),
-        cycle: { id: row.cycleId, startedOn: row.cycleStartedOn },
+        cycle: {
+          id: row.cycleId,
+          startedOn: row.cycleStartedOn,
+          expectedSalaryOn: row.cycleExpectedSalaryOn,
+          reserveRate: row.cycleReserveRate,
+        },
         today: todayIn(row.homeTimeZone, Date.now()),
         countingRate: row.countingRate,
       }
