@@ -55,7 +55,9 @@ export function PotRow({
   const body = (
     <>
       <span className="row">
-        <span className="grow">{pot.name}</span>
+        <span className="grow" data-testid="pot-name">
+          {pot.name}
+        </span>
         {verdict && verdict.kind !== "used_up" && <VerdictChip verdict={verdict} currency={pot.currency} />}
         <span className={`small${line.over ? " bad" : " mute"}`}>{line.text}</span>
       </span>

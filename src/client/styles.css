@@ -437,6 +437,15 @@ a.btn.add {
 .li.pot .bar {
   margin: 0;
 }
+/* Pot row head: name and verdict chip on one line; the left line wraps under them on a narrow screen. */
+.li.pot > .row {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 0.2rem;
+}
+.li.pot > .row > .grow {
+  flex: 1 1 auto;
+}
 
 /* Run-out verdict chip (item 8). */
 .verdict {
@@ -446,6 +455,9 @@ a.btn.add {
   background: var(--chip);
   font-size: 0.85rem;
   font-weight: 600;
+  /* Always a one-line pill: never stretched or wrapped by its row. */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .verdict.ok {
   color: var(--ok);
