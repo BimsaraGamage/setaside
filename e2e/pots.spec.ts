@@ -30,6 +30,15 @@ test("make a pot, spend from it, use it up, stop using it", async ({ page }) => 
   await main.getByRole("link", { name: "Today" }).click();
   const todayRow = page.getByRole("region", { name: "Pots" }).getByTestId("pot").filter({ hasText: name });
   await expect(todayRow).toContainText("Rs 1,000 left of Rs 1,000");
+  // At phone width the verdict chip stays a one-line pill and the name stays on
+  // one line; the left line wraps under them instead of squeezing them.
+  await page.setViewportSize({ width: 411, height: 860 });
+  const chip = await todayRow.getByTestId("verdict").boundingBox();
+  expect(chip?.height ?? 0).toBeGreaterThan(0);
+  expect(chip?.height ?? 0).toBeLessThan(40);
+  const potName = await todayRow.getByTestId("pot-name").boundingBox();
+  expect(potName?.height ?? 0).toBeGreaterThan(0);
+  expect(potName?.height ?? 0).toBeLessThan(30);
   await page.getByRole("button", { name: "Add a spend" }).click();
   const sheet = page.getByRole("dialog", { name: "Add a spend" });
   await expect(sheet.getByRole("button", { name: "Free money" })).toHaveAttribute("aria-pressed", "true");
