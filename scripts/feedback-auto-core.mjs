@@ -32,7 +32,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { checkSet, REPLY_MAX, WAIT_WORDS, waitSql } from "./feedback-set.mjs";
 
 export const MAX_PER_PASS = 3;
@@ -688,13 +688,19 @@ async function pass(deps) {
   // 1. The cheap look: one query, no Claude.
   const rows = deps
     .d1(
-      "select id, status, waiting from feedback where status in ('new', 'planned', 'building', 'ready') order by created_at",
+      "select id, status, waiting, ticket, reply from feedback where status in ('new', 'planned', 'building', 'ready') order by created_at",
     )
     .filter((r) => UUID.test(String(r.id)));
-  const done = doneStep(
-    deps,
-    rows.filter((r) => r.status !== "new"),
-  );
+  const going = rows.filter((r) => r.status !== "new");
+  const tags = releaseTags(deps, going);
+  const doneIds = doneStep(deps, going, tags);
+  const done =
+    doneIds.length +
+    ticketStep(
+      deps,
+      going.filter((r) => !doneIds.includes(r.id)),
+      tags,
+    );
   const fresh = rows.filter((r) => r.status === "new").slice(0, MAX_PER_PASS);
   if (!fresh.length) {
     deps.say(`No new feedback.${done ? ` ${done} marked done.` : ""}`);
@@ -733,36 +739,148 @@ function noteWait(deps, reason) {
   }
 }
 
-/** Done step: a feedback whose `Feedback: <id>` commit is in a release tag is done (ticket 61, Facts). */
-export function doneStep(deps, rows) {
-  if (!rows.length) return 0;
+/** The release tags, newest first: fetched once a pass, and only when a feedback is on its way. */
+function releaseTags(deps, rows) {
+  if (!rows.length) return [];
   try {
     deps.git(["fetch", "--tags", "--quiet", "origin"]);
   } catch {
     // offline: the tags already here still count
   }
-  const tags = deps
+  return deps
     .git(["tag", "--list", "setaside-v*", "--sort=-v:refname"])
     .split("\n")
     .map((t) => t.trim())
     .filter(Boolean);
-  if (!tags.length) return 0;
-  let n = 0;
+}
+
+/** The first release tag that has this commit. */
+function firstRelease(deps, sha, tags) {
+  const first = deps
+    .git(["tag", "--contains", sha, "--list", "setaside-v*", "--sort=v:refname"])
+    .split("\n")[0]
+    .trim();
+  return first || tags[0];
+}
+
+/** Done step: a feedback whose `Feedback: <id>` commit is in a release tag is done (ticket 61, Facts). Returns the ids. */
+export function doneStep(deps, rows, tags = releaseTags(deps, rows)) {
+  if (!rows.length || !tags.length) return [];
+  const done = [];
   for (const { id } of rows) {
     const sha = deps
       .git(["log", tags[0], "--fixed-strings", `--grep=Feedback: ${id}`, "--format=%H", "-n", "1"])
       .trim();
     if (!sha) continue;
-    const first = deps
-      .git(["tag", "--contains", sha, "--list", "setaside-v*", "--sort=v:refname"])
-      .split("\n")[0]
-      .trim();
-    const version = (first || tags[0]).replace(/^setaside-/, "");
+    const version = firstRelease(deps, sha, tags).replace(/^setaside-/, "");
     deps.set({ id, status: "done", reply: `Fixed in ${version}.` });
     deps.say(`${short(id)}: done (${version})`);
-    n++;
+    done.push(id);
   }
-  return n;
+  return done;
+}
+
+// ---- The ticket step (ticket SAB-86, decided in SAB-85).
+//
+// A Planned feedback follows every map ticket whose header carries `Feedback: <id>`, plus the row's own ticket, so
+// a header not carried on, or a squash commit without the trailer, never leaves it Planned for ever:
+//   - none open, and a carrying ticket's PR (`PR: setaside#N`; squash subject ending ` (#N)`) is in a release
+//     → Done, "Fixed in v…" (the latest of their first releases), ticket = the one with that release;
+//   - an open carrying ticket is claimed and has a `PR:` line → Being built, ticket = that one;
+//   - else, open → stays Planned, its ticket following an open carrier when the row's own is resolved
+//     (Being built is never moved back: a person or the job set it);
+//   - none open, nothing released, no PR anywhere → one notice a day; the session that ruled it out sets Not doing.
+// It writes only when the status, reply or ticket would change, so a pass doesn't rewrite every 5 minutes.
+
+/** A ticket's header (down to its first `## `): resolved or not, claimed, PR numbers, feedback ids. */
+function readTicket(file) {
+  const text = readFileSync(file, "utf8");
+  const lines = text.split("\n");
+  const end = lines.findIndex((l, i) => i > 0 && /^## /.test(l));
+  const head = lines.slice(0, end === -1 ? lines.length : end);
+  const line = (key) => head.find((l) => l.startsWith(`${key}: `))?.slice(key.length + 2) ?? "";
+  const n = Number(/^(\d+)-/.exec(basename(file))[1]);
+  return {
+    n,
+    code: `SAB-${String(n).padStart(2, "0")}`,
+    open: !/^## Answer\s*$/m.test(text),
+    claimed: line("Sessions").includes("(claimed"),
+    prs: [...line("PR").matchAll(/setaside#(\d+)/g)].map((m) => Number(m[1])),
+    feedback: line("Feedback"),
+  };
+}
+
+function mapTickets(mapDir) {
+  const dir = ticketsDir(mapDir);
+  return readdirSync(dir)
+    .filter((f) => /^\d+-.*\.md$/.test(f))
+    .map((f) => readTicket(join(dir, f)))
+    .sort((a, b) => a.n - b.n);
+}
+
+/** Moves Planned and Being built feedback on by the tickets that carry it. Returns how many went done. */
+export function ticketStep(deps, rows, tags = releaseTags(deps, rows)) {
+  const mine = rows.filter((r) => r.status === "planned" || r.status === "building");
+  if (!mine.length) return 0;
+  const tickets = mapTickets(deps.mapDir);
+  let merged = null; // PR number → its squash commit in the newest release's history, read once
+  const releasedIn = (pr) => {
+    if (!tags.length) return null;
+    if (!merged) {
+      merged = new Map();
+      for (const l of deps.git(["log", tags[0], "--format=%H%x09%s"]).split("\n")) {
+        const [sha, subject = ""] = l.split("\t");
+        const m = / \(#(\d+)\)$/.exec(subject);
+        if (m && !merged.has(Number(m[1]))) merged.set(Number(m[1]), sha);
+      }
+    }
+    const sha = merged.get(pr);
+    return sha ? firstRelease(deps, sha, tags) : null;
+  };
+  let done = 0;
+  for (const r of mine) {
+    const own = TICKET.test(String(r.ticket)) ? Number(String(r.ticket).slice(4)) : null;
+    const carriers = tickets.filter((t) => t.n === own || t.feedback.includes(r.id));
+    if (!carriers.length) continue;
+    const open = carriers.filter((t) => t.open);
+    let change = null;
+    if (!open.length) {
+      let best = null;
+      for (const t of carriers)
+        for (const pr of t.prs) {
+          const tag = releasedIn(pr);
+          if (tag && (!best || tags.indexOf(tag) < tags.indexOf(best.tag))) best = { tag, t };
+        }
+      if (best) {
+        change = {
+          id: r.id,
+          status: "done",
+          reply: `Fixed in ${best.tag.replace(/^setaside-/, "")}.`,
+          ticket: best.t.code,
+        };
+      } else if (!carriers.some((t) => t.prs.length)) {
+        const code = (carriers.find((t) => t.n === own) ?? carriers.at(-1)).code;
+        noticeOnce(
+          deps,
+          `carried-${short(r.id)}`,
+          "Feedback job: a feedback has nothing to carry it",
+          `feedback ${short(r.id)}: ${code} resolved, nothing open or released carries it`,
+        );
+      }
+    } else {
+      const building = open.find((t) => t.claimed && t.prs.length);
+      if (building) change = { id: r.id, status: "building", ticket: building.code };
+      else if (r.status === "planned")
+        change = { id: r.id, status: "planned", ticket: (open.find((t) => t.n === own) ?? open[0]).code };
+    }
+    if (!change) continue;
+    if (change.status === r.status && change.ticket === r.ticket && (change.reply ?? r.reply) === r.reply)
+      continue;
+    deps.set(change);
+    deps.say(`${short(r.id)}: ${change.status} (${change.ticket})`);
+    if (change.status === "done") done++;
+  }
+  return done;
 }
 
 function noticeOnce(deps, key, title, body) {
