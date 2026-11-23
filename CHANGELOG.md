@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.24...setaside-v0.1.25) (2026-11-23)
+
+
+### Bug Fixes
+
+* pot row's verdict chip stays a one-line pill on phones ([#134](https://github.com/BimsaraGamage/setaside/issues/134)) ([e885de7](https://github.com/BimsaraGamage/setaside/commit/e885de76ab63c7993e970c316983a7e7d2b8afd8))
+
 ## [0.1.24](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.23...setaside-v0.1.24) (2026-11-23)
 
 
