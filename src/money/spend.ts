@@ -19,6 +19,28 @@ export interface SpendEntry {
   toFinish?: boolean;
 }
 
+/** A spend to finish saved with no amount yet (SAB-83): stored as 0, counts as zero meanwhile. */
+export function hasNoAmount(s: { amountMinor: number; toFinish?: boolean | null }): boolean {
+  return s.toFinish === true && s.amountMinor === 0;
+}
+
+/** How many of these spends have no amount yet (SAB-83). */
+export function noAmountCount(spends: { amountMinor: number; toFinish?: boolean | null }[]): number {
+  return spends.filter(hasNoAmount).length;
+}
+
+const spendsHave = (n: number) => `${n} spend${n === 1 ? " has" : "s have"} no amount`;
+
+/** Today's main card while the cycle has spends with no amount (SAB-83): "May be lower: 1 spend has no amount". */
+export function noAmountLine(n: number): string {
+  return `May be lower: ${spendsHave(n)}`;
+}
+
+/** Salary day step 3 (SAB-83): the leftover counts them as zero, so what is in hand may be less. */
+export function noAmountInHandNote(n: number): string {
+  return `${spendsHave(n)}: correct in hand for ${n === 1 ? "it" : "them"}.`;
+}
+
 export interface SpendInput {
   amountMinor: number;
   spentOn: string;
@@ -28,6 +50,8 @@ export interface SpendInput {
   cardId?: string | null;
   /** The place the money came out of (spec 6); none moves no place. A card spend has none. */
   placeId?: string | null;
+  /** Finish later (SAB-76): only a spend to finish may have no amount (0, SAB-83). */
+  toFinish?: boolean;
 }
 
 export interface SpendContext extends Currencies {
@@ -52,10 +76,14 @@ export type SpendProblem = "amount" | "spent_on" | "currency" | "note" | "pot" |
 
 export const NOTE_MAX = 200;
 
-/** Checks a new or changed spend (spec 2, 7). The phone shows the problems; the server refuses them. */
+/**
+ * Checks a new or changed spend (spec 2, 7). The phone shows the problems; the server refuses them.
+ * The amount is above zero, or 0 for a spend to finish with no amount yet (SAB-83).
+ */
 export function checkSpend(input: SpendInput, ctx: SpendContext): SpendProblem[] {
   const out: SpendProblem[] = [];
-  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) out.push("amount");
+  const least = input.toFinish === true ? 0 : 1;
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor < least) out.push("amount");
   if (!isDay(input.spentOn) || input.spentOn < ctx.cycleStartedOn || input.spentOn > ctx.today) {
     out.push("spent_on");
   }

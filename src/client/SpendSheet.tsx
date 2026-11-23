@@ -3,6 +3,7 @@ import {
   addDays,
   checkSpend,
   formatMoney,
+  hasNoAmount,
   minorDigits,
   NOTE_MAX,
   parseAmount,
@@ -64,7 +65,10 @@ export function SpendSheet({
   onClose: () => void;
 }) {
   const spendCur = data.settings.spendingCurrency;
-  const [text, setText] = useState(editing ? toText(editing.amountMinor, editing.currency) : "");
+  // A spend to finish with no amount yet (SAB-83) opens with the amount empty.
+  const [text, setText] = useState(
+    editing && !hasNoAmount(editing) ? toText(editing.amountMinor, editing.currency) : "",
+  );
   // A spend that needs a look may have a day before this cycle: it starts on today then (item 24).
   const [spentOn, setSpentOn] = useState(
     editing && editing.spentOn >= data.cycle.startedOn && editing.spentOn <= today ? editing.spentOn : today,
@@ -114,6 +118,8 @@ export function SpendSheet({
     cardId,
     placeId,
     oneOff,
+    // With Finish later on the amount may be left empty (SAB-83).
+    toFinish,
   };
   const problems = checkSpend(draft, {
     today,
@@ -221,12 +227,15 @@ export function SpendSheet({
           {text ? money(amountMinor) : <span className="mute">{money(0)}</span>}
         </p>
 
-        <p
-          className={`small ${after.leftTodayMinor < 0 && (!pot || potAfter?.overMinor) ? "bad" : "mute"}`}
-          data-testid="sheet-left"
-        >
-          {liveLine}
-        </p>
+        {/* Hidden while the amount is empty: a spend to finish may be saved with none (SAB-83). */}
+        {amountMinor > 0 && (
+          <p
+            className={`small ${after.leftTodayMinor < 0 && (!pot || potAfter?.overMinor) ? "bad" : "mute"}`}
+            data-testid="sheet-left"
+          >
+            {liveLine}
+          </p>
+        )}
 
         {choices.length > 0 && (
           <fieldset className="chips" aria-label="Spend from">

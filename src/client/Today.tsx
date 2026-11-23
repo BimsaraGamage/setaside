@@ -2,8 +2,11 @@ import type { ReactNode } from "react";
 import {
   countedMinor,
   formatMoney,
+  hasNoAmount,
   isSalaryLate,
   nextUp,
+  noAmountCount,
+  noAmountLine,
   otherCurrency,
   potVerdict,
   setAsideMinor,
@@ -80,7 +83,7 @@ function ToFinishCard({ data, onOpen }: { data: Ready; onOpen: (spend: Spend) =>
             {dayLabel(s.spentOn)}
             <span className="tiny mute block">{s.note || "no note"}</span>
           </span>
-          <b>{formatMoney(s.amountMinor, s.currency)}</b>
+          <b>{hasNoAmount(s) ? "No amount" : formatMoney(s.amountMinor, s.currency)}</b>
         </button>
       ))}
     </section>
@@ -131,6 +134,8 @@ export function Today({
   const pots = data.pots.filter((p) => !p.archived);
   const over = view.leftTodayMinor < 0;
   const used = view.allowanceMinor > 0 ? Math.min(1, view.spentTodayMinor / view.allowanceMinor) : 1;
+  // Spends to finish with no amount count as zero meanwhile (SAB-83): the numbers may be lower.
+  const noAmount = noAmountCount(data.spends);
 
   return (
     <>
@@ -178,6 +183,11 @@ export function Today({
           </p>
         )}
         <VerdictChip verdict={view.verdict} currency={view.currency} />
+        {noAmount > 0 && (
+          <p className="tiny bad" data-testid="no-amount">
+            {noAmountLine(noAmount)}
+          </p>
+        )}
         <div
           className={`bar${over ? " over" : ""}`}
           role="meter"
