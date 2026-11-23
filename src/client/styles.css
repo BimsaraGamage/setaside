@@ -453,6 +453,12 @@ a.btn.add {
 .verdict.bad {
   color: var(--bad);
 }
+/* Past cycle's Locked chip: a one-line pill beside the dates, never stretched. */
+.verdict.locked {
+  align-self: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
 
 /* Underspend card (item 9). */
 .answers .btn {

@@ -46,6 +46,13 @@ test("an ended cycle shows on Past with how it ended, read only", async ({ page 
   await row.click();
   await expect(tabs).toBeHidden();
   await expect(page.getByTestId("locked")).toHaveText("Locked · read only");
+  // At phone width the chip stays a small one-line pill beside the dates.
+  await page.setViewportSize({ width: 411, height: 860 });
+  // One line of the chip's small text plus padding is under 40 px; stretched to
+  // a two-line heading it would be far taller.
+  const chip = await page.getByTestId("locked").boundingBox();
+  expect(chip?.height ?? 0).toBeGreaterThan(0);
+  expect(chip?.height ?? 0).toBeLessThan(40);
   await expect(page.getByTestId("past-spent")).toHaveText("Rs 1,000");
   await expect(page.getByTestId("past-ending")).toContainText(
     "Had Rs 88,000 in hand · Rs 8,000 to savings · Rs 80,000 to the next cycle",
