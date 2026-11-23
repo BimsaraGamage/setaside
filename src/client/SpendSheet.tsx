@@ -333,6 +333,13 @@ export function SpendSheet({
           </p>
         )}
 
+        {/* Save is off only for the empty amount (SAB-84): say how to save. */}
+        {!toFinish && amountMinor === 0 && problems.length === 1 && problems[0] === "amount" && (
+          <p className="small mute save-hint" data-testid="save-hint">
+            Enter an amount, or tick Finish later to add it later
+          </p>
+        )}
+
         <div className="row">
           {editing && (
             <button
