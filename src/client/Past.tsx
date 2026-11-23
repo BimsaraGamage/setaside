@@ -230,7 +230,7 @@ function PastCycleView({ data, past }: { data: Ready; past: PastCycle }) {
     <>
       <div className="row">
         <h1 className="grow">{datesLabel(past.cycle.startedOn, past.cycle.nextStartedOn)}</h1>
-        <span className="verdict" data-testid="locked">
+        <span className="verdict locked" data-testid="locked">
           Locked · read only
         </span>
       </div>
