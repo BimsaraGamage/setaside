@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.19...setaside-v0.1.20) (2026-11-23)
+
+
+### Features
+
+* save a spend to finish with no amount ([#124](https://github.com/BimsaraGamage/setaside/issues/124)) ([7d2c7a0](https://github.com/BimsaraGamage/setaside/commit/7d2c7a02affea26830a1ca489f0a0662199d16b9))
+
 ## [0.1.19](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.18...setaside-v0.1.19) (2026-11-22)
 
 
