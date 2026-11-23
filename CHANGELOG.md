@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.21...setaside-v0.1.22) (2026-11-23)
+
+
+### Features
+
+* planned feedback follows the tickets that carry it ([#128](https://github.com/BimsaraGamage/setaside/issues/128)) ([af8a1bc](https://github.com/BimsaraGamage/setaside/commit/af8a1bc6b95ab3d5e04ca4909563aa30bc373a2a))
+
 ## [0.1.21](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.20...setaside-v0.1.21) (2026-11-23)
 
 
