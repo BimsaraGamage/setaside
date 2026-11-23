@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.22...setaside-v0.1.23) (2026-11-23)
+
+
+### Bug Fixes
+
+* an early salary suggests next month's pay day ([#130](https://github.com/BimsaraGamage/setaside/issues/130)) ([93ad551](https://github.com/BimsaraGamage/setaside/commit/93ad5512d2e53aba4cab51507b569e809a6f0661))
+
 ## [0.1.22](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.21...setaside-v0.1.22) (2026-11-23)
 
 
