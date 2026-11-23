@@ -19,7 +19,19 @@ test("add a spend, undo it, add it again, change it on Money › Spends, delete 
   await page.getByRole("button", { name: "Add a spend" }).click();
   const sheet = page.getByRole("dialog", { name: "Add a spend" });
   await expect(sheet.getByLabel("Date")).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
+
+  // No amount yet (SAB-84): Save is off and a line says how to save; Finish later or an amount clears it.
+  const hint = sheet.getByTestId("save-hint");
+  await sheet.getByLabel("Note").fill(note);
+  await expect(sheet.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(hint).toHaveText("Enter an amount, or tick Finish later to add it later");
+  await sheet.getByLabel("Finish later").check();
+  await expect(hint).toHaveCount(0);
+  await sheet.getByLabel("Finish later").uncheck();
+  await expect(hint).toBeVisible();
+
   await typeAmount(page, "1234");
+  await expect(hint).toHaveCount(0);
   await expect(sheet.getByTestId("sheet-amount")).toHaveText("Rs 1,234");
   await expect(sheet.getByTestId("sheet-left")).toHaveText(/(left today after this|Over today by)/);
   await sheet.getByLabel("Note").fill(note);
