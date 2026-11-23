@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.23...setaside-v0.1.24) (2026-11-23)
+
+
+### Bug Fixes
+
+* past cycle's locked chip stays a small one-line pill ([#132](https://github.com/BimsaraGamage/setaside/issues/132)) ([b27ca0b](https://github.com/BimsaraGamage/setaside/commit/b27ca0b47a775b3afe106c1b1dd81dd26a453891))
+
 ## [0.1.23](https://github.com/BimsaraGamage/setaside/compare/setaside-v0.1.22...setaside-v0.1.23) (2026-11-23)
 
 
