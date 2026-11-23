@@ -330,7 +330,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       ...planDrafts(plans, receivedOn, expected, planPlanned),
       ...goalDrafts(
         data.goals.map((g) => goalEntry(data, g)),
-        { startedOn: receivedOn, usualPayDay: data.settings.usualPayDay },
+        { startedOn: receivedOn, usualPayDay: data.settings.usualPayDay, nextSalaryOn: expected },
         { paid: goalPaid, planned: goalPlanned },
       ),
     ].map((d) => ({

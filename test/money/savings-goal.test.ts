@@ -203,6 +203,29 @@ describe("shares left (spec 5)", () => {
   it("is at least 1, also once the by date has passed", () => {
     expect(goalSharesLeft({ byOn: "2026-11-01", startedOn: "2026-11-25", usualPayDay: 25 })).toBe(1);
   });
+
+  it("an early salary never counts the pay day it covered (SAB-87)", () => {
+    // Salary on 23 Nov, the cycle's next salary day 25 Dec: 25 Nov is not another share.
+    const early = {
+      byOn: "2027-06-01",
+      startedOn: "2026-11-23",
+      usualPayDay: 25,
+      nextSalaryOn: "2026-12-25",
+    };
+    expect(goalSharesLeft(early)).toBe(7);
+  });
+
+  it("counts from a next salary day the user moved off the usual pay day", () => {
+    const moved = {
+      byOn: "2027-06-01",
+      startedOn: "2026-11-25",
+      usualPayDay: 25,
+      nextSalaryOn: "2026-12-28",
+    };
+    // 28 Dec, then 25 Jan … 25 May: 1 + 6.
+    expect(goalSharesLeft(moved)).toBe(7);
+    expect(goalSharesLeft({ ...moved, byOn: "2026-12-28" })).toBe(1);
+  });
 });
 
 describe("the fair share (spec 5)", () => {
@@ -292,6 +315,17 @@ describe("salary day's goal shares (spec 6 step 4)", () => {
     );
     // Left 600,000 − 20,000 paid − 70,000 carried = 510,000 over 7 → 72,857.14… → 72,858.
     expect(row?.plannedMinor).toBe(7_285_800);
+  });
+
+  it("an early salary spreads over the same shares as an on-time one (SAB-87)", () => {
+    const [onTime] = goalDrafts([japan], { startedOn: "2026-11-25", usualPayDay: 25 });
+    const [early] = goalDrafts([japan], {
+      startedOn: "2026-11-23",
+      usualPayDay: 25,
+      nextSalaryOn: "2026-12-25",
+    });
+    expect(early?.plannedMinor).toBe(onTime?.plannedMinor);
+    expect(early?.dueOn).toBe("2026-11-23");
   });
 
   it("by date passed, not reached: all that is left as one share", () => {
