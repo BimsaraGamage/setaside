@@ -214,6 +214,25 @@ describe("spends (item 4, spec 7)", () => {
     expect(bad.status).toBe(400);
   });
 
+  it("saves a spend to finish with no amount, and only then (SAB-83)", async () => {
+    const { cookie } = await setUp();
+    const id = crypto.randomUUID();
+    const none = { id, spentOn: today(), amountMinor: 0 };
+    expect((await send("POST", "/api/spends", none, cookie)).status).toBe(400);
+    expect((await send("POST", "/api/spends", { ...none, toFinish: false }, cookie)).status).toBe(400);
+    expect((await send("POST", "/api/spends", { ...none, toFinish: true }, cookie)).status).toBe(201);
+    expect(await spendsOf(cookie)).toMatchObject([{ id, amountMinor: 0, toFinish: true }]);
+    // Finishing it needs the amount; left to finish it may stay at none.
+    expect((await send("PATCH", `/api/spends/${id}`, { toFinish: false }, cookie)).status).toBe(400);
+    expect((await send("PATCH", `/api/spends/${id}`, { note: "taxi" }, cookie)).status).toBe(200);
+    expect((await send("PATCH", `/api/spends/${id}`, { amountMinor: -1 }, cookie)).status).toBe(400);
+    const done = await send("PATCH", `/api/spends/${id}`, { amountMinor: 1_200, toFinish: false }, cookie);
+    expect(done.status).toBe(200);
+    expect(await spendsOf(cookie)).toMatchObject([{ id, amountMinor: 1_200, toFinish: false }]);
+    // Finished, it can't go back to no amount without Finish later.
+    expect((await send("PATCH", `/api/spends/${id}`, { amountMinor: 0 }, cookie)).status).toBe(400);
+  });
+
   it("deletes a spend for real; undo adds it back with the same id", async () => {
     const { cookie } = await setUp();
     const b = { id: crypto.randomUUID(), spentOn: today(), amountMinor: 100, note: "tea" };

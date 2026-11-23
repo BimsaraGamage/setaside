@@ -1,4 +1,5 @@
 import { type Minor, plainAmount } from "./amount";
+import { hasNoAmount } from "./spend";
 
 /** One spend as the CSV shows it (item 27, spec 14): names, not ids. */
 export interface CsvSpend {
@@ -10,6 +11,8 @@ export interface CsvSpend {
   card: string | null;
   oneOff: boolean;
   cycleStartedOn: string;
+  /** A spend to finish (SAB-76); at 0 it has no amount yet and the cell is empty (SAB-83). */
+  toFinish?: boolean;
 }
 
 const HEADER = ["Date", "Amount", "Currency", "Note", "Pot", "Card", "One-off", "Cycle started"];
@@ -27,7 +30,7 @@ function cell(value: string): string {
 export function spendsCsv(spends: CsvSpend[]): string {
   const rows = spends.map((s) => [
     s.spentOn,
-    plainAmount(s.amountMinor, s.currency),
+    hasNoAmount(s) ? "" : plainAmount(s.amountMinor, s.currency),
     s.currency,
     s.note ?? "",
     s.pot ?? "",

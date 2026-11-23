@@ -156,6 +156,9 @@ describe("download my data: JSON (spec 14)", () => {
 describe("download my data: CSV of spends (spec 14)", () => {
   it("is a spreadsheet file of every spend, with pot and card names", async () => {
     const u = await setUp();
+    // A spend to finish with no amount has an empty amount cell (SAB-83).
+    const blank = { id: crypto.randomUUID(), spentOn: today(), amountMinor: 0, note: "Taxi", toFinish: true };
+    expect((await send("POST", "/api/spends", blank, u.cookie)).status).toBe(201);
     const res = await call("/api/export/spends.csv", {}, u.cookie);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
@@ -172,6 +175,7 @@ describe("download my data: CSV of spends (spec 14)", () => {
     expect(csvLines.slice(1)).toEqual([
       `${today()},1850.50,LKR,'=lunch,"Fuel, petrol",,,${started}`,
       `${today()},500.00,LKR,Bus,,Visa,yes,${started}`,
+      `${today()},,LKR,Taxi,,,,${started}`,
     ]);
   });
 });

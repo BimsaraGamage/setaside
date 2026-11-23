@@ -117,6 +117,7 @@ export const dataExport = new Hono<SignedIn>()
         card: card.name,
         oneOff: spend.oneOff,
         cycleStartedOn: cycle.startedOn,
+        toFinish: spend.toFinish,
       })
       .from(spend)
       .innerJoin(cycle, and(eq(cycle.id, spend.cycleId), eq(cycle.userId, userId)))

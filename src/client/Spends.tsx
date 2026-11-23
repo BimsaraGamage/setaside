@@ -1,4 +1,4 @@
-import { combinedSavingsMinor, formatMoney } from "../money";
+import { combinedSavingsMinor, formatMoney, hasNoAmount } from "../money";
 import { MoneyCards } from "./Cards";
 import { currencyContext } from "./CurrencyChoice";
 import { dayLabel, type Ready, type Spend, useToday } from "./data";
@@ -41,7 +41,7 @@ export function SpendRow({
         {spend.note || "Spend"}
         {tags.length > 0 && <span className="tiny mute block">{tags.join(" · ")}</span>}
       </span>
-      <b>{formatMoney(spend.amountMinor, spend.currency)}</b>
+      <b>{hasNoAmount(spend) ? "No amount" : formatMoney(spend.amountMinor, spend.currency)}</b>
     </button>
   );
 }

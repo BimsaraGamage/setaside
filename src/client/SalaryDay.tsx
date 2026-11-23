@@ -17,6 +17,8 @@ import {
   inHandFromPlaces,
   isComingUp,
   leftoverOf,
+  noAmountCount,
+  noAmountInHandNote,
   type OverspendChoice,
   parseAmount,
   parseRate,
@@ -254,6 +256,8 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
   const heldMinor =
     heldForCardsMinor(data.cards, data.spends, data.commitments, cur) -
     paidCardBills.filter((k) => k.currency === cur).reduce((n, k) => n + stillToPayMinor(k), 0);
+  // Spends to finish with no amount count as zero in the leftover (SAB-83): in hand may be less.
+  const noAmount = noAmountCount(data.spends);
 
   /**
    * A card bill's amount in step 4 (item 18): the card balance after step 2's
@@ -528,6 +532,11 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
             {heldMinor > 0 && (
               <span className="tiny mute block" data-testid="held-for-cards">
                 Leave out {money(heldMinor)} held for card bills: it is not leftover.
+              </span>
+            )}
+            {noAmount > 0 && (
+              <span className="tiny bad block" data-testid="no-amount-in-hand">
+                {noAmountInHandNote(noAmount)}
               </span>
             )}
           </label>

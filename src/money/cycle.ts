@@ -6,7 +6,7 @@ import { inAPot, type PotEntry, potOutMinor } from "./pot";
 import { atRate, minorAtLeast, type Rate } from "./rate";
 import type { TakeOutEntry } from "./savings";
 import { perDayMinor, runOutVerdict, type Speed, speedNow, type Verdict } from "./speed";
-import type { SpendEntry } from "./spend";
+import { hasNoAmount, type SpendEntry } from "./spend";
 
 /** Kinds of `income` rows (data-model.md). */
 /** `leftover`: what the cycle before brought in on salary day (item 12). */
@@ -244,7 +244,8 @@ function addedToToday(startMinor: Minor, unspentMinor: Minor, days: number, curr
  * unspent money when that day's answer was Add to today. A day's unspent money is
  * its allowance less its free-money spends, never below zero; days with no answer
  * are added together into the next question. No question on the cycle's first
- * day or its last. `spreadMinor` is the allowance without the added money.
+ * day or its last, nor while a day it covers has a spend with no amount (SAB-83:
+ * counted as zero it would look unspent); those days roll on into the next one. `spreadMinor` is the allowance without the added money.
  */
 export function allowanceToday(
   entries: CycleEntries,
@@ -255,6 +256,7 @@ export function allowanceToday(
   const first = entries.startedOn && entries.startedOn < today ? entries.startedOn : today;
   let unspent = 0;
   let unspentDays = 0;
+  let held = false;
   let start = freeMoney(entries, first);
   for (let d = first; ; d = addDays(d, 1)) {
     const days = daysLeft(d, entries.expectedSalaryOn);
@@ -264,7 +266,7 @@ export function allowanceToday(
     const allowance = choice === "today" ? addedToToday(start, unspent, days, cur) : spread;
     if (d >= today) {
       const question =
-        asks && !choice
+        asks && !choice && !held
           ? {
               unspentMinor: unspent,
               days: unspentDays,
@@ -277,12 +279,14 @@ export function allowanceToday(
     if (choice) {
       unspent = 0;
       unspentDays = 0;
+      held = false;
     }
     const next = freeMoney(entries, addDays(d, 1));
     // What was spent that day: money that came the next morning is not unspent money.
     const spent = start - (next - cameOn(entries, addDays(d, 1)));
     unspent += Math.max(0, allowance - spent);
     unspentDays += 1;
+    if (entries.spends.some((s) => s.spentOn === d && hasNoAmount(s))) held = true;
     start = next;
   }
 }
