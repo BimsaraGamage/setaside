@@ -31,7 +31,7 @@ import {
   salaryLeftoverOf,
   staysInPlaces,
   stillToPayMinor,
-  suggestSalaryDay,
+  suggestNextSalaryDay,
   type UnpaidChoice,
   unpaidAtEnd,
 } from "../money";
@@ -133,7 +133,9 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
         isNew: false,
       })),
   );
-  const [expected, setExpected] = useState(() => suggestSalaryDay(today, data.settings.usualPayDay));
+  const [expected, setExpected] = useState(() =>
+    suggestNextSalaryDay(today, data.cycle.expectedSalaryOn, data.settings.usualPayDay),
+  );
   // Step 6, two currencies (spec 6, 8): the counting rate, the current one by default.
   const two = salaryCur !== cur;
   const nowRate = data.settings.countingRate;
@@ -328,7 +330,7 @@ export function SalaryDayPage({ data, actions }: { data: Ready; actions: SalaryD
       ...planDrafts(plans, receivedOn, expected, planPlanned),
       ...goalDrafts(
         data.goals.map((g) => goalEntry(data, g)),
-        { startedOn: receivedOn, usualPayDay: data.settings.usualPayDay },
+        { startedOn: receivedOn, usualPayDay: data.settings.usualPayDay, nextSalaryOn: expected },
         { paid: goalPaid, planned: goalPlanned },
       ),
     ].map((d) => ({

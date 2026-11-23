@@ -12,6 +12,7 @@ import {
   isTimeZone,
   minorDigits,
   parseAmount,
+  suggestNextSalaryDay,
   suggestSalaryDay,
   todayIn,
   todayView,
@@ -93,6 +94,21 @@ describe("expected salary day is suggested from the usual pay day (spec 2)", () 
     expect(suggestSalaryDay("2028-02-01", 30)).toBe("2028-02-29");
     expect(suggestSalaryDay("2026-11-30", 31)).toBe("2026-12-31");
     expect(suggestSalaryDay("2026-11-12", 31)).toBe("2026-11-30");
+  });
+});
+
+describe("salary day suggests the pay day after the one it covers (spec 2, SAB-87)", () => {
+  it("an early salary skips the pay day the ending cycle expected", () => {
+    expect(suggestNextSalaryDay("2026-11-23", "2026-11-25", 25)).toBe("2026-12-25");
+  });
+
+  it("an on-time salary suggests next month's pay day", () => {
+    expect(suggestNextSalaryDay("2026-11-25", "2026-11-25", 25)).toBe("2026-12-25");
+  });
+
+  it("a late salary counts from today, as before", () => {
+    expect(suggestNextSalaryDay("2026-11-28", "2026-11-25", 25)).toBe("2026-12-25");
+    expect(suggestNextSalaryDay("2026-12-26", "2026-11-25", 25)).toBe("2027-01-25");
   });
 });
 

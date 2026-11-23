@@ -152,6 +152,7 @@ export function statusOf(data: Ready, g: Goal, today: string): GoalStatus {
   return goalStatus(goalEntry(data, g), now, {
     startedOn: data.cycle.startedOn,
     usualPayDay: data.settings.usualPayDay,
+    nextSalaryOn: data.cycle.expectedSalaryOn,
     today,
     // A take-out this cycle grows the next salary day's share, not this one (SAB-69).
     takenOutNowMinor: takenOutOf(data, g, true),
@@ -382,7 +383,11 @@ export function GoalPage({ data, editing, actions }: { data: Ready; editing?: Go
     const draft = { currency: cur, targetMinor, byOn, startMinor, movedMinor: 0 };
     const fair =
       problems.length === 0
-        ? fairShareMinor(draft, { startedOn: data.cycle.startedOn, usualPayDay: data.settings.usualPayDay })
+        ? fairShareMinor(draft, {
+            startedOn: data.cycle.startedOn,
+            usualPayDay: data.settings.usualPayDay,
+            nextSalaryOn: data.cycle.expectedSalaryOn,
+          })
         : 0;
     const share = shareText === null ? fair : amountOf(shareText, cur);
     const shareOk =

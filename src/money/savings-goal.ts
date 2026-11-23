@@ -133,18 +133,26 @@ export function checkGoalSpend(
 }
 
 /**
+ * The cycle a share is counted for: its first day, the usual pay day and, when
+ * known, its expected next salary day (salary day's step 6, or the current
+ * cycle's), which an early salary or a moved day puts off the usual pay day.
+ */
+export type GoalCycleAt = { startedOn: Day; usualPayDay: number; nextSalaryOn?: Day };
+
+/**
  * Shares left (spec 5): the cycle starting on `startedOn` plus each usual pay day
  * after it and before the by date (money is set aside on salary days; one landing
  * on the by date is too late). At least 1, so a passed date asks for all that is left.
  */
-export function goalSharesLeft(a: { byOn: Day; startedOn: Day; usualPayDay: number }): number {
+export function goalSharesLeft(a: GoalCycleAt & { byOn: Day }): number {
   let n = 1;
-  let day = a.startedOn;
+  // The cycle's own next salary day when known (SAB-87): an early salary's
+  // start is before the pay day it covered, which is no further share.
+  let day = a.nextSalaryOn ?? suggestSalaryDay(a.startedOn, a.usualPayDay);
   // 50 years of pay days at most.
-  for (let i = 0; i < 600; i++) {
-    day = suggestSalaryDay(day, a.usualPayDay);
-    if (day >= a.byOn) break;
+  for (let i = 0; i < 600 && day < a.byOn; i++) {
     n++;
+    day = suggestSalaryDay(day, a.usualPayDay);
   }
   return n;
 }
@@ -157,11 +165,11 @@ export function goalSharesLeft(a: { byOn: Day; startedOn: Day; usualPayDay: numb
  */
 export function fairShareMinor(
   g: Saved & Pick<SavingsGoalEntry, "currency" | "targetMinor" | "byOn">,
-  a: { startedOn: Day; usualPayDay: number; plannedMinor?: Minor },
+  a: GoalCycleAt & { plannedMinor?: Minor },
 ): Minor {
   const left = goalLeftMinor(g) - (a.plannedMinor ?? 0);
   if (left <= 0) return 0;
-  const n = goalSharesLeft({ byOn: g.byOn, startedOn: a.startedOn, usualPayDay: a.usualPayDay });
+  const n = goalSharesLeft({ ...a, byOn: g.byOn });
   const unit = unitMinor(g.currency);
   return Math.min(left, Math.ceil(left / n / unit) * unit);
 }
@@ -177,7 +185,7 @@ export const goalLive = (g: SavingsGoalEntry) => !g.stopped && goalLeftMinor(g) 
  */
 export function goalDrafts(
   list: SavingsGoalEntry[],
-  at: { startedOn: Day; usualPayDay: number },
+  at: GoalCycleAt,
   more: { planned?: Record<string, Minor>; paid?: Record<string, Minor> } = {},
 ): (SalaryDayDraft & { goalId: string })[] {
   return list.flatMap((g) => {
@@ -234,14 +242,14 @@ export type GoalStatus =
 export function goalStatus(
   g: SavingsGoalEntry,
   sharesNow: GoalShareNow[],
-  cycle: { startedOn: Day; usualPayDay: number; today: Day; takenOutNowMinor?: Minor },
+  cycle: GoalCycleAt & { today: Day; takenOutNowMinor?: Minor },
 ): GoalStatus {
   const left = goalLeftMinor(g);
   if (left <= 0) return { kind: "reached" };
   if (g.stopped) return { kind: "stopped" };
   if (cycle.today > g.byOn) return { kind: "passed", leftMinor: left };
   if (g.shareCount === 0) {
-    const next = suggestSalaryDay(cycle.today, cycle.usualPayDay);
+    const next = cycle.nextSalaryOn ?? suggestSalaryDay(cycle.today, cycle.usualPayDay);
     return {
       kind: "starts",
       shareMinor: fairShareMinor(g, { startedOn: next, usualPayDay: cycle.usualPayDay }),
@@ -253,7 +261,7 @@ export function goalStatus(
     movedNow += s.coveredMinor;
     shareNow += s.open ? Math.max(s.plannedMinor, s.coveredMinor) : s.coveredMinor;
   }
-  const at = { startedOn: cycle.startedOn, usualPayDay: cycle.usualPayDay };
+  const at = { startedOn: cycle.startedOn, usualPayDay: cycle.usualPayDay, nextSalaryOn: cycle.nextSalaryOn };
   const fair = fairShareMinor(
     {
       ...g,
