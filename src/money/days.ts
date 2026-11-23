@@ -87,6 +87,15 @@ export function suggestSalaryDay(today: Day, usualPayDay: number): Day {
 }
 
 /**
+ * Salary day's suggested next expected salary day (spec 2, 6 step 6; SAB-87):
+ * the usual pay day after the later of today and the ending cycle's expected
+ * salary day, so an early salary never suggests the pay day it just covered.
+ */
+export function suggestNextSalaryDay(today: Day, endingExpectedOn: Day, usualPayDay: number): Day {
+  return suggestSalaryDay(endingExpectedOn > today ? endingExpectedOn : today, usualPayDay);
+}
+
+/**
  * `n` months after `day`, on `dayOfMonth` (1–31); a day past a month's end falls
  * on its last day. Monthly instalments keep their day this way (spec 9).
  */

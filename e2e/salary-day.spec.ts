@@ -79,8 +79,16 @@ test("salary arrived: leftover, unpaid ones, steps filled from Every cycle, new 
   await expect(page.getByLabel("Fuel (LKR)")).toHaveValue("5000");
   await page.getByRole("button", { name: "Next" }).click();
 
-  // Step 6: the suggested next salary day.
+  // Step 6: the salary came early (before this cycle's expected 25th), so the
+  // suggestion is the 25th after that one, not the pay day it just covered (SAB-87).
   await expect(page.getByRole("heading", { name: "Next salary day" })).toBeVisible();
+  const payDayAfterCovered = await page.evaluate(() => {
+    const now = new Date();
+    const covered = now.getMonth() + (now.getDate() >= 25 ? 1 : 0);
+    const d = new Date(now.getFullYear(), covered + 1, 25);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-25`;
+  });
+  await expect(page.getByLabel("Expected next salary day")).toHaveValue(payDayAfterCovered);
   await page.getByRole("button", { name: "Next" }).click();
 
   // Step 7: summary. 250,000 + 2,000 Water's money − 37,000 − 5,000 − 2,000 Water − 5,000 = 203,000.
