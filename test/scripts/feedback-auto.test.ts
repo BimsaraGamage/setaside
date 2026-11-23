@@ -18,6 +18,8 @@ import {
   refusedChanges,
   runPass,
   SAFE_GIT,
+  short,
+  ticketStep,
   tidyTouches,
   triageCommand,
   // @ts-expect-error plain JavaScript script, no types
@@ -343,6 +345,16 @@ describe("a pass", () => {
     expect(calls.claude).toEqual([]);
     expect(calls.set).toEqual([]);
     expect(calls.said).toEqual(["No new feedback."]);
+  });
+
+  it("moves a planned feedback on to the open ticket that carries it, without Claude (SAB-86)", async () => {
+    const { deps, calls, mapDir } = fakeDeps([]);
+    const file = join(mapDir, "issues", "57-open-one.md");
+    writeFileSync(file, readFileSync(file, "utf8").replace("Sessions: ", `Feedback: ${later}\nSessions: `));
+    const rows = [{ id: later, status: "planned", ticket: "SAB-58", reply: "Thanks: this is planned." }];
+    await runPass({ ...deps, d1: () => rows });
+    expect(calls.set).toEqual([{ id: later, status: "planned", ticket: "SAB-57" }]);
+    expect(calls.claude).toEqual([]);
   });
 
   it("skips Claude when the quota is low", async () => {
@@ -725,12 +737,178 @@ describe("the Done step", () => {
 
   it("marks done the feedback whose fix is in a release, with the first release that has it", () => {
     const set: Change[] = [];
-    const n = doneStep({ git: repo(), set: (c: Change) => set.push(c), say: () => {} }, [
+    const ids = doneStep({ git: repo(), set: (c: Change) => set.push(c), say: () => {} }, [
       { id, status: "ready" },
       { id: later, status: "ready" },
     ]);
-    expect(n).toBe(1);
+    expect(ids).toEqual([id]);
     expect(set).toEqual([{ id, status: "done", reply: "Fixed in v0.1.9." }]);
+  });
+});
+
+// Ticket SAB-86 (decided in SAB-85): a Planned feedback follows every ticket whose header carries its id.
+describe("the ticket step", () => {
+  /** A repo: PR #106 in v0.1.12, PR #109 in v0.1.13, PR #120 merged but not released. */
+  function repo() {
+    const dir = mkdtempSync(join(tmpdir(), "fb-repo-"));
+    const g = (...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+        cwd: dir,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    g("init", "--quiet");
+    g("commit", "--quiet", "--allow-empty", "-m", "first");
+    g("commit", "--quiet", "--allow-empty", "-m", "feat: savings goals (#106)", "-m", "body (#109)");
+    g("tag", "setaside-v0.1.12");
+    g("commit", "--quiet", "--allow-empty", "-m", "feat: take out from a goal (#109)");
+    g("tag", "setaside-v0.1.13");
+    g("commit", "--quiet", "--allow-empty", "-m", "chore: release (#110)");
+    g("tag", "setaside-v0.1.14");
+    g("commit", "--quiet", "--allow-empty", "-m", "fix: not released yet (#120)");
+    return (args: string[]) => g(...args);
+  }
+
+  type T = { n: number; feedback?: string; pr?: string; sessions?: string; answer?: boolean };
+  function map(tickets: T[]) {
+    const dir = mkdtempSync(join(tmpdir(), "fb-map-"));
+    mkdirSync(join(dir, "issues"));
+    writeFileSync(join(dir, "map.md"), "# Map\n");
+    for (const t of tickets)
+      writeFileSync(
+        join(dir, "issues", `${t.n}-ticket-${t.n}.md`),
+        [
+          `# ${t.n} · Ticket ${t.n}`,
+          "",
+          "Type: task",
+          "Blocked by: none",
+          ...(t.pr ? [`PR: ${t.pr}`] : []),
+          ...(t.feedback ? [`Feedback: ${t.feedback}`] : []),
+          `Sessions: ${t.sessions ?? "a (charted)"}`,
+          "Map: [map.md](../map.md)",
+          "",
+          "## Question",
+          "",
+          `Feedback: ${later}`, // in the body, not the header: never counts
+          ...(t.answer ? ["", "## Answer", "", "Done."] : []),
+          "",
+        ].join("\n"),
+      );
+    return dir;
+  }
+
+  function run(tickets: T[], rows: Record<string, unknown>[], git = repo()) {
+    const set: Change[] = [];
+    const notes: string[] = [];
+    const deps = {
+      git,
+      mapDir: map(tickets),
+      stateDir: mkdtempSync(join(tmpdir(), "fb-state-")),
+      set: (c: Change) => set.push(c),
+      say: () => {},
+      notify: (title: string, body: string) => notes.push(`${title}: ${body}`),
+      now: () => Date.UTC(2026, 10, 23, 12),
+    };
+    const n = ticketStep(deps, rows);
+    return { n, set, notes, deps };
+  }
+  const row = (over: Record<string, unknown> = {}) => ({
+    id,
+    status: "planned",
+    ticket: "SAB-63",
+    reply: "Thanks: this is planned.",
+    ...over,
+  });
+
+  it("marks done when no carrying ticket is open and a PR is released, with the latest first release", () => {
+    const { n, set } = run(
+      [
+        { n: 63, feedback: id, answer: true },
+        { n: 68, feedback: id, pr: "setaside#106", answer: true },
+        { n: 69, feedback: `${later}, ${id}`, pr: "setaside#109", answer: true },
+      ],
+      [row()],
+    );
+    expect(n).toBe(1);
+    expect(set).toEqual([{ id, status: "done", reply: "Fixed in v0.1.13.", ticket: "SAB-69" }]);
+  });
+
+  it("matches the PR number on the commit subject only", () => {
+    const { set } = run([{ n: 63, feedback: id, pr: "setaside#109", answer: true }], [row()]);
+    expect(set).toEqual([{ id, status: "done", reply: "Fixed in v0.1.13.", ticket: "SAB-63" }]);
+  });
+
+  it("stays planned while a carrying ticket is open, and follows it when the row's own is resolved", () => {
+    const { set } = run(
+      [
+        { n: 63, feedback: id, answer: true },
+        { n: 68, feedback: id, pr: "setaside#106", answer: true },
+        { n: 70, feedback: id },
+      ],
+      [row()],
+    );
+    expect(set).toEqual([{ id, status: "planned", ticket: "SAB-70" }]);
+  });
+
+  it("is Being built once an open carrying ticket is claimed and has a PR", () => {
+    const { set } = run(
+      [
+        { n: 63, feedback: id, answer: true },
+        { n: 70, feedback: id, sessions: "a (charted), b (claimed, build)", pr: "setaside#120" },
+      ],
+      [row()],
+    );
+    expect(set).toEqual([{ id, status: "building", ticket: "SAB-70" }]);
+  });
+
+  it("a claimed ticket with no PR yet keeps it planned", () => {
+    const { set } = run([{ n: 63, feedback: id, sessions: "b (claimed)" }], [row()]);
+    expect(set).toEqual([]);
+  });
+
+  it("never moves Being built back to planned", () => {
+    const { set } = run([{ n: 63, feedback: id }], [row({ status: "building" })]);
+    expect(set).toEqual([]);
+  });
+
+  it("writes nothing when status and ticket already match", () => {
+    const { set } = run(
+      [{ n: 70, feedback: id, sessions: "b (claimed)", pr: "setaside#120" }],
+      [row({ status: "building", ticket: "SAB-70" })],
+    );
+    expect(set).toEqual([]);
+  });
+
+  it("counts the row's own ticket even without the header", () => {
+    const { set } = run([{ n: 63, pr: "setaside#106", answer: true }], [row()]);
+    expect(set).toEqual([{ id, status: "done", reply: "Fixed in v0.1.12.", ticket: "SAB-63" }]);
+  });
+
+  it("waits quietly when the PRs are merged but not released", () => {
+    const { set, notes } = run([{ n: 63, feedback: id, pr: "setaside#120", answer: true }], [row()]);
+    expect(set).toEqual([]);
+    expect(notes).toEqual([]);
+  });
+
+  it("with nothing open, released or opened, sends one notice a day and writes nothing", () => {
+    const tickets = [{ n: 63, feedback: id, answer: true }];
+    const first = run(tickets, [row()]);
+    expect(first.set).toEqual([]);
+    expect(first.notes).toEqual([
+      `Feedback job: a feedback has nothing to carry it: feedback ${short(id)}: SAB-63 resolved, nothing open or released carries it`,
+    ]);
+    const again = ticketStep(first.deps, [row()]);
+    expect(again).toBe(0);
+    expect(first.notes).toHaveLength(1);
+  });
+
+  it("skips rows with no ticket and none carrying them, and ready rows", () => {
+    const { set, notes } = run(
+      [{ n: 63, feedback: id, pr: "setaside#106", answer: true }],
+      [row({ id: later, ticket: null }), row({ status: "ready" })],
+    );
+    expect(set).toEqual([]);
+    expect(notes).toEqual([]);
   });
 });
 
